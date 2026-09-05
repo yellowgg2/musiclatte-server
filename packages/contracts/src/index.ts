@@ -8,3 +8,4 @@ export * from './capabilities.js';
 export * from './api-error.js';
 
 export * from './music.js';
+export * from './media.js';

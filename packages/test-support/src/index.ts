@@ -6,4 +6,9 @@ export function createHealthFixture(): HealthResponse {
 }
 export { createFakeSubsonic } from './fake-subsonic.js';
 export { subsonicFixture, subsonicErrorFixture } from './subsonic-fixtures.js';
+export {
+  syntheticAudioFixture,
+  syntheticCoverFixture,
+  syntheticMediaMetadata,
+} from './media-fixtures.js';
 export type { SubsonicScenario } from './fake-subsonic.js';

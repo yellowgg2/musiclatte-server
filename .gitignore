@@ -21,6 +21,13 @@ secrets/
 credentials/
 data/
 media/
+# Media transport source and fixture provenance are code/docs, not runtime payloads.
+!apps/api/src/media/
+!apps/api/src/media/**
+!apps/api/src/routes/media/
+!apps/api/src/routes/media/**
+!packages/test-support/media/
+!packages/test-support/media/README.md
 backups/
 *.pem
 *.key

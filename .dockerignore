@@ -19,6 +19,11 @@
 **/credentials
 **/data
 **/media
+# Keep production media transport source while excluding runtime media payloads.
+!apps/api/src/media
+!apps/api/src/media/**
+!apps/api/src/routes/media
+!apps/api/src/routes/media/**
 **/backups
 **/*.pem
 **/*.key

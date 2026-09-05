@@ -145,5 +145,9 @@
   "music.previous.album": "이전 앨범",
   "music.previous.song": "이전 곡",
   "music.artist": "아티스트",
-  "music.album": "앨범"
+  "music.album": "앨범",
+  "probe.title": "오디오 전송 확인",
+  "probe.instructions": "기본 컨트롤로 인증된 샘플을 재생하고 일시 정지하거나 탐색해 보세요.",
+  "probe.audioLabel": "인증된 샘플 오디오",
+  "probe.coverAlt": "인증된 샘플 커버"
 }

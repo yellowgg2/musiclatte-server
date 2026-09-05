@@ -15,6 +15,11 @@ if (
   window.location.pathname === `${import.meta.env.BASE_URL}__dev/shell`
 ) {
   void import('./dev/ShellFixture').then(({ ShellFixture }) => root.render(<ShellFixture />));
+} else if (
+  import.meta.env.DEV &&
+  window.location.pathname === `${import.meta.env.BASE_URL}__dev/audio-probe`
+) {
+  void import('./dev/AudioProbe').then(({ AudioProbe }) => root.render(<AudioProbe />));
 } else {
   root.render(<Router base={config.base} apiOrigin={config.apiOrigin} />);
 }

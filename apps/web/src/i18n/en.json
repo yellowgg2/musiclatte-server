@@ -145,5 +145,9 @@
   "music.previous.album": "Previous albums",
   "music.previous.song": "Previous songs",
   "music.artist": "Artist",
-  "music.album": "Album"
+  "music.album": "Album",
+  "probe.title": "Audio transport probe",
+  "probe.instructions": "Use the native controls to play, pause, and seek the authenticated sample.",
+  "probe.audioLabel": "Authenticated sample audio",
+  "probe.coverAlt": "Authenticated sample cover"
 }

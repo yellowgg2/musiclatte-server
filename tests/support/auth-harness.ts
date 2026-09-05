@@ -4,6 +4,11 @@ import type { FastifyInstance } from 'fastify';
 import { createApp } from '../../apps/api/src/app.js';
 import { createTestContext as storageContext } from './session-storage-harness.js';
 import {
+  syntheticAudioFixture,
+  syntheticCoverFixture,
+  syntheticMediaMetadata,
+} from '../../packages/test-support/src/media-fixtures.js';
+import {
   subsonicFixture,
   subsonicErrorFixture,
 } from '../../packages/test-support/src/subsonic-fixtures.js';
@@ -37,6 +42,20 @@ export interface AuthOptions {
   secureCookies: boolean;
   allowScan: boolean;
 }
+
+function mediaRange(value: string | undefined, length: number) {
+  if (!value) return { status: 200, start: 0, end: length - 1 };
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value);
+  if (!match || (!match[1] && !match[2])) return { status: 416, start: 0, end: -1 };
+  const suffix = !match[1] && match[2] ? Number(match[2]) : undefined;
+  const start = suffix === undefined ? Number(match[1]) : Math.max(0, length - suffix);
+  const end =
+    match[2] && suffix === undefined ? Math.min(Number(match[2]), length - 1) : length - 1;
+  return start >= length || start > end
+    ? { status: 416, start: 0, end: -1 }
+    : { status: 206, start, end };
+}
+
 export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
   const storage = await storageContext();
   const state = {
@@ -54,8 +73,22 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     libraryStall: false,
     malformedLibrary: false,
     closedLibraryRequests: 0,
+    mediaStatus: 0,
+    mediaContentType: '',
+    mediaRedirect: '',
+    mediaStallHeaders: false,
+    mediaStallAfterFirstChunk: false,
+    closedMediaRequests: 0,
   };
   const requests: URL[] = [];
+  const mediaRequests: {
+    url: URL;
+    method: string;
+    range?: string;
+    ifNoneMatch?: string;
+    ifModifiedSince?: string;
+    ifRange?: string;
+  }[] = [];
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     requests.push(url);
@@ -66,6 +99,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       return;
     }
     const operation = url.pathname.slice('/rest/'.length);
+    const isMedia = operation === 'stream' || operation === 'getCoverArt';
     const isRandom = operation === 'getRandomSongs';
     const isLibrary = [
       'getMusicFolders',
@@ -82,14 +116,93 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       });
       return;
     }
-    res.writeHead(isRandom ? state.randomStatus : state.status, {
-      'content-type': 'application/json',
-    });
     const valid =
       url.searchParams.get('t') ===
       createHash('md5')
         .update(password.password + url.searchParams.get('s'))
         .digest('hex');
+    if (isMedia) {
+      mediaRequests.push({
+        url,
+        method: req.method ?? '',
+        ...(req.headers.range ? { range: req.headers.range } : {}),
+        ...(req.headers['if-none-match'] ? { ifNoneMatch: req.headers['if-none-match'] } : {}),
+        ...(req.headers['if-modified-since']
+          ? { ifModifiedSince: req.headers['if-modified-since'] }
+          : {}),
+        ...(typeof req.headers['if-range'] === 'string'
+          ? { ifRange: req.headers['if-range'] }
+          : {}),
+      });
+      res.on('close', () => {
+        if (!res.writableFinished) state.closedMediaRequests += 1;
+      });
+      if (state.mediaStallHeaders) return;
+      if (state.mediaRedirect) {
+        res.writeHead(302, { location: state.mediaRedirect });
+        res.end('synthetic-secret-media-redirect');
+        return;
+      }
+      if (!valid || state.mediaStatus) {
+        const status = valid ? state.mediaStatus : 401;
+        res.writeHead(status, {
+          'content-type': state.mediaContentType || 'text/html',
+          location: 'https://synthetic-secret.example.test/login',
+        });
+        res.end('<html>synthetic-secret-media-error</html>');
+        return;
+      }
+      const body = operation === 'stream' ? syntheticAudioFixture : syntheticCoverFixture;
+      const contentType =
+        state.mediaContentType ||
+        (operation === 'stream'
+          ? syntheticMediaMetadata.audioContentType
+          : syntheticMediaMetadata.coverContentType);
+      if (req.headers['if-none-match'] === syntheticMediaMetadata.etag) {
+        res.writeHead(304, {
+          etag: syntheticMediaMetadata.etag,
+          'cache-control': 'private, max-age=60',
+        });
+        res.end();
+        return;
+      }
+      const selected = mediaRange(req.headers.range, body.length);
+      if (selected.status === 416) {
+        res.writeHead(416, {
+          'content-range': `bytes */${body.length}`,
+          'accept-ranges': 'bytes',
+          etag: syntheticMediaMetadata.etag,
+        });
+        res.end();
+        return;
+      }
+      const payload = body.subarray(selected.start, selected.end + 1);
+      res.writeHead(selected.status, {
+        'content-type': contentType,
+        'content-length': String(payload.length),
+        ...(selected.status === 206
+          ? { 'content-range': `bytes ${selected.start}-${selected.end}/${body.length}` }
+          : {}),
+        'accept-ranges': 'bytes',
+        etag: syntheticMediaMetadata.etag,
+        'last-modified': syntheticMediaMetadata.lastModified,
+        'cache-control': 'private, max-age=60',
+        'x-synthetic-secret': 'must-not-pass',
+      });
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+      if (state.mediaStallAfterFirstChunk) {
+        res.write(payload.subarray(0, Math.min(128, payload.length)));
+        return;
+      }
+      res.end(payload);
+      return;
+    }
+    res.writeHead(isRandom ? state.randomStatus : state.status, {
+      'content-type': 'application/json',
+    });
     const code =
       isLibrary && state.libraryError
         ? state.libraryError
@@ -145,6 +258,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     options,
     state,
     requests,
+    mediaRequests,
     storage,
     login: (headers: Record<string, string> = browserHeaders, payload: object = password) =>
       app.inject({ method: 'POST', url: '/api/v1/session', headers, payload }),
