@@ -1,7 +1,7 @@
 import type { FeatureCapability, FeatureKey, CapabilitiesResponse } from '@musiclatte/contracts';
-/** S06 has no music/playlist/import consumer. First owners explicitly opt in later. */
+/** S08 enables browsing; transport and future product consumers remain closed. */
 export const clientFeatures = {
-  'music.browse': false,
+  'music.browse': true,
   'music.stream': false,
   'library.randomSongs': false,
   'library.scan': false,

@@ -84,3 +84,7 @@ S08 client가 이전 fetch를 취소하고 늦은 응답을 제외한다.
 - `apps/api/src/routes/music/`: 명시적 조회 routes.
 - `apps/api/test/library-api.test.ts`, `tests/contract/library-api.test.ts`: synthetic HTTP fixture.
 - [S07 검증](../verification/phase-1/step-07/README.md).
+
+## S08 웹 소비자
+
+`apps/web/src/music/client.ts`가 위 응답을 runtime 검증하고 MusicPage의 root/folder/search/artist/album에 전달한다. 검색은 유형별20개와 독립 offset을 사용하며 scope/query를 URL에 보존한다. fetch 취소와 generation guard는 늦은 응답을 제외하고 401은 정상 재인증으로 이어진다. shared MusicRow는 탐색 상세만 제공하며 실제 오디오는 S09/S10 소유다. 기존 standard REST와 API producer 계약은 변경하지 않았다. [S08 검증](../verification/phase-1/step-08/README.md) 및 [브라우저 시나리오](../../tests/browser/library-scenarios.md) 참조.

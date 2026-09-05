@@ -1,3 +1,7 @@
+import { navigateMusic } from '../music/navigation';
+import { MusicPage } from '../pages/music/MusicPage';
+import { musicRoute } from '../music/queries';
+import { availableEntries } from '../capabilities/client-features';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createSessionClient } from '../auth/client';
 import { createSessionStore } from '../auth/session-store';
@@ -24,7 +28,9 @@ export function Router({
   const [store] = useState(() => createSessionStore(createSessionClient({ fetcher, apiOrigin })));
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [locale, onLocale] = useLocale();
-  const [path, setPath] = useState(window.location.pathname);
+  const [location, setLocation] = useState(window.location.pathname + window.location.search);
+  const path = location.split('?')[0]!;
+  const canBrowse = availableEntries(state.capabilities).includes('music.browse');
   const copy = messages[locale];
   useEffect(() => {
     void store.restore();
@@ -40,7 +46,7 @@ export function Router({
     };
   }, [store]);
   useEffect(() => {
-    const changed = () => setPath(window.location.pathname);
+    const changed = () => setLocation(window.location.pathname + window.location.search);
     const clicked = (event: MouseEvent) => {
       if (
         event.defaultPrevented ||
@@ -62,8 +68,7 @@ export function Router({
       const url = new URL(anchor.href);
       if (url.origin !== window.location.origin || !url.pathname.startsWith(base)) return;
       event.preventDefault();
-      window.history.pushState(null, '', url.pathname + url.search + url.hash);
-      changed();
+      navigateMusic(url.pathname + url.search + url.hash);
     };
     window.addEventListener('popstate', changed);
     document.addEventListener('click', clicked);
@@ -75,23 +80,29 @@ export function Router({
   useEffect(() => {
     let next: string | undefined;
     if (state.status === 'signed-out' && path !== `${base}login`)
-      next = `${base}login?returnTo=${encodeURIComponent(safeReturnPath(path, base))}`;
+      next = `${base}login?returnTo=${encodeURIComponent(safeReturnPath(location, base))}`;
     if (
       state.status === 'signed-in' &&
       (path === `${base}login` || path === base || path === base.slice(0, -1))
     )
-      next = safeReturnPath(new URLSearchParams(window.location.search).get('returnTo'), base);
+      if (state.capabilities || state.capabilityUnavailable)
+        next = safeReturnPath(
+          new URLSearchParams(window.location.search).get('returnTo'),
+          base,
+          canBrowse ? 'music' : 'settings',
+        );
     if (next) {
       window.history.replaceState(null, '', next);
-      setPath(window.location.pathname);
+      setLocation(window.location.pathname + window.location.search);
     }
-  }, [state.status, path, base]);
+  }, [state.status, location, base, state.capabilities, state.capabilityUnavailable, canBrowse]);
   useEffect(() => {
-    document.title = `${state.status === 'signed-in' ? copy['shell.settings'] : copy['login.title']} · Musiclatte`;
-  }, [state.status, copy]);
+    if (state.status === 'signed-in' && canBrowse && musicRoute(location, base)) return;
+    document.title = `${state.status === 'signed-in' ? (musicRoute(location, base) ? copy['music.title'] : copy['shell.settings']) : copy['login.title']} · Musiclatte`;
+  }, [state.status, copy, location, base, canBrowse]);
   useEffect(() => {
     const heading = document.querySelector<HTMLElement>('[data-page-heading]');
-    if (heading) heading.focus();
+    if (heading) heading.focus({ preventScroll: true });
     else if (state.status === 'signed-out')
       document.querySelector<HTMLInputElement>('[name="username"]')?.focus();
   }, [state.status, path]);
@@ -131,7 +142,17 @@ export function Router({
     );
   return (
     <AppShell locale={locale} base={base} capabilities={state.capabilities}>
-      {isSettingsPath(path, base) || path === `${base}login` || path === base ? (
+      {musicRoute(location, base) && canBrowse ? (
+        <MusicPage
+          location={location}
+          base={base}
+          locale={locale}
+          onLocale={onLocale}
+          fetcher={fetcher}
+          apiOrigin={apiOrigin}
+          onUnauthenticated={store.expire}
+        />
+      ) : isSettingsPath(path, base) || path === `${base}login` || path === base ? (
         <SettingsPage
           state={state}
           locale={locale}

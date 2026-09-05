@@ -35,6 +35,28 @@ export function AppShell({
         </span>
       </header>
       <nav aria-label={copy['shell.navigation']} className={styles.navigation}>
+        {entries.includes('music.browse') && (
+          <a
+            href={`${base}music`}
+            aria-current={window.location.pathname.startsWith(`${base}music`) ? 'page' : undefined}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="22"
+              height="22"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              aria-hidden="true"
+            >
+              <path d="M9 17V5l11-2v12M9 9l11-2" />
+              <ellipse cx="6" cy="18" rx="3" ry="2" />
+              <ellipse cx="17" cy="16" rx="3" ry="2" />
+            </svg>
+            {copy['music.title']}
+          </a>
+        )}
+
         <a
           href={`${base}settings`}
           aria-current={window.location.pathname.startsWith(`${base}settings`) ? 'page' : undefined}

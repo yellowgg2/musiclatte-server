@@ -1,0 +1,58 @@
+- link "Skip to content":
+  - /url: "#main"
+- banner:
+  - generic: Musiclatte
+- navigation "Main navigation":
+  - link "Music":
+    - /url: /music
+    - text: Music
+  - link "Settings":
+    - /url: /settings
+    - text: Settings
+- main:
+  - paragraph: A little space for your music
+  - text: Language
+  - combobox "Language":
+    - option "한국어"
+    - option "English" [selected]
+  - navigation "Current location":
+    - link "All music":
+      - /url: /music
+    - generic: /
+    - link "Selected library":
+      - /url: /music?musicFolderId=0
+  - heading "Search results" [level=1]
+  - paragraph: "Search term: new"
+  - search:
+    - generic: Search music
+    - searchbox "Search music" [active]: new
+    - button "Search"
+  - heading "Artists 1" [level=2]:
+    - text: Artists
+    - generic: "1"
+  - list:
+    - link "Daylight":
+      - /url: /music/artists/artist-1?musicFolderId=0
+      - generic: Daylight
+      - generic: ›
+  - navigation "Artists"
+  - heading "Albums 1" [level=2]:
+    - text: Albums
+    - generic: "1"
+  - list:
+    - link "Small hours":
+      - /url: /music/albums/album-1?musicFolderId=0
+      - generic: Small hours
+      - generic: ›
+  - navigation "Albums"
+  - heading "Songs 1" [level=2]:
+    - text: Songs
+    - generic: "1"
+  - list:
+    - 'generic "Details: Newest result"':
+      - generic: Newest result
+      - generic: Daylight
+      - generic: Small hours
+      - 'generic "Duration: 3:05"': 3:05
+      - generic: ⌄
+  - navigation "Songs"

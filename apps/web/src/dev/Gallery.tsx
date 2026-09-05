@@ -1,3 +1,5 @@
+import { MusicRow } from '../music/components/MusicRow';
+import { librarySongs } from './library-fixtures';
 import { useEffect, useState } from 'react';
 import { Action } from '../design/components/Action';
 import { IconAction } from '../design/components/IconAction';
@@ -280,6 +282,14 @@ export function Gallery() {
               </figure>
             ))}
           </div>
+        </section>
+        <section id="music-row" className={styles.section}>
+          <h2>{t['music.songs']}</h2>
+          <ul style={{ listStyle: 'none', padding: 0 }}>
+            {librarySongs.map((song) => (
+              <MusicRow key={song.id} song={song} locale={locale} />
+            ))}
+          </ul>
         </section>
         <footer className={styles.footer}>
           <span>musiclatte</span>

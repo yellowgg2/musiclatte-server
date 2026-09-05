@@ -94,6 +94,7 @@ export function createSessionStore(client: SessionClient) {
       };
     },
     restore,
+    expire: () => clear('expired'),
     async login(username: string, password: string) {
       if (state.busy) return;
       const version = ++generation;

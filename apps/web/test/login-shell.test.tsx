@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentType } from 'react';
@@ -34,6 +34,8 @@ function createTestContext() {
   const fetcher: typeof fetch = async (input, init) => {
     const url = String(input);
     calls.push({ url, init });
+    if (url.includes('/api/v1/music/folders'))
+      return Response.json({ schemaVersion: 1, folders: [] });
     if (url.endsWith('/capabilities')) return Response.json(capabilities);
     if (init?.method === 'POST') {
       if (failure) return Response.json({ error: { code: failure } }, { status: 401 });
@@ -68,6 +70,9 @@ async function makeSUT(context = createTestContext(), base = '/') {
     user: userEvent.setup(),
   };
 }
+beforeEach(() => {
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+});
 afterEach(() => {
   cleanup();
   localStorage.clear();
@@ -135,9 +140,10 @@ describe('login shell', () => {
     await user.type(await screen.findByLabelText('Username'), 'fixture-listener');
     await user.type(screen.getByLabelText('Password'), 'synthetic-password');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeTruthy();
-    expect(window.location.pathname).toBe('/settings');
-    expect(screen.queryByRole('link', { name: /Music|Playlist|Import/ })).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Music' })).toBeTruthy();
+    expect(window.location.pathname).toBe('/music');
+    expect(screen.queryByRole('link', { name: /Playlist|Import/ })).toBeNull();
+    await user.click(screen.getByRole('link', { name: 'Settings' }));
     await user.selectOptions(screen.getByLabelText('Language'), 'ko');
     expect(await screen.findByRole('heading', { name: '설정' })).toBeTruthy();
     view.unmount();
@@ -173,7 +179,7 @@ describe('login shell', () => {
     expect((screen.getByLabelText('Username') as HTMLInputElement).value).toBe('fixture-listener');
     context.fail('');
     await user.type(screen.getByLabelText('Password'), 'synthetic-password{Enter}');
-    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Music' })).toBeTruthy();
   });
   /** Unsafe, encoded and unimplemented return paths never become navigation targets. */
   it('should allow only implemented relative return paths within the SPA base', async () => {
@@ -184,13 +190,12 @@ describe('login shell', () => {
       '/\\evil.test',
       '/%2f%2fevil.test',
       '/api/v1/session',
-      '/music',
       '/settings/../music',
       '/settings?returnTo=//evil.test',
     ])
-      expect(safeReturnPath(path, '/')).toBe('/settings');
+      expect(safeReturnPath(path, '/')).toBe('/music');
     expect(safeReturnPath('/latte/settings', '/latte/')).toBe('/latte/settings');
-    expect(safeReturnPath('/settings', '/latte/')).toBe('/latte/settings');
+    expect(safeReturnPath('/settings', '/latte/')).toBe('/latte/music');
   });
   /** Private extension outages preserve the authenticated account and standard profile. */
   it('should retain session when capabilities are unavailable and hide unimplemented entries', async () => {
@@ -210,7 +215,7 @@ describe('login shell', () => {
   /** Direct unsupported routes show a scoped recovery page, never an unfinished feature. */
   it('should guard direct routes and preserve the SPA mount base', async () => {
     localStorage.setItem('musiclatte.locale', 'en');
-    window.history.replaceState(null, '', '/latte/music');
+    window.history.replaceState(null, '', '/latte/imports');
     const context = createTestContext();
     context.signIn();
     const { user } = await makeSUT(context, '/latte/');
@@ -222,7 +227,8 @@ describe('login shell', () => {
   /** Feature decisions distinguish denied, unsupported and uncertain availability. */
   it('should intersect implemented features with explicit server permission', async () => {
     const { featureState, clientFeatures } = await moduleAt('capabilities/client-features.ts');
-    expect(clientFeatures['music.browse']).toBe(false);
+    expect(clientFeatures['music.browse']).toBe(true);
+    expect(clientFeatures['music.stream']).toBe(false);
     expect(
       featureState({ supported: false, permission: 'allowed', availability: 'available' }),
     ).toBe('unsupported');

@@ -218,6 +218,9 @@
     padding: var(--space-5) var(--space-4) calc(6rem + env(safe-area-inset-bottom));
   }
   .navigation {
+    display: flex;
+    justify-content: space-evenly;
+    gap: var(--space-3);
     position: fixed;
     inset: auto 0 0;
     z-index: 1;
