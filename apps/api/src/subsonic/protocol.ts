@@ -6,6 +6,9 @@ import type {
   MusicFolder,
   MusicIndexes,
   MusicSearchResult,
+  SubsonicPlaylist,
+  SubsonicPlaylistSummary,
+  SubsonicStarredSongs,
   SubsonicIdentity,
 } from '@musiclatte/contracts';
 import { standardError, SubsonicError } from './errors.js';
@@ -31,6 +34,10 @@ function id(value: unknown): string {
 }
 function number(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : invalid();
+}
+function integer(value: unknown): number {
+  const result = number(value);
+  return Number.isSafeInteger(result) ? result : invalid();
 }
 function boolean(value: unknown): boolean {
   return typeof value === 'boolean' ? value : invalid();
@@ -73,7 +80,7 @@ export function decodeFolders(value: unknown): MusicFolder[] {
     return { id: folderId, name: source.name === undefined ? '' : string(source.name) };
   });
 }
-function entry(value: unknown): MusicEntry {
+export function decodeEntry(value: unknown): MusicEntry {
   const source = record(value);
   return {
     id: id(source.id),
@@ -100,7 +107,7 @@ export function decodeAlbum(value: unknown): MusicAlbum {
   return {
     id: id(source.id),
     name: string(source.name),
-    song: list(source.song, entry),
+    song: list(source.song, decodeEntry),
     ...optional(source, 'artist', string),
     ...optional(source, 'artistId', id),
     ...optional(source, 'coverArt', id),
@@ -135,7 +142,7 @@ export function decodeDirectory(value: unknown): MusicDirectory {
   return {
     id: id(source.id),
     name: string(source.name),
-    child: list(source.child, entry),
+    child: list(source.child, decodeEntry),
     ...optional(source, 'parent', id),
   };
 }
@@ -144,9 +151,49 @@ export function decodeSearch(value: unknown): MusicSearchResult {
   return {
     artist: list(source.artist, decodeArtist),
     album: list(source.album, decodeAlbum),
-    song: list(source.song, entry),
+    song: list(source.song, decodeEntry),
   };
 }
 export function decodeRandom(value: unknown): MusicEntry[] {
-  return list(record(value).song, entry);
+  return list(record(value).song, decodeEntry);
+}
+
+function timestamp(value: unknown): string {
+  const result = string(value);
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(result) ||
+    Number.isNaN(Date.parse(result))
+  )
+    return invalid();
+  return result;
+}
+
+function playlistSummary(value: unknown): SubsonicPlaylistSummary {
+  const source = record(value);
+  return {
+    id: id(source.id),
+    name: string(source.name),
+    owner: id(source.owner),
+    songCount: integer(source.songCount),
+    created: timestamp(source.created),
+    changed: timestamp(source.changed),
+    duration: integer(source.duration),
+    public: source.public === undefined ? false : boolean(source.public),
+  };
+}
+
+export function decodePlaylists(value: unknown): SubsonicPlaylistSummary[] {
+  return list(record(value).playlist, playlistSummary);
+}
+
+export function decodePlaylist(value: unknown): SubsonicPlaylist {
+  const source = record(value);
+  return {
+    ...playlistSummary(source),
+    entry: list(source.entry, decodeEntry),
+  };
+}
+
+export function decodeStarred2(value: unknown): SubsonicStarredSongs {
+  return list(record(value).song, decodeEntry);
 }

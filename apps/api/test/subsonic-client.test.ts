@@ -20,6 +20,10 @@ async function makeSUT(scenario: Scenario = {}, overrides: Partial<ClientOptions
   return ctx;
 }
 
+async function makeCollectionSUT(scenario: Scenario = {}) {
+  return makeSUT({ ...scenario, collections: true });
+}
+
 describe('Subsonic adapter', () => {
   /** Metadata requests use the fixed origin, JSON protocol and BFF token identity. */
   it('should send token proof and return ping through real HTTP', async () => {
@@ -198,4 +202,142 @@ describe('Subsonic adapter', () => {
     expect(cover.searchParams.get('size')).toBe('128');
     expect(upstream.requests).toHaveLength(0);
   });
+
+  /** Collection mutations expose named methods and preserve the source-defined pair order. */
+  it('should encode explicit playlist and song-star mutations losslessly', async () => {
+    const { client, upstream } = await makeCollectionSUT();
+
+    await client.createPlaylist({
+      name: '여름 + Café &',
+      songIds: ['tr-A', 'tr-A', '한글+&%?'],
+    });
+    await client.createPlaylist({
+      playlistId: 'pl-existing',
+      name: '교체',
+      songIds: ['tr-B', 'tr-A'],
+    });
+    await client.updatePlaylist({
+      playlistId: 'pl-existing',
+      name: 'renamed',
+      songIdsToAdd: ['tr-A', 'tr-A'],
+      songIndexesToRemove: [0, 2],
+    });
+    await client.deletePlaylist('pl-existing');
+    await client.starSong('tr-A');
+    await client.unstarSong('tr-A');
+
+    expect(upstream.requests.map((url) => url.pathname)).toEqual([
+      '/rest/createPlaylist',
+      '/rest/createPlaylist',
+      '/rest/updatePlaylist',
+      '/rest/deletePlaylist',
+      '/rest/star',
+      '/rest/unstar',
+    ]);
+    expect(
+      Array.from(upstream.requests[0]!.searchParams).filter(([key]) =>
+        ['playlistId', 'name', 'songId'].includes(key),
+      ),
+    ).toEqual([
+      ['name', '여름 + Café &'],
+      ['songId', 'tr-A'],
+      ['songId', 'tr-A'],
+      ['songId', '한글+&%?'],
+    ]);
+    expect(
+      Array.from(upstream.requests[1]!.searchParams).filter(([key]) =>
+        ['playlistId', 'name', 'songId'].includes(key),
+      ),
+    ).toEqual([
+      ['playlistId', 'pl-existing'],
+      ['name', '교체'],
+      ['songId', 'tr-B'],
+      ['songId', 'tr-A'],
+    ]);
+    expect(
+      Array.from(upstream.requests[2]!.searchParams).filter(([key]) =>
+        ['playlistId', 'name', 'songIdToAdd', 'songIndexToRemove'].includes(key),
+      ),
+    ).toEqual([
+      ['playlistId', 'pl-existing'],
+      ['name', 'renamed'],
+      ['songIdToAdd', 'tr-A'],
+      ['songIdToAdd', 'tr-A'],
+      ['songIndexToRemove', '0'],
+      ['songIndexToRemove', '2'],
+    ]);
+    expect(
+      upstream.requests.slice(3).map((url) => Array.from(url.searchParams.getAll('id'))),
+    ).toEqual([['pl-existing'], ['tr-A'], ['tr-A']]);
+  });
+
+  /** Invalid collection input fails before credentials can reach the upstream server. */
+  it('should reject empty collection IDs names and invalid removal indexes locally', async () => {
+    const { client, upstream } = await makeCollectionSUT();
+
+    await expect(client.createPlaylist({ name: '' })).rejects.toMatchObject({
+      kind: 'invalid_request',
+    });
+    await expect(client.createPlaylist({ name: 'valid', songIds: [''] })).rejects.toMatchObject({
+      kind: 'invalid_request',
+    });
+    await expect(client.updatePlaylist({ playlistId: '' })).rejects.toMatchObject({
+      kind: 'invalid_request',
+    });
+    await expect(
+      client.updatePlaylist({ playlistId: 'pl-1', songIndexesToRemove: [-1] }),
+    ).rejects.toMatchObject({ kind: 'invalid_request' });
+    await expect(
+      client.updatePlaylist({ playlistId: 'pl-1', songIndexesToRemove: [1.5] }),
+    ).rejects.toMatchObject({ kind: 'invalid_request' });
+    await expect(client.deletePlaylist('')).rejects.toMatchObject({
+      kind: 'invalid_request',
+    });
+    await expect(client.starSong('')).rejects.toMatchObject({ kind: 'invalid_request' });
+    await expect(client.unstarSong('')).rejects.toMatchObject({ kind: 'invalid_request' });
+    expect(upstream.requests).toHaveLength(0);
+  });
+
+  /** Collection traffic inherits HTTP, HTML, timeout and cancellation sanitization. */
+  it.each(['http', 'html', 'timeout', 'cancel'] as const)(
+    'should sanitize collection %s failures',
+    async (mode) => {
+      const scenario: Scenario =
+        mode === 'http'
+          ? { status: 503, body: 'private collection body' }
+          : mode === 'html'
+            ? { contentType: 'text/html', body: '<p>private collection message</p>' }
+            : { stall: 'body' };
+      const events: Readonly<Record<string, unknown>>[] = [];
+      const { client, upstream } = await makeSUT(
+        { ...scenario, collections: true },
+        {
+          timeoutMs: mode === 'timeout' ? 50 : 1000,
+          logger: (event) => events.push(event),
+        },
+      );
+      const controller = new AbortController();
+      const result = client
+        .getPlaylist('pl-private', { signal: controller.signal })
+        .catch((error: unknown) => error);
+      if (mode === 'cancel') {
+        await upstream.waitForRequest();
+        controller.abort(new Error('private collection abort'));
+      }
+      const error = await result;
+      const serialized = `${inspect(error)} ${JSON.stringify(error)} ${JSON.stringify(events)}`;
+      expect(serialized).not.toContain('private collection');
+      expect(events[0]).toMatchObject({ operation: 'getPlaylist', outcome: 'error' });
+      expect(error).toMatchObject({
+        kind:
+          mode === 'http'
+            ? 'http_error'
+            : mode === 'html'
+              ? 'invalid_response'
+              : mode === 'timeout'
+                ? 'timeout'
+                : 'cancelled',
+      });
+    },
+  );
 });

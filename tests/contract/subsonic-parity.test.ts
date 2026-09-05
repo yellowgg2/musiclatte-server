@@ -15,6 +15,10 @@ async function makeSUT(scenario: Scenario = {}) {
   cleanups.push(() => ctx.upstream.close());
   return ctx;
 }
+
+async function makeCollectionSUT(scenario: Scenario = {}) {
+  return makeSUT({ ...scenario, collections: true });
+}
 describe('gonic v0.22.0 source-derived parity (synthetic, not live)', () => {
   /** The adapter understands each S01 consumer payload independently of routes and players. */
   it('should decode folders indexes directory search artist album and random payloads', async () => {
@@ -156,7 +160,172 @@ describe('gonic v0.22.0 source-derived parity (synthetic, not live)', () => {
     const { upstream } = await makeSUT();
     const response = await fetch(`${upstream.url}/rest/startScan`);
     expect(response.status).toBe(405);
+    const playlistWrite = await fetch(`${upstream.url}/rest/createPlaylist?name=blocked`);
+    expect(playlistWrite.status).toBe(405);
+    const starWrite = await fetch(`${upstream.url}/rest/star?id=blocked`);
+    expect(starWrite.status).toBe(405);
     const post = await fetch(`${upstream.url}/rest/ping`, { method: 'POST' });
     expect(post.status).toBe(405);
+  });
+
+  /** Playlist summaries and details preserve source order and discard unknown extension fields. */
+  it('should decode strict playlist summaries and duplicate ordered entries', async () => {
+    const summary = {
+      id: 'pl-1',
+      name: 'Synthetic List',
+      owner: 'fixture-listener',
+      songCount: 3,
+      created: '2026-09-05T01:02:03.123456789Z',
+      changed: '2026-09-05T02:03:04Z',
+      duration: 360,
+      extension: 'discard me',
+    };
+    const songA = { id: 'tr-A', title: 'A', isDir: false, privatePath: '/not/projected' };
+    const songB = { id: 'tr-B', title: 'B', isDir: false };
+    const listContext = await makeCollectionSUT({
+      body: ok({ playlists: { playlist: [summary] } }),
+    });
+    const detailContext = await makeCollectionSUT({
+      body: ok({ playlist: { ...summary, public: true, entry: [songA, songB, songA] } }),
+    });
+
+    await expect(listContext.client.getPlaylists()).resolves.toEqual([
+      {
+        id: 'pl-1',
+        name: 'Synthetic List',
+        owner: 'fixture-listener',
+        songCount: 3,
+        created: '2026-09-05T01:02:03.123456789Z',
+        changed: '2026-09-05T02:03:04Z',
+        duration: 360,
+        public: false,
+      },
+    ]);
+    await expect(detailContext.client.getPlaylist('pl-1')).resolves.toEqual({
+      id: 'pl-1',
+      name: 'Synthetic List',
+      owner: 'fixture-listener',
+      songCount: 3,
+      created: '2026-09-05T01:02:03.123456789Z',
+      changed: '2026-09-05T02:03:04Z',
+      duration: 360,
+      public: true,
+      entry: [
+        { id: 'tr-A', title: 'A', isDir: false },
+        { id: 'tr-B', title: 'B', isDir: false },
+        { id: 'tr-A', title: 'A', isDir: false },
+      ],
+    });
+    expect(listContext.upstream.requests[0]!.pathname).toBe('/rest/getPlaylists');
+    expect(listContext.upstream.requests[0]!.searchParams.has('id')).toBe(false);
+    expect(detailContext.upstream.requests[0]!.pathname).toBe('/rest/getPlaylist');
+    expect(detailContext.upstream.requests[0]!.searchParams.getAll('id')).toEqual(['pl-1']);
+  });
+
+  /** Omitted and null collection slices remain successful empty domain collections. */
+  it('should normalize empty playlist entry and starred song slices', async () => {
+    const base = {
+      id: 'pl-empty',
+      name: 'Empty',
+      owner: 'fixture-listener',
+      songCount: 0,
+      created: '2026-09-05T01:02:03Z',
+      changed: '2026-09-05T01:02:03Z',
+      duration: 0,
+    };
+    const omittedLists = await makeCollectionSUT({ body: ok({ playlists: {} }) });
+    const nullEntries = await makeCollectionSUT({
+      body: ok({ playlist: { ...base, entry: null } }),
+    });
+    const nullStars = await makeCollectionSUT({ body: ok({ starred2: { song: null } }) });
+
+    await expect(omittedLists.client.getPlaylists()).resolves.toEqual([]);
+    await expect(nullEntries.client.getPlaylist('pl-empty')).resolves.toMatchObject({
+      entry: [],
+      public: false,
+    });
+    await expect(nullStars.client.getStarred2()).resolves.toEqual([]);
+  });
+
+  /** Required playlist identity metadata and entry shapes never degrade into partial success. */
+  it.each([
+    {
+      playlist: {
+        id: 'pl',
+        name: 'x',
+        songCount: 0,
+        created: '2026-09-05T00:00:00Z',
+        changed: '2026-09-05T00:00:00Z',
+        duration: 0,
+      },
+    },
+    {
+      playlist: {
+        id: 'pl',
+        name: 'x',
+        owner: '',
+        songCount: 0,
+        created: '2026-09-05T00:00:00Z',
+        changed: '2026-09-05T00:00:00Z',
+        duration: 0,
+      },
+    },
+    {
+      playlist: {
+        id: 'pl',
+        name: 'x',
+        owner: 'owner',
+        songCount: -1,
+        created: '2026-09-05T00:00:00Z',
+        changed: '2026-09-05T00:00:00Z',
+        duration: 0,
+      },
+    },
+    {
+      playlist: {
+        id: 'pl',
+        name: 'x',
+        owner: 'owner',
+        songCount: 0,
+        created: 'not-a-date',
+        changed: '2026-09-05T00:00:00Z',
+        duration: 0,
+      },
+    },
+    {
+      playlist: {
+        id: 'pl',
+        name: 'x',
+        owner: 'owner',
+        songCount: 1,
+        created: '2026-09-05T00:00:00Z',
+        changed: '2026-09-05T00:00:00Z',
+        duration: 1,
+        entry: [{ id: 'tr', title: 'x' }],
+      },
+    },
+  ])('should reject malformed collection payload %#', async (payload) => {
+    const { client } = await makeCollectionSUT({ body: ok(payload) });
+    await expect(client.getPlaylist('pl')).rejects.toMatchObject({
+      kind: 'invalid_response',
+    });
+  });
+
+  /** Collection methods retain the established standard error taxonomy without raw messages. */
+  it.each([
+    [10, 'invalid_request'],
+    [40, 'authentication'],
+    [41, 'token_auth_unsupported'],
+    [50, 'forbidden'],
+    [70, 'not_found'],
+  ] as const)('should map collection error %i to %s', async (code, kind) => {
+    const { client } = await makeCollectionSUT({
+      body: failed(code, 'private collection message'),
+    });
+    await expect(client.getPlaylist('pl')).rejects.toMatchObject({
+      kind,
+      code,
+      capability: 'unknown',
+    });
   });
 });

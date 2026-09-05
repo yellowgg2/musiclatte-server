@@ -74,3 +74,13 @@ Live devserver v0.22.0 passed 11 read-only checks using the compiled adapter ove
 ## S03 addition
 
 S03 adds the explicit `SubsonicClient.startScan()` command through the existing fixed-origin/manual-redirect/error boundary. Only the authenticated, CSRF-protected `/api/v1/scan` route consumes it after current upstream adminRole and opt-in policy checks. Discovery never calls it. S01 read-only fixture behavior remains unchanged; a separate S03 HTTP harness verifies synthetic scan success/denial. Existing native `/rest` consumers are unchanged. See `auth-api.md` and `../verification/phase-1/step-03.md`.
+
+## Phase 2 S01 collection adapter
+
+Phase 2 S01 adds typed server-side collection methods without adding a BFF route or enabling a capability. `getPlaylists` returns `SubsonicPlaylistSummary[]`; `getPlaylist` and `createPlaylist` return a strict `SubsonicPlaylist`; `getStarred2` returns ordered `SubsonicStarredSongs`. `updatePlaylist`, `deletePlaylist`, `starSong`, and `unstarSong` return no raw wrapper.
+
+Playlist summaries require nonempty opaque `id` and `owner`, a string `name`, RFC 3339 `created`/`changed`, and nonnegative safe-integer `songCount`/`duration`. Omitted `public` projects to `false`; an invalid or null value is rejected. Detail `entry` and starred2 `song` accept omitted/null as `[]`. Entries use the existing strict `MusicEntry` projection, so duplicates and source order remain intact while unknown upstream extension fields are discarded.
+
+Mutation parameters are owned by explicit method options. New create encodes `name` followed by ordered repeated `songId`. Existing replacement encodes `playlistId`, `name`, then ordered repeated `songId`. Incremental update encodes `playlistId`, optional `name`, ordered repeated `songIdToAdd`, then ordered nonnegative `songIndexToRemove`. Delete and song star/unstar send exactly one opaque `id`. Every call continues to use GET, fixed origin/token proof, manual redirect handling, timeout/caller cancellation, and sanitized `SubsonicError`; no generic operation or credential-bearing URL is exposed.
+
+`packages/test-support/src/collection-fixtures.ts` is synthetic and source-shaped. Collection reads/writes are enabled only by the explicit test scenario; the default Phase 1 fake still rejects arbitrary collection writes. No live playlist or star mutation was performed. See `../verification/phase-2/step-01.md`.

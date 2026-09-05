@@ -6,6 +6,9 @@ import type {
   MusicFolder,
   MusicIndexes,
   MusicSearchResult,
+  SubsonicPlaylist,
+  SubsonicPlaylistSummary,
+  SubsonicStarredSongs,
   SubsonicIdentity,
   SubsonicPing,
   SubsonicTokenProof,
@@ -19,8 +22,11 @@ import {
   decodeFolders,
   decodeIdentity,
   decodeIndexes,
+  decodePlaylist,
+  decodePlaylists,
   decodeRandom,
   decodeSearch,
+  decodeStarred2,
   encodeParameters,
 } from './protocol.js';
 
@@ -48,6 +54,17 @@ export interface MediaOptions extends RequestOptions {
   method?: 'GET' | 'HEAD';
   range?: string;
 }
+export interface CreatePlaylistOptions extends RequestOptions {
+  playlistId?: string;
+  name: string;
+  songIds?: readonly string[];
+}
+export interface UpdatePlaylistOptions extends RequestOptions {
+  playlistId: string;
+  name?: string;
+  songIdsToAdd?: readonly string[];
+  songIndexesToRemove?: readonly number[];
+}
 export interface SubsonicClient {
   /** Explicit authenticated admin action only; never used for discovery. */
   startScan(options?: RequestOptions): Promise<void>;
@@ -60,6 +77,14 @@ export interface SubsonicClient {
   artist(id: string, options?: RequestOptions): Promise<MusicArtist>;
   album(id: string, options?: RequestOptions): Promise<MusicAlbum>;
   random(options?: RandomOptions): Promise<MusicEntry[]>;
+  getPlaylists(options?: RequestOptions): Promise<SubsonicPlaylistSummary[]>;
+  getPlaylist(id: string, options?: RequestOptions): Promise<SubsonicPlaylist>;
+  createPlaylist(options: CreatePlaylistOptions): Promise<SubsonicPlaylist>;
+  updatePlaylist(options: UpdatePlaylistOptions): Promise<void>;
+  deletePlaylist(id: string, options?: RequestOptions): Promise<void>;
+  getStarred2(options?: RequestOptions): Promise<SubsonicStarredSongs>;
+  starSong(id: string, options?: RequestOptions): Promise<void>;
+  unstarSong(id: string, options?: RequestOptions): Promise<void>;
   /** Credential-bearing request, for server-side transport only; S09 owns fetching/stream cleanup. */
   mediaRequest(kind: 'stream' | 'getCoverArt', id: string, options?: MediaOptions): Request;
 }
@@ -80,6 +105,14 @@ type Operation =
   | 'getArtist'
   | 'getAlbum'
   | 'getRandomSongs'
+  | 'getPlaylists'
+  | 'getPlaylist'
+  | 'createPlaylist'
+  | 'updatePlaylist'
+  | 'deletePlaylist'
+  | 'getStarred2'
+  | 'star'
+  | 'unstar'
   | 'stream'
   | 'getCoverArt';
 type Pair = readonly [string, string];
@@ -93,6 +126,9 @@ function numeric(value: number): string {
 }
 function folderPair(value?: string): Pair[] {
   return value === undefined ? [] : [['musicFolderId', required(value)]];
+}
+function repeated(key: string, values: readonly string[] = []): Pair[] {
+  return values.map((value) => [key, required(value)] as const);
 }
 
 export function createSubsonicClient(options: SubsonicClientOptions): SubsonicClient {
@@ -256,6 +292,39 @@ export function createSubsonicClient(options: SubsonicClientOptions): SubsonicCl
         if (opts[key] !== undefined) pairs.push([key, numeric(opts[key])]);
       if (opts.genre !== undefined) pairs.push(['genre', required(opts.genre)]);
       return decodeRandom((await request('getRandomSongs', pairs, opts)).randomSongs);
+    },
+    async getPlaylists(opts) {
+      return decodePlaylists((await request('getPlaylists', [], opts)).playlists);
+    },
+    async getPlaylist(id, opts) {
+      return decodePlaylist((await request('getPlaylist', [['id', required(id)]], opts)).playlist);
+    },
+    async createPlaylist(opts) {
+      const pairs: Pair[] = [];
+      if (opts.playlistId !== undefined) pairs.push(['playlistId', required(opts.playlistId)]);
+      pairs.push(['name', required(opts.name)], ...repeated('songId', opts.songIds));
+      return decodePlaylist((await request('createPlaylist', pairs, opts)).playlist);
+    },
+    async updatePlaylist(opts) {
+      const pairs: Pair[] = [['playlistId', required(opts.playlistId)]];
+      if (opts.name !== undefined) pairs.push(['name', required(opts.name)]);
+      pairs.push(...repeated('songIdToAdd', opts.songIdsToAdd));
+      for (const index of opts.songIndexesToRemove ?? []) {
+        pairs.push(['songIndexToRemove', numeric(index)]);
+      }
+      await request('updatePlaylist', pairs, opts);
+    },
+    async deletePlaylist(id, opts) {
+      await request('deletePlaylist', [['id', required(id)]], opts);
+    },
+    async getStarred2(opts) {
+      return decodeStarred2((await request('getStarred2', [], opts)).starred2);
+    },
+    async starSong(id, opts) {
+      await request('star', [['id', required(id)]], opts);
+    },
+    async unstarSong(id, opts) {
+      await request('unstar', [['id', required(id)]], opts);
     },
     mediaRequest(kind, id, opts = {}) {
       if (

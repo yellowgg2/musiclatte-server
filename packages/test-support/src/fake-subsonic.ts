@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { subsonicFixture } from './subsonic-fixtures.js';
+import { collectionFixture } from './collection-fixtures.js';
 export interface SubsonicScenario {
   body?: unknown;
   status?: number;
@@ -8,6 +9,7 @@ export interface SubsonicScenario {
   redirectTo?: string;
   disconnect?: boolean;
   empty?: boolean;
+  collections?: boolean;
 }
 const reads = new Set([
   'ping',
@@ -19,6 +21,16 @@ const reads = new Set([
   'getArtist',
   'getAlbum',
   'getRandomSongs',
+]);
+const collectionOperations = new Set([
+  'getPlaylists',
+  'getPlaylist',
+  'createPlaylist',
+  'updatePlaylist',
+  'deletePlaylist',
+  'getStarred2',
+  'star',
+  'unstar',
 ]);
 /** Loopback-only test server. Captured requests must only contain synthetic credentials. */
 export async function createFakeSubsonic(scenario: SubsonicScenario = {}) {
@@ -32,7 +44,9 @@ export async function createFakeSubsonic(scenario: SubsonicScenario = {}) {
     requests.push(url);
     received();
     const operation = url.pathname.replace(/^\/rest\//, '');
-    if (request.method !== 'GET' || !url.pathname.startsWith('/rest/') || !reads.has(operation)) {
+    const allowed =
+      reads.has(operation) || (scenario.collections && collectionOperations.has(operation));
+    if (request.method !== 'GET' || !url.pathname.startsWith('/rest/') || !allowed) {
       response.writeHead(405);
       response.end();
       return;
@@ -56,7 +70,11 @@ export async function createFakeSubsonic(scenario: SubsonicScenario = {}) {
       return;
     }
     const body =
-      scenario.body === undefined ? subsonicFixture(operation, scenario.empty) : scenario.body;
+      scenario.body === undefined
+        ? scenario.collections && collectionOperations.has(operation)
+          ? collectionFixture(operation, scenario.empty)
+          : subsonicFixture(operation, scenario.empty)
+        : scenario.body;
     response.end(typeof body === 'string' ? body : JSON.stringify(body));
   });
   await new Promise<void>((resolve, reject) => {
