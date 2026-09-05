@@ -6,12 +6,21 @@ try {
   const app = createConfiguredApp(process.env);
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
-      void app.close().catch(() => { process.exitCode = 1; });
+      void app.close().catch(() => {
+        process.exitCode = 1;
+      });
     });
   }
-  try { await app.listen({ host: config.host, port: config.port }); } catch (error) { await app.close(); throw error; }
+  try {
+    await app.listen({ host: config.host, port: config.port });
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
   console.info('Musiclatte API listening on port %d', config.port);
 } catch {
-  console.error('API startup failed; check runtime/authentication configuration and port availability.');
+  console.error(
+    'API startup failed; check runtime/authentication configuration and port availability.',
+  );
   process.exitCode = 1;
 }

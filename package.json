@@ -21,15 +21,18 @@
     "test:unit": "vitest run --config vitest.config.ts",
     "test:contract": "vitest run --config vitest.contract.config.ts",
     "dev:web": "npm run dev -w @musiclatte/web --",
-    "dev:api": "npm run dev -w @musiclatte/api --"
+    "dev:api": "npm run dev -w @musiclatte/api --",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "typescript": "7.0.2",
-    "vite": "8.2.2",
-    "vitest": "5.0.0",
-    "tsx": "4.23.13",
+    "@types/node": "24.13.3",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
-    "@types/node": "24.13.3"
+    "prettier": "3.9.6",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.0"
   }
 }

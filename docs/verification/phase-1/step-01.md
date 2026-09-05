@@ -9,16 +9,16 @@ Implemented a typed read-only Subsonic adapter, source-derived synthetic fixture
 - Every npm command used session-local `~/.cache/musiclatte-toolchain/node-v24.20.0-darwin-arm64/bin` first in PATH: Node `v24.20.0`, npm `11.19.0`; installed TypeScript `7.0.2`, Vitest `5.0.0`, Vite `8.2.2`.
 - No dependency installation, host runtime change, deployment or source commit/push.
 
-| Stage | Exact command | Result |
-|---|---|---|
-| RED | `npm run test:unit -- apps/api/test/subsonic-client.test.ts` | 24 collected, 24 intended assertions failed, exit 1: missing adapter; no import/collection errors |
-| RED | `npm run test:contract -- tests/contract/subsonic-parity.test.ts` | 31 collected, 31 intended assertions failed, exit 1: missing adapter/protocol |
-| RED | `npm run typecheck`, `npm run build` | Both exit 0 before production implementation |
-| GREEN/refactor | Same focused unit / contract commands | 24 / 31 passed, exit 0 |
-| GREEN/refactor | `npm run typecheck`, `npm run build` | Exit 0 for all workspaces |
-| GATE_CHECK | `npm run test:unit` | 32 passed across 3 files, exit 0 |
-| GATE_CHECK | `npm run test:contract` | 34 passed across 2 files, exit 0 |
-| GATE_CHECK | `git diff --check` | Exit 0 |
+| Stage          | Exact command                                                     | Result                                                                                            |
+| -------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| RED            | `npm run test:unit -- apps/api/test/subsonic-client.test.ts`      | 24 collected, 24 intended assertions failed, exit 1: missing adapter; no import/collection errors |
+| RED            | `npm run test:contract -- tests/contract/subsonic-parity.test.ts` | 31 collected, 31 intended assertions failed, exit 1: missing adapter/protocol                     |
+| RED            | `npm run typecheck`, `npm run build`                              | Both exit 0 before production implementation                                                      |
+| GREEN/refactor | Same focused unit / contract commands                             | 24 / 31 passed, exit 0                                                                            |
+| GREEN/refactor | `npm run typecheck`, `npm run build`                              | Exit 0 for all workspaces                                                                         |
+| GATE_CHECK     | `npm run test:unit`                                               | 32 passed across 3 files, exit 0                                                                  |
+| GATE_CHECK     | `npm run test:contract`                                           | 34 passed across 2 files, exit 0                                                                  |
+| GATE_CHECK     | `git diff --check`                                                | Exit 0                                                                                            |
 
 Initial GREEN typecheck found missing Node ambient types in test-support. Added explicit `types: ["node"]` using existing installed `@types/node`; subsequent typecheck/build passed. No runtime behavior was weakened. Test harness duplicate draft interfaces were replaced with actual exported types after GREEN.
 

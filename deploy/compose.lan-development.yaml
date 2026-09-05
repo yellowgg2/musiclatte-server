@@ -1,0 +1,13 @@
+# Use only AFTER changing the upstream administrator password via loopback.
+# Adds a LAN port; the base loopback ports are preserved by Compose merge semantics.
+services:
+  api:
+    environment:
+      NODE_ENV: development
+      PUBLIC_ORIGIN: ${LAN_PUBLIC_ORIGIN:?Set the exact http LAN origin including LAN_PORT}
+  web:
+    ports:
+      - '${LAN_BIND_ADDRESS:?Set an explicit private LAN address}:${LAN_PORT:-8081}:8080'
+    environment:
+      LAN_DEVELOPMENT: 'true'
+      ADMIN_SETUP_COMPLETE: ${ADMIN_SETUP_COMPLETE:?Confirm completed loopback administrator setup with true}

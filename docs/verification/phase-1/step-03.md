@@ -7,20 +7,20 @@
 
 ## RED → GREEN
 
-| 단계/명령 | test 수/exit |
-|---|---|
-| RED `npm run test:unit -- apps/api/test/auth-api.test.ts` | 28 assertion failures / 1; HTTP route 미구현 |
-| RED `npm run test:contract -- tests/contract/capabilities.test.ts` | 26 assertion failures / 1; route/decoder 미구현 |
-| RED `npm run typecheck`, `npm run build` | 각각 0; collection/type/build 오류 없는 RED |
-| runtime RED `npm run test:unit -- apps/api/test/auth-runtime.test.ts` | 13 assertion failures / 1; configured runtime 부재 |
-| 추가 RED, 같은 auth-api/capabilities filter | cookie 삭제 1 failed+29 pass, known support 보존 1 failed+26 pass / 각 1 |
-| GREEN `npm run test:unit -- apps/api/test/auth-api.test.ts apps/api/test/auth-runtime.test.ts` | 43 pass / 0 |
-| GREEN `npm run test:contract -- tests/contract/capabilities.test.ts` | 27 pass / 0 |
-| 최종 `npm run typecheck` | 0 |
-| 최종 `npm run build` | 0 |
-| 전체 `npm run test:unit` | 8 files / 98 pass / 0 |
-| 전체 `npm run test:contract` | 3 files / 61 pass / 0 |
-| `git diff --check` | 0 |
+| 단계/명령                                                                                      | test 수/exit                                                             |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| RED `npm run test:unit -- apps/api/test/auth-api.test.ts`                                      | 28 assertion failures / 1; HTTP route 미구현                             |
+| RED `npm run test:contract -- tests/contract/capabilities.test.ts`                             | 26 assertion failures / 1; route/decoder 미구현                          |
+| RED `npm run typecheck`, `npm run build`                                                       | 각각 0; collection/type/build 오류 없는 RED                              |
+| runtime RED `npm run test:unit -- apps/api/test/auth-runtime.test.ts`                          | 13 assertion failures / 1; configured runtime 부재                       |
+| 추가 RED, 같은 auth-api/capabilities filter                                                    | cookie 삭제 1 failed+29 pass, known support 보존 1 failed+26 pass / 각 1 |
+| GREEN `npm run test:unit -- apps/api/test/auth-api.test.ts apps/api/test/auth-runtime.test.ts` | 43 pass / 0                                                              |
+| GREEN `npm run test:contract -- tests/contract/capabilities.test.ts`                           | 27 pass / 0                                                              |
+| 최종 `npm run typecheck`                                                                       | 0                                                                        |
+| 최종 `npm run build`                                                                           | 0                                                                        |
+| 전체 `npm run test:unit`                                                                       | 8 files / 98 pass / 0                                                    |
+| 전체 `npm run test:contract`                                                                   | 3 files / 61 pass / 0                                                    |
+| `git diff --check`                                                                             | 0                                                                        |
 
 후속 타입 정리와 request logging 중복 옵션 제거 후 최종 typecheck/build 및 전체 suite를 통과했다. 별도 행동 보존 refactor는 필요하지 않아 skip했다. `tests/unit/workspace.test.ts`의 KO/EN key·빈 문자열·placeholder 검사를 포함하며 새 UI 문자열/locale key는 0개다. dependency 설치·lockfile·storage migration 변경 없음.
 

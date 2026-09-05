@@ -14,9 +14,9 @@
 
 `storage/migrations/001-session.sql`은 하나의 transaction으로 적용된다. SQLite application ID `1296843092`, user_version `1`을 검사하며 foreign/미지원 version을 자동 reset·downgrade하지 않는다.
 
-| 원장 | 필드 / 의미 |
-|---|---|
-| instance | singleton, UUID id, 양수 policy_revision, key_id(SHA-256 key fingerprint) |
+| 원장     | 필드 / 의미                                                                                                                |
+| -------- | -------------------------------------------------------------------------------------------------------------------------- |
+| instance | singleton, UUID id, 양수 policy_revision, key_id(SHA-256 key fingerprint)                                                  |
 | sessions | id_hash(SHA-256 opaque token), instance_id, policy_revision, username, encrypted_proof, created_at, expires_at, revoked_at |
 
 모든 시간은 epoch milliseconds, 정수이며 expiry는 created보다 커야 한다. playlist/media payload, raw password, adminRole, 사용자별 가짜 음악 ACL은 저장하지 않는다. username은 개인정보이므로 DB 자체도 비공개다.

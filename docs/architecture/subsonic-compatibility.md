@@ -15,21 +15,21 @@ S01 adds a server-side, read-only typed adapter for gonic v0.22.0. It exposes no
 
 Every path is origin-root `/rest/{endpoint}`, without requiring `.view`. Native uses `v=1.15.0`, `c=musiclatte`, `f=json`; BFF uses `c=musiclatte-web`.
 
-| Native endpoint | Parameters / meaning | Preserve verification owner |
-|---|---|---|
-| `ping` | Connection and standard errors | S01 fixtures; S04 native through gateway |
-| `getMusicFolders` | Configured music roots | S01 adapter; S04 gateway |
-| `getIndexes` | Optional `musicFolderId` | S01 adapter; S04 gateway |
-| `getMusicDirectory` | Opaque `id`, folder/song children | S01 adapter; S04 gateway |
-| `search3` | `query`, `artistCount`, `albumCount`, `songCount` | S01 adapter; S04 gateway |
-| `getArtist`, `getAlbum` | Opaque `id` | S01 adapter; S04 gateway |
-| `stream` | Opaque `id`, native media URL | S01 request construction; S04 native; S09/S10 web bytes/player |
-| `getCoverArt` | Opaque `id`, optional `size` | S01 request construction; S04/S09 transport |
-| `getPlaylists`, `getStarred2` | Current account collections | S04 proxy preserve; P2 web consumer |
-| `getPlaylist`, `deletePlaylist`, `star`, `unstar` | Opaque `id` | S04 proxy preserve; P2 web consumer |
-| `createPlaylist` | `name`, ordered repeated `songId` | S01 encoding fixture; S04 proxy; P2 mutations |
-| `updatePlaylist` | `playlistId`, optional `name`, repeated `songIdToAdd`, position-based `songIndexToRemove` | S01 encoding fixture; S04 proxy; P2 mutations |
-| `startScan`, `getScanStatus` | Admin-only scan initiation / scan state | Source evidence only in S01; S04 isolated stack and P3 management |
+| Native endpoint                                   | Parameters / meaning                                                                      | Preserve verification owner                                       |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `ping`                                            | Connection and standard errors                                                            | S01 fixtures; S04 native through gateway                          |
+| `getMusicFolders`                                 | Configured music roots                                                                    | S01 adapter; S04 gateway                                          |
+| `getIndexes`                                      | Optional `musicFolderId`                                                                  | S01 adapter; S04 gateway                                          |
+| `getMusicDirectory`                               | Opaque `id`, folder/song children                                                         | S01 adapter; S04 gateway                                          |
+| `search3`                                         | `query`, `artistCount`, `albumCount`, `songCount`                                         | S01 adapter; S04 gateway                                          |
+| `getArtist`, `getAlbum`                           | Opaque `id`                                                                               | S01 adapter; S04 gateway                                          |
+| `stream`                                          | Opaque `id`, native media URL                                                             | S01 request construction; S04 native; S09/S10 web bytes/player    |
+| `getCoverArt`                                     | Opaque `id`, optional `size`                                                              | S01 request construction; S04/S09 transport                       |
+| `getPlaylists`, `getStarred2`                     | Current account collections                                                               | S04 proxy preserve; P2 web consumer                               |
+| `getPlaylist`, `deletePlaylist`, `star`, `unstar` | Opaque `id`                                                                               | S04 proxy preserve; P2 web consumer                               |
+| `createPlaylist`                                  | `name`, ordered repeated `songId`                                                         | S01 encoding fixture; S04 proxy; P2 mutations                     |
+| `updatePlaylist`                                  | `playlistId`, optional `name`, repeated `songIdToAdd`, position-based `songIndexToRemove` | S01 encoding fixture; S04 proxy; P2 mutations                     |
+| `startScan`, `getScanStatus`                      | Admin-only scan initiation / scan state                                                   | Source evidence only in S01; S04 isolated stack and P3 management |
 
 Native `fetch` performs a single token-to-enc retry on code 41 for metadata endpoints, and `ping` also contains its existing 41 handler. Native streaming/cover URL construction uses the current auth mode. This existing behavior remains unchanged. BFF accepts only `SubsonicTokenProof {username,t,s}`; it never retries raw/enc authentication. Proof generation and encrypted session storage belong to S02/S03.
 
@@ -50,18 +50,18 @@ Native `fetch` performs a single token-to-enc retry on code 41 for metadata endp
 
 ## Error matrix
 
-| Evidence | Adapter kind | Interpretation |
-|---|---|---|
-| HTTP 200, standard 40 | `authentication` | Credentials rejected |
-| HTTP 200, standard 41 | `token_auth_unsupported` | This auth method unsupported; no BFF fallback |
-| Standard 50 | `forbidden` | Operation denied, not unavailable |
-| Standard 70 | `not_found` | Target or endpoint absent; capability remains `unknown` |
-| Standard 20/30 | `protocol_incompatible` | Client/server protocol mismatch |
-| Standard 10 | `invalid_request` | Upstream rejected parameters |
-| Standard 0/unknown code | `upstream_error` | Preserve numeric code; do not invent unsupported status |
-| HTTP non-2xx, including redirect/401/403/404/503 | `http_error` plus `httpStatus` | Transport status wins over a nested wrapper; no inferred feature capability |
-| HTML, malformed JSON/wrapper/payload | `invalid_response` | Not an empty result or missing capability |
-| Network failure / timeout / cancellation | `network` / `timeout` / `cancelled` | Distinct recovery signals, no raw cause |
+| Evidence                                         | Adapter kind                        | Interpretation                                                              |
+| ------------------------------------------------ | ----------------------------------- | --------------------------------------------------------------------------- |
+| HTTP 200, standard 40                            | `authentication`                    | Credentials rejected                                                        |
+| HTTP 200, standard 41                            | `token_auth_unsupported`            | This auth method unsupported; no BFF fallback                               |
+| Standard 50                                      | `forbidden`                         | Operation denied, not unavailable                                           |
+| Standard 70                                      | `not_found`                         | Target or endpoint absent; capability remains `unknown`                     |
+| Standard 20/30                                   | `protocol_incompatible`             | Client/server protocol mismatch                                             |
+| Standard 10                                      | `invalid_request`                   | Upstream rejected parameters                                                |
+| Standard 0/unknown code                          | `upstream_error`                    | Preserve numeric code; do not invent unsupported status                     |
+| HTTP non-2xx, including redirect/401/403/404/503 | `http_error` plus `httpStatus`      | Transport status wins over a nested wrapper; no inferred feature capability |
+| HTML, malformed JSON/wrapper/payload             | `invalid_response`                  | Not an empty result or missing capability                                   |
+| Network failure / timeout / cancellation         | `network` / `timeout` / `cancelled` | Distinct recovery signals, no raw cause                                     |
 
 Stock gonic's unknown view and missing data both use 70. There is no general “unsupported endpoint” code that S01 can infer safely. The adapter retains `capability: unknown`; later capability owners need independent evidence. A valid empty response is successful supported data, not a failure.
 

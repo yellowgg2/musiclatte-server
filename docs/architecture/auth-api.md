@@ -6,15 +6,15 @@ S01 고정 gonic adapter와 S02 관리 저장소를 Fastify HTTP API에 연결�
 
 `server.ts` → `auth/runtime.ts:createConfiguredApp` → `createApp(AuthOptions)`가 실제 entry다. 인자 없는 `createApp()`은 liveness/test용이며 실제 listening entry는 필수 인증 설정 없이 시작하지 않는다.
 
-| 변수 | 의미 |
-|---|---|
-| `PUBLIC_ORIGIN` | 신뢰된 브라우저 HTTP(S) origin; path/query/hash/credential 불가, production은 HTTPS 필수 |
-| `GONIC_UPSTREAM` | 요청이 바꿀 수 없는 고정 origin-root gonic URL; redirect 추종 금지 |
-| `MANAGEMENT_DIRECTORY` | gonic/media와 별개인 절대 private 관리 디렉터리 |
-| `CREDENTIAL_KEY_PATH` | 기존 32바이트 key의 절대 경로; 매 시작 load만, 자동 재생성 없음 |
-| `SESSION_MAX_AGE_SECONDS` | 필수 양수 정수; 암묵적 보존 기간 없음 |
-| `SUBSONIC_TIMEOUT_MS` | 기본 5000ms; 양수 정수, 최대 2147483647; upstream 요청 구현 timeout이며 제품 SLA가 아님 |
-| `ALLOW_SCAN` | 기본 false; 정확히 true/false만 허용; true도 upstream adminRole을 대신하지 않음 |
+| 변수                      | 의미                                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------------------- |
+| `PUBLIC_ORIGIN`           | 신뢰된 브라우저 HTTP(S) origin; path/query/hash/credential 불가, production은 HTTPS 필수 |
+| `GONIC_UPSTREAM`          | 요청이 바꿀 수 없는 고정 origin-root gonic URL; redirect 추종 금지                       |
+| `MANAGEMENT_DIRECTORY`    | gonic/media와 별개인 절대 private 관리 디렉터리                                          |
+| `CREDENTIAL_KEY_PATH`     | 기존 32바이트 key의 절대 경로; 매 시작 load만, 자동 재생성 없음                          |
+| `SESSION_MAX_AGE_SECONDS` | 필수 양수 정수; 암묵적 보존 기간 없음                                                    |
+| `SUBSONIC_TIMEOUT_MS`     | 기본 5000ms; 양수 정수, 최대 2147483647; upstream 요청 구현 timeout이며 제품 SLA가 아님  |
+| `ALLOW_SCAN`              | 기본 false; 정확히 true/false만 허용; true도 upstream adminRole을 대신하지 않음          |
 
 `.env` 자동 로딩은 없다. `.env.example`의 placeholder와 빈 수명 값은 실행 가능한 운영 정책이 아니다. 최초 key는 운영자가 새 private 위치에서 S02 `createKey(path)`로 **한 번 명시적으로** 준비한다. 예: 빌드 후 `CREDENTIAL_KEY_PATH`를 설정하고 `node --input-type=module -e 'import { createKey } from "./apps/api/dist/security/key-store.js"; createKey(process.env.CREDENTIAL_KEY_PATH)'`. 기존 key를 덮어쓰지 않는다. S04가 volume·gateway 설치를 소유한다. DB close는 Fastify onClose/시작 실패/SIGTERM에 연결했다.
 
@@ -22,11 +22,11 @@ S02 schema v1은 변경하지 않았다. DB에는 기존 opaque token hash와 �
 
 ## Session 교환
 
-| 요청 | 입력/응답 |
-|---|---|
-| `POST /api/v1/session` | JSON `{kind:"password",username,password}` 또는 `{kind:"subsonic-token",username,t,s}`; 성공 201 |
-| `GET /api/v1/session` | cookie 또는 Authorization bearer로 현재 upstream identity 재확인; 성공 200 |
-| `DELETE /api/v1/session` | 현재 토큰 폐기, encrypted proof 제거; 성공 204 |
+| 요청                     | 입력/응답                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| `POST /api/v1/session`   | JSON `{kind:"password",username,password}` 또는 `{kind:"subsonic-token",username,t,s}`; 성공 201 |
+| `GET /api/v1/session`    | cookie 또는 Authorization bearer로 현재 upstream identity 재확인; 성공 200                       |
+| `DELETE /api/v1/session` | 현재 토큰 폐기, encrypted proof 제거; 성공 204                                                   |
 
 POST는 `X-Musiclatte-Client: web` 또는 `native`를 사용한다. credential kind와 HTTP transport는 별도다. password는 무작위 salt + Subsonic MD5 proof 생성에만 사용하고 저장하지 않는다. upstream `getUser` username이 제출 identity와 다르면 거절한다. alias를 추측해 다른 identity로 바꾸지 않는다. `t/s`도 재사용 secret이므로 공개 hash로 취급하지 않는다. code 41에서 raw/enc password fallback을 만들지 않는다.
 
@@ -49,19 +49,25 @@ HTTPS cookie: `__Host-musiclatte-session`, `Path=/`, `HttpOnly`, `Secure`, `Same
 `GET /.well-known/musiclatte-server`는 upstream 호출·인증 없이 아래 metadata만 반환한다.
 
 ```json
-{"protocol":"musiclatte-server","schemaVersion":1,"instanceId":"synthetic-instance","apiBase":"/api/v1","authSchemes":["cookie","bearer"]}
+{
+  "protocol": "musiclatte-server",
+  "schemaVersion": 1,
+  "instanceId": "synthetic-instance",
+  "apiBase": "/api/v1",
+  "authSchemes": ["cookie", "bearer"]
+}
 ```
 
 `GET /api/v1/capabilities`는 인증 후 `schemaVersion`, `instanceId`, `revision`, `features`를 반환한다. 각 feature는 `supported: true|false|null`, `permission: allowed|denied|unknown`, `availability: available|temporarily_unavailable|unknown`이다. null은 미판정이며 false와 다르다.
 
-| Feature | S03 판정 |
-|---|---|
-| `music.browse`, `music.stream` | configured gonic의 표준 음악 계약 true/allowed/available; private web data/media route 완료 주장은 아님(S07/S09) |
-| `library.randomSongs` | size=1 read-only 성공 true; 401 폐기, 403 denied, 404/70/5xx/timeout은 unsupported로 추론하지 않음 |
-| `library.scan` | gonic 표준 지원 true; 기본 denied, ALLOW_SCAN와 실제 adminRole의 교집합만 allowed |
-| `playlists.read`, `playlists.write`, `favorites.songs` | private P2 consumer 미구현 false; 기존 native `/rest` 지원을 제거한다는 의미가 아님 |
-| `library.recentDownloads`, `imports.youtube`, `engine.manage` | P3 미구현 false/denied |
-| `metadata.write`, `metadata.lyrics.write`, `metadata.curation`, `automation.tokens` | P4/P6 미구현 false/denied |
+| Feature                                                                             | S03 판정                                                                                                         |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `music.browse`, `music.stream`                                                      | configured gonic의 표준 음악 계약 true/allowed/available; private web data/media route 완료 주장은 아님(S07/S09) |
+| `library.randomSongs`                                                               | size=1 read-only 성공 true; 401 폐기, 403 denied, 404/70/5xx/timeout은 unsupported로 추론하지 않음               |
+| `library.scan`                                                                      | gonic 표준 지원 true; 기본 denied, ALLOW_SCAN와 실제 adminRole의 교집합만 allowed                                |
+| `playlists.read`, `playlists.write`, `favorites.songs`                              | private P2 consumer 미구현 false; 기존 native `/rest` 지원을 제거한다는 의미가 아님                              |
+| `library.recentDownloads`, `imports.youtube`, `engine.manage`                       | P3 미구현 false/denied                                                                                           |
+| `metadata.write`, `metadata.lyrics.write`, `metadata.curation`, `automation.tokens` | P4/P6 미구현 false/denied                                                                                        |
 
 random 성공 관찰은 session scope의 최대 256개 advisory memory entry로 유지한다. 장애 중 이미 확인한 true는 유지하고 availability만 변경한다. 이 제한은 메모리 bound이며 사용자/session 한도는 아니다. logout/rotation/인증 폐기 때 제거한다. 재시작·eviction은 unknown으로 돌아갈 수 있고 permanent false cache는 없다. 이전 capability를 표시하는 consumer는 unknown 응답을 기존 표준 기능 제거로 해석하지 않는다.
 
@@ -75,14 +81,14 @@ revision은 token·policy revision·실제 identity/role·현재 feature 상태�
 
 모든 오류는 `{schemaVersion:1,error:{code,retryable}}`이며 user-facing 번역문 대신 안정된 식별자를 사용한다. 모든 응답은 `Cache-Control: no-store`다.
 
-| HTTP | code | 의미 |
-|---|---|---|
-| 400/415/413 | invalid_request | 잘못된 JSON/schema/query/content type/크기 |
-| 401 | unauthenticated | 없음·만료·폐기·인증/identity 거절 |
-| 403 | forbidden / csrf_rejected | 권한 거절 / CSRF 경계 위반 |
-| 404 | not_found | 신규 API route 없음; standard 지원 여부 판정 아님 |
-| 422 | token_auth_unsupported | 표준 code41, BFF는 다른 credential 방식으로 재시도하지 않음 |
-| 503 | upstream_unavailable / storage_unavailable | retryable 일시 장애 |
-| 500 | internal_error | 정제된 내부 오류, raw cause 없음 |
+| HTTP        | code                                       | 의미                                                        |
+| ----------- | ------------------------------------------ | ----------------------------------------------------------- |
+| 400/415/413 | invalid_request                            | 잘못된 JSON/schema/query/content type/크기                  |
+| 401         | unauthenticated                            | 없음·만료·폐기·인증/identity 거절                           |
+| 403         | forbidden / csrf_rejected                  | 권한 거절 / CSRF 경계 위반                                  |
+| 404         | not_found                                  | 신규 API route 없음; standard 지원 여부 판정 아님           |
+| 422         | token_auth_unsupported                     | 표준 code41, BFF는 다른 credential 방식으로 재시도하지 않음 |
+| 503         | upstream_unavailable / storage_unavailable | retryable 일시 장애                                         |
+| 500         | internal_error                             | 정제된 내부 오류, raw cause 없음                            |
 
 새 UI copy 0개, locale은 기존 ko/en을 유지한다. `sessionExchangeSchema`, `sessionResponseSchema`, `discoverySchema`, `capabilitiesSchema`, `apiErrorSchema`와 test fixture를 함께 변경해야 한다. 전체 검증은 [S03 evidence](../verification/phase-1/step-03.md)에 있다.

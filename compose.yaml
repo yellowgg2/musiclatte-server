@@ -1,0 +1,124 @@
+name: ${COMPOSE_PROJECT_NAME:-musiclatte}
+services:
+  # One-shot provisioning of empty Docker volumes, never the music library or existing files.
+  volume-init:
+    image: sentriz/gonic@sha256:516fd9645614ba3a596d86174216c3e944808b9ec970c581678713be4c8b1d49
+    user: '0:0'
+    restart: 'no'
+    network_mode: none
+    entrypoint: ['sh', '/initialize-volumes.sh']
+    environment:
+      GONIC_UID: ${GONIC_UID:-1000}
+      GONIC_GID: ${GONIC_GID:-1000}
+    volumes:
+      - ./deploy/initialize-volumes.sh:/initialize-volumes.sh:ro
+      - gonic-data:/data
+      - gonic-cache:/cache
+      - gonic-playlists:/playlists
+      - gonic-podcasts:/podcasts
+    read_only: true
+    security_opt: ['no-new-privileges:true']
+    cap_drop: ['ALL']
+    cap_add: ['CHOWN', 'FOWNER', 'DAC_OVERRIDE']
+  gonic:
+    image: sentriz/gonic@sha256:516fd9645614ba3a596d86174216c3e944808b9ec970c581678713be4c8b1d49
+    user: '${GONIC_UID:-1000}:${GONIC_GID:-1000}'
+    command: ['gonic', '-http-log=false', '-log-db=false']
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${GONIC_ADMIN_PORT:-4748}:80'
+    volumes:
+      - type: bind
+        source: ${MUSIC_PATH:?Set MUSIC_PATH to an existing absolute music directory}
+        target: /music
+        read_only: true
+        bind:
+          create_host_path: false
+      - gonic-data:/data
+      - gonic-cache:/cache
+      - gonic-playlists:/playlists
+      - gonic-podcasts:/podcasts
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
+    # Upstream can log library names and first-run credentials. Use health state, not raw logs.
+    logging:
+      driver: none
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:80/ || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    security_opt: ['no-new-privileges:true']
+    cap_drop: ['ALL']
+  api:
+    build:
+      context: .
+      dockerfile: deploy/api.Dockerfile
+    user: '1000:1000'
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: '3000'
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN to your HTTPS origin}
+      GONIC_UPSTREAM: http://gonic:80
+      MANAGEMENT_DIRECTORY: /management
+      CREDENTIAL_KEY_PATH: /keys/credential.key
+      SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:?Choose a positive session lifetime in seconds}
+      ALLOW_SCAN: ${ALLOW_SCAN:-false}
+      SUBSONIC_TIMEOUT_MS: '5000'
+    volumes:
+      - management-data:/management
+      - management-keys:/keys
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 7s
+      retries: 12
+      start_period: 10s
+    depends_on:
+      gonic:
+        condition: service_healthy
+    security_opt: ['no-new-privileges:true']
+    cap_drop: ['ALL']
+  web:
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+    user: '101:101'
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${GATEWAY_PORT:-8080}:8080'
+    environment:
+      WEB_UI_ENABLED: ${WEB_UI_ENABLED:-false}
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8080/health/live || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    depends_on:
+      api:
+        condition: service_healthy
+      gonic:
+        condition: service_healthy
+    security_opt: ['no-new-privileges:true']
+    cap_drop: ['ALL']
+volumes:
+  gonic-data:
+  gonic-cache:
+  gonic-playlists:
+  gonic-podcasts:
+  management-data:
+  management-keys:

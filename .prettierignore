@@ -1,0 +1,11 @@
+# Prettier also honors the root .gitignore. Never format generated/runtime data.
+node_modules/
+**/dist/
+coverage/
+package-lock.json
+# Shell, SQL and nginx use their native syntax; no formatter plugin is installed.
+**/*.sh
+**/*.sql
+**/*.conf
+**/Dockerfile
+**/*.Dockerfile

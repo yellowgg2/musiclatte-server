@@ -6,17 +6,17 @@ Session/instance SQLite 저장소, credential vault/key store, 수명 설정, on
 - 모든 npm 명령은 session-local Node v24.20.0/npm 11.19.0 PATH 사용. SQLite runtime probe 3.53.4, built-in backup 확인.
 - cwd: project root. dependency install/global runtime 교체/원격 service 변경/commit/push 없음.
 
-| 단계 | 명령 | 결과 |
-|---|---|---|
-| RED | `npm run test:unit -- apps/api/test/session-storage.test.ts apps/api/test/credential-vault.test.ts apps/api/test/backup-restore.test.ts` | 22 collected, 구현 부재 assertion 22 실패, exit 1; import/collection 오류 없음 |
-| RED | `npm run typecheck`, `npm run build` | 각각 exit 0 |
-| GREEN | 위 focused command | 22/22 pass, exit 0 |
-| GREEN | `npm run typecheck`, `npm run build` | 각각 exit 0 |
-| REFACTOR | 위 focused command | 실제 exported function/type로 harness 교체, future-schema/tampered-backup 검증 추가 후 23/23 pass |
-| REFACTOR | `npm run typecheck`, `npm run build` | 각각 exit 0; SQL migration dist copy 포함 |
-| GATE_CHECK | `npm run test:unit` | 6 files, 55 pass, exit 0 |
-| GATE_CHECK | `npm run test:contract` | 2 files, 34 pass, exit 0 |
-| GATE_CHECK | `git diff --check` | exit 0 |
+| 단계       | 명령                                                                                                                                     | 결과                                                                                              |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| RED        | `npm run test:unit -- apps/api/test/session-storage.test.ts apps/api/test/credential-vault.test.ts apps/api/test/backup-restore.test.ts` | 22 collected, 구현 부재 assertion 22 실패, exit 1; import/collection 오류 없음                    |
+| RED        | `npm run typecheck`, `npm run build`                                                                                                     | 각각 exit 0                                                                                       |
+| GREEN      | 위 focused command                                                                                                                       | 22/22 pass, exit 0                                                                                |
+| GREEN      | `npm run typecheck`, `npm run build`                                                                                                     | 각각 exit 0                                                                                       |
+| REFACTOR   | 위 focused command                                                                                                                       | 실제 exported function/type로 harness 교체, future-schema/tampered-backup 검증 추가 후 23/23 pass |
+| REFACTOR   | `npm run typecheck`, `npm run build`                                                                                                     | 각각 exit 0; SQL migration dist copy 포함                                                         |
+| GATE_CHECK | `npm run test:unit`                                                                                                                      | 6 files, 55 pass, exit 0                                                                          |
+| GATE_CHECK | `npm run test:contract`                                                                                                                  | 2 files, 34 pass, exit 0                                                                          |
+| GATE_CHECK | `git diff --check`                                                                                                                       | exit 0                                                                                            |
 
 Compiled smoke: 고유 임시 경로에서 별도 Node process를 OS tmpdir cwd로 실행했다. `apps/api/dist` 모듈이 SQL migration을 찾아 첫 DB/key 생성 → session 발급 → WAL backup → 새 경로 restore → 재개방/복호화를 완료했다. 출력은 `compiled-storage-and-restore: passed`만 포함했고 생성 경로는 finally에서 제거했다. 세션 token/proof를 stdout·CLI argument·artifact로 전달하지 않았다.
 

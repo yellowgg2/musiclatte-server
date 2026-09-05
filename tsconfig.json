@@ -5,21 +5,9 @@
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,
     "jsx": "react-jsx",
-    "types": [
-      "node",
-      "vite/client"
-    ],
+    "types": ["node", "vite/client"],
     "allowImportingTsExtensions": true
   },
-  "include": [
-    "tests/**/*.ts",
-    "apps/**/*.ts",
-    "apps/**/*.tsx",
-    "packages/**/*.ts",
-    "vitest*.ts"
-  ],
-  "exclude": [
-    "**/dist",
-    "**/node_modules"
-  ]
+  "include": ["tests/**/*.ts", "apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "vitest*.ts"],
+  "exclude": ["**/dist", "**/node_modules"]
 }

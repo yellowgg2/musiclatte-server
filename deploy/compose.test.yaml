@@ -1,0 +1,9 @@
+# Explicit loopback-only HTTP test profile; never a production TLS substitute.
+services:
+  api:
+    environment:
+      NODE_ENV: development
+      PUBLIC_ORIGIN: http://127.0.0.1:${GATEWAY_PORT:-8080}
+  web:
+    environment:
+      WEB_UI_ENABLED: 'true'

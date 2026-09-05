@@ -2,17 +2,17 @@
 
 실행 cwd는 신규 `musiclatte-server` repository root. Node 24.20.0 / npm 11.19.0 / macOS arm64. Host global runtime은 변경하지 않았다.
 
-| 단계 | 정확한 명령 | 결과 |
-|---|---|---|
-| 설치 | `npm install` | exit 0, exact dependencies와 lockfile 생성 |
-| RED type | `./node_modules/.bin/tsc --noEmit -p tsconfig.json` | exit 0, test/config 수집 타입 오류 없음 |
-| RED unit/runtime | `npm run test:unit -- tests/unit/workspace.test.ts apps/api/test/runtime.test.ts` | exit 1, 8개 중 구현 모듈 존재 assertion 6개 실패, 기존 설정 검사 2개 통과 |
-| RED contract | `npm run test:contract -- tests/contract/workspace.test.ts` | exit 1, 구현 모듈 존재 assertion 3개 실패; import/collection failure 아님 |
-| clean install | `npm ci` | exit 0, audit 0 vulnerabilities; npm 기본 install-script 승인 안내는 남음 |
-| GREEN/final type | `npm run typecheck` | exit 0, root/test/config 및 4 workspace |
-| GREEN/final unit/runtime | `npm run test:unit -- tests/unit/workspace.test.ts apps/api/test/runtime.test.ts` | exit 0, 2 files / 8 tests |
-| GREEN/final contract | `npm run test:contract -- tests/contract/workspace.test.ts` | exit 0, 1 file / 3 tests |
-| GREEN/final build | `npm run build` | exit 0, 4 workspace; Vite 12 transformed modules |
+| 단계                     | 정확한 명령                                                                       | 결과                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| 설치                     | `npm install`                                                                     | exit 0, exact dependencies와 lockfile 생성                                |
+| RED type                 | `./node_modules/.bin/tsc --noEmit -p tsconfig.json`                               | exit 0, test/config 수집 타입 오류 없음                                   |
+| RED unit/runtime         | `npm run test:unit -- tests/unit/workspace.test.ts apps/api/test/runtime.test.ts` | exit 1, 8개 중 구현 모듈 존재 assertion 6개 실패, 기존 설정 검사 2개 통과 |
+| RED contract             | `npm run test:contract -- tests/contract/workspace.test.ts`                       | exit 1, 구현 모듈 존재 assertion 3개 실패; import/collection failure 아님 |
+| clean install            | `npm ci`                                                                          | exit 0, audit 0 vulnerabilities; npm 기본 install-script 승인 안내는 남음 |
+| GREEN/final type         | `npm run typecheck`                                                               | exit 0, root/test/config 및 4 workspace                                   |
+| GREEN/final unit/runtime | `npm run test:unit -- tests/unit/workspace.test.ts apps/api/test/runtime.test.ts` | exit 0, 2 files / 8 tests                                                 |
+| GREEN/final contract     | `npm run test:contract -- tests/contract/workspace.test.ts`                       | exit 0, 1 file / 3 tests                                                  |
+| GREEN/final build        | `npm run build`                                                                   | exit 0, 4 workspace; Vite 12 transformed modules                          |
 
 Focused 11개는 현재 전체 test inventory와 같다. 별도 중복 broader suite 실행은 하지 않았다. Vite config import 확장자 경고는 `.ts` import와 noEmit config의 `allowImportingTsExtensions`로 수정 후 typecheck/build를 재검증했다.
 

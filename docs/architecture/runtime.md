@@ -2,16 +2,16 @@
 
 S00은 Node 24.20.0 LTS / npm 11.19.0에서 실행·검증했다. 정확한 직접 의존성과 전이 의존성은 package manifests와 package-lock.json에 고정했다. 전역 Node 변경은 없다. S04 배포 이미지도 같은 Node 계약을 사용하거나 근거·version file·검증을 함께 갱신해야 한다.
 
-| 패키지 | 고정 버전 | 확인한 지원 근거 |
-|---|---|---|
-| Node / npm | 24.20.0 / 11.19.0 | Node 공식 release index의 LTS 배포 및 포함 npm |
-| React / React DOM | 19.2.8 / 19.2.8 | React 공식 설치 문서, npm peerDependencies 일치 |
-| Vite | 8.2.2 | engines: ^20.19.0 또는 >=22.12.0 |
-| Vitest | 5.0.0 | engines에 Node ^24.0.0, peer Vite ^8.0.0 포함 |
-| Fastify | 5.12.3 | Fastify LTS 정책의 지원 중 Node LTS line |
-| TypeScript / tsx | 7.0.2 / 4.23.13 | registry engines >=16.20.0 / >=18.0.0 |
-| @types/node | 24.13.3 | runtime과 같은 major 24 |
-| @types/react / react-dom | 19.2.18 / 19.2.7 | React 19 type line |
+| 패키지                   | 고정 버전         | 확인한 지원 근거                                |
+| ------------------------ | ----------------- | ----------------------------------------------- |
+| Node / npm               | 24.20.0 / 11.19.0 | Node 공식 release index의 LTS 배포 및 포함 npm  |
+| React / React DOM        | 19.2.8 / 19.2.8   | React 공식 설치 문서, npm peerDependencies 일치 |
+| Vite                     | 8.2.2             | engines: ^20.19.0 또는 >=22.12.0                |
+| Vitest                   | 5.0.0             | engines에 Node ^24.0.0, peer Vite ^8.0.0 포함   |
+| Fastify                  | 5.12.3            | Fastify LTS 정책의 지원 중 Node LTS line        |
+| TypeScript / tsx         | 7.0.2 / 4.23.13   | registry engines >=16.20.0 / >=18.0.0           |
+| @types/node              | 24.13.3           | runtime과 같은 major 24                         |
+| @types/react / react-dom | 19.2.18 / 19.2.7  | React 19 type line                              |
 
 공식 자료: [Node 배포 index](https://nodejs.org/dist/index.json), [Node release 정책](https://github.com/nodejs/Release), [React 설치](https://react.dev/learn/installation), [Vite 지원](https://vite.dev/guide/), [Vitest 지원](https://vitest.dev/guide/), [Fastify LTS](https://fastify.dev/docs/latest/Reference/LTS/). Exact package metadata는 npm registry에서 설치 직전 확인했다. Node archive는 공식 SHASUMS256.txt와 SHA-256을 대조했다.
 
@@ -25,13 +25,13 @@ S00은 Node 24.20.0 LTS / npm 11.19.0에서 실행·검증했다. 정확한 직�
 
 ## 환경 설정
 
-| 환경변수 | 기본 | 계약 |
-|---|---|---|
-| HOST | 127.0.0.1 | IP literal 또는 localhost; 외부 binding은 명시 설정 |
-| PORT | 3000 | 1–65535 정수; 잘못된 값은 listen 전 거부 |
-| NODE_ENV | development | development, test, production |
-| VITE_APP_BASE | / | `/music/` 같은 slash로 끝나는 segment 경로; origin과 분리 |
-| VITE_API_ORIGIN | 빈 값 | 빈 값은 same-origin; 그 외 credentials/path/query/hash 없는 HTTP(S) origin |
+| 환경변수        | 기본        | 계약                                                                       |
+| --------------- | ----------- | -------------------------------------------------------------------------- |
+| HOST            | 127.0.0.1   | IP literal 또는 localhost; 외부 binding은 명시 설정                        |
+| PORT            | 3000        | 1–65535 정수; 잘못된 값은 listen 전 거부                                   |
+| NODE_ENV        | development | development, test, production                                              |
+| VITE_APP_BASE   | /           | `/music/` 같은 slash로 끝나는 segment 경로; origin과 분리                  |
+| VITE_API_ORIGIN | 빈 값       | 빈 값은 same-origin; 그 외 credentials/path/query/hash 없는 HTTP(S) origin |
 
 API는 환경변수를 shell로 전달한다. `.env`를 자동 로딩하지 않는다. 웹은 workspace의 Vite env 파일과 shell 변수를 Vite 방식으로 읽는다. VITE_ 값은 공개 가능한 browser 설정만 사용한다. API origin은 향후 API consumer를 위한 기반이며 S00에서 음악 요청은 하지 않는다.
 

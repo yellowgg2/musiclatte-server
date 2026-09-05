@@ -32,7 +32,9 @@ describe('workspace foundation', () => {
     for (const key of Object.keys(messages.ko)) {
       expect(messages.ko[key]?.trim()).toBeTruthy();
       expect(messages.en[key]?.trim()).toBeTruthy();
-      expect(messages.ko[key]?.match(/\{[^}]+\}/g) ?? []).toEqual(messages.en[key]?.match(/\{[^}]+\}/g) ?? []);
+      expect(messages.ko[key]?.match(/\{[^}]+\}/g) ?? []).toEqual(
+        messages.en[key]?.match(/\{[^}]+\}/g) ?? [],
+      );
     }
   });
   /** Counts use locale number formatting and reject invalid counts. */
@@ -51,17 +53,42 @@ describe('workspace foundation', () => {
     const sut = await makeSUT();
     const date = new Date('2026-01-01T23:30:00Z');
     for (const locale of ['ko', 'en'] as const) {
-      expect(sut.formatDate(date, locale)).toBe(new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(date));
-      expect(sut.formatDate(date, locale, 'Asia/Seoul')).toBe(new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'Asia/Seoul' }).format(date));
+      expect(sut.formatDate(date, locale)).toBe(
+        new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(date),
+      );
+      expect(sut.formatDate(date, locale, 'Asia/Seoul')).toBe(
+        new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'Asia/Seoul' }).format(
+          date,
+        ),
+      );
     }
     expect(() => sut.formatDate(new Date('invalid'), 'en')).toThrow(RangeError);
   });
   /** Local agent state, secrets and generated artifacts never become source candidates. */
   it('should ignore sensitive artifacts while retaining source and lockfiles', () => {
-    const ignored = ['AGENTS.md', 'apps/web/AGENTS.md', 'AGENTS.override.md', '.serena/project.yml', '.codex/config.toml', '.agents/skills/test.md', '.env', 'apps/api/.env.local', 'data/test.sqlite', 'media/a.mp3', 'secrets/test.txt', 'apps/web/dist/index.html', 'node_modules/test.js'];
-    for (const path of ignored) expect(execFileSync('git', ['check-ignore', '--no-index', path], { encoding: 'utf8' }).trim()).toBe(path);
+    const ignored = [
+      'AGENTS.md',
+      'apps/web/AGENTS.md',
+      'AGENTS.override.md',
+      '.serena/project.yml',
+      '.codex/config.toml',
+      '.agents/skills/test.md',
+      '.env',
+      'apps/api/.env.local',
+      'data/test.sqlite',
+      'media/a.mp3',
+      'secrets/test.txt',
+      'apps/web/dist/index.html',
+      'node_modules/test.js',
+    ];
+    for (const path of ignored)
+      expect(
+        execFileSync('git', ['check-ignore', '--no-index', path], { encoding: 'utf8' }).trim(),
+      ).toBe(path);
     for (const path of ['package-lock.json', 'apps/api/src/app.ts', '.env.example']) {
-      expect(() => execFileSync('git', ['check-ignore', '--no-index', path], { stdio: 'pipe' })).toThrow();
+      expect(() =>
+        execFileSync('git', ['check-ignore', '--no-index', path], { stdio: 'pipe' }),
+      ).toThrow();
     }
   });
 });

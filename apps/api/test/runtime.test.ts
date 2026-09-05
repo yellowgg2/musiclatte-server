@@ -4,7 +4,11 @@ import type { FastifyInstance } from 'fastify';
 import { describe, expect, it } from 'vitest';
 interface ApiModule {
   createApp: () => FastifyInstance;
-  readConfig: (env: Record<string, string | undefined>) => { host: string; port: number; nodeEnv: string };
+  readConfig: (env: Record<string, string | undefined>) => {
+    host: string;
+    port: number;
+    nodeEnv: string;
+  };
 }
 async function makeSUT(): Promise<ApiModule> {
   const path = resolve('apps/api/src/app.ts');
@@ -23,18 +27,25 @@ describe('API runtime', () => {
       expect(response.headers['content-type']).toContain('application/json');
       expect((await app.inject('/api/v1/missing')).statusCode).toBe(404);
       expect((await app.inject('/rest/ping')).statusCode).toBe(404);
-    } finally { await app.close(); }
+    } finally {
+      await app.close();
+    }
   });
   /** Development binds to loopback, with explicit deployment overrides. */
   it('should validate default and explicit server settings', async () => {
     const { readConfig } = await makeSUT();
     expect(readConfig({})).toEqual({ host: '127.0.0.1', port: 3000, nodeEnv: 'development' });
-    expect(readConfig({ HOST: '0.0.0.0', PORT: '65535', NODE_ENV: 'production' })).toEqual({ host: '0.0.0.0', port: 65535, nodeEnv: 'production' });
+    expect(readConfig({ HOST: '0.0.0.0', PORT: '65535', NODE_ENV: 'production' })).toEqual({
+      host: '0.0.0.0',
+      port: 65535,
+      nodeEnv: 'production',
+    });
   });
   /** Invalid configuration fails before listening without echoing supplied values. */
   it('should reject malformed ports hosts and runtime modes', async () => {
     const { readConfig } = await makeSUT();
-    for (const port of ['', '0', '-1', '65536', '3000x', '1.5', ' 3000', '1e3']) expect(() => readConfig({ PORT: port })).toThrow('Invalid PORT');
+    for (const port of ['', '0', '-1', '65536', '3000x', '1.5', ' 3000', '1e3'])
+      expect(() => readConfig({ PORT: port })).toThrow('Invalid PORT');
     expect(() => readConfig({ HOST: '' })).toThrow('Invalid HOST');
     expect(() => readConfig({ HOST: 'https://example.com' })).toThrow('Invalid HOST');
     expect(() => readConfig({ NODE_ENV: 'secret-value' })).toThrow('Invalid NODE_ENV');
