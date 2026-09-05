@@ -121,6 +121,9 @@
   min-width: 0;
   padding: var(--space-7);
 }
+.shell:has([data-persistent-player]) .content {
+  padding-bottom: calc(var(--space-7) + 7rem);
+}
 .settings {
   max-width: 46rem;
   display: grid;
@@ -216,6 +219,9 @@
   }
   .content {
     padding: var(--space-5) var(--space-4) calc(6rem + env(safe-area-inset-bottom));
+  }
+  .shell:has([data-persistent-player]) .content {
+    padding-bottom: calc(10rem + env(safe-area-inset-bottom));
   }
   .navigation {
     display: flex;

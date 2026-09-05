@@ -228,7 +228,8 @@ describe('login shell', () => {
   it('should intersect implemented features with explicit server permission', async () => {
     const { featureState, clientFeatures } = await moduleAt('capabilities/client-features.ts');
     expect(clientFeatures['music.browse']).toBe(true);
-    expect(clientFeatures['music.stream']).toBe(false);
+    expect(clientFeatures['music.stream']).toBe(true);
+    expect(clientFeatures['library.randomSongs']).toBe(true);
     expect(
       featureState({ supported: false, permission: 'allowed', availability: 'available' }),
     ).toBe('unsupported');

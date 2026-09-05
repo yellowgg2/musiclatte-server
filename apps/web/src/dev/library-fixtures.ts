@@ -9,6 +9,7 @@ export const librarySongs: MusicEntry[] = [
     artistId: 'artist-1',
     album: 'Small hours',
     albumId: 'album-1',
+    coverArt: 'cover-1',
     duration: 185,
   },
   {
@@ -20,6 +21,7 @@ export const librarySongs: MusicEntry[] = [
     artistId: 'artist-1',
     album: 'Rainy window',
     albumId: 'album-1',
+    coverArt: 'cover-2',
     duration: 242,
   },
   {

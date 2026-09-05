@@ -4,6 +4,11 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createTestContext, password } from './auth-harness.js';
 import { librarySongs } from '../../apps/web/src/dev/library-fixtures.js';
+import {
+  syntheticAudioFixture,
+  syntheticCoverFixture,
+  syntheticMediaMetadata,
+} from '../../packages/test-support/src/media-fixtures.js';
 const control = process.env.PREVIEW_CONTROL;
 const upstream = createServer((request, response) => {
   const url = new URL(request.url ?? '/', 'http://localhost');
@@ -21,7 +26,37 @@ const upstream = createServer((request, response) => {
   }
   const q = url.searchParams.get('query') ?? '';
   const id = url.searchParams.get('id');
-  const isLibrary = operation !== 'getUser' && operation !== 'ping';
+  const isMedia = operation === 'stream' || operation === 'getCoverArt';
+  const isRandom = operation === 'getRandomSongs';
+  const isLibrary = [
+    'getMusicFolders',
+    'getIndexes',
+    'getMusicDirectory',
+    'search3',
+    'getArtist',
+    'getAlbum',
+    'getRandomSongs',
+  ].includes(operation ?? '');
+  if (isMedia) {
+    if (!valid || mode === 'media-error') {
+      response.writeHead(valid ? 503 : 401, { 'content-type': 'text/plain' });
+      response.end('Synthetic media unavailable');
+      return;
+    }
+    const body = operation === 'stream' ? syntheticAudioFixture : syntheticCoverFixture;
+    response.writeHead(200, {
+      'content-type':
+        operation === 'stream'
+          ? syntheticMediaMetadata.audioContentType
+          : syntheticMediaMetadata.coverContentType,
+      'content-length': String(body.length),
+      etag: syntheticMediaMetadata.etag,
+      'last-modified': syntheticMediaMetadata.lastModified,
+    });
+    if (request.method === 'HEAD') response.end();
+    else response.end(body);
+    return;
+  }
   const error = !valid
     ? 40
     : isLibrary && (mode === 'missing' || id === 'missing')
@@ -29,12 +64,13 @@ const upstream = createServer((request, response) => {
       : isLibrary && mode === 'error'
         ? 0
         : undefined;
-  if (isLibrary && mode === 'error') {
+  if (isLibrary && (mode === 'error' || (isRandom && mode === 'random-error'))) {
     response.writeHead(503);
     response.end();
     return;
   }
   const empty = mode === 'empty' || q === 'empty' || id === 'empty';
+  const randomEmpty = mode === 'random-empty';
   const songs = empty
     ? []
     : q === 'new'
@@ -72,6 +108,7 @@ const upstream = createServer((request, response) => {
     },
     getArtist: { artist },
     getAlbum: { album },
+    getRandomSongs: { randomSongs: { song: randomEmpty ? [] : songs } },
   };
   const body = {
     'subsonic-response':
@@ -108,9 +145,19 @@ const context = await createTestContext({
   secureCookies: false,
   timeoutMs: 5000,
 });
+const mobilePreview = (width: number) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>S10 ${width}px preview</title>
+<style>html,body{margin:0;min-height:100%;background:#dedbe4}body{display:grid;place-items:start center;padding:24px}iframe{width:${width}px;height:844px;border:1px solid #777;border-radius:20px;background:white;box-shadow:0 12px 40px #29263333}</style>
+</head><body><iframe title="Musiclatte ${width}px player preview" src="http://127.0.0.1:5173/music/folders/folder-1?musicFolderId=0"></iframe></body></html>`;
+context.app.get('/__preview/mobile', async (_request, reply) =>
+  reply.type('text/html').send(mobilePreview(390)),
+);
+context.app.get('/__preview/narrow', async (_request, reply) =>
+  reply.type('text/html').send(mobilePreview(320)),
+);
 const clock = setInterval(() => data.setNow(Date.now()), 100);
 await context.app.listen({ host: '127.0.0.1', port: 3000 });
-console.info('S08 synthetic S07 API ready at 127.0.0.1:3000');
+console.info('S10 synthetic S09 API ready at 127.0.0.1:3000');
 async function cleanup() {
   clearInterval(clock);
   await context.cleanup();

@@ -290,13 +290,16 @@ describe('library regression boundaries', () => {
     );
     expect(screen.queryByText(song.title)).toBeNull();
   });
-  /** The gallery renders the exact shared music row with its original long name and missing metadata. */
+  /** The gallery renders and exercises the exact shared music-row play action without real media. */
   it('should expose the shared music row in the development gallery', async () => {
     const { Gallery } = await import('../src/dev/Gallery');
     render(<Gallery />);
     expect(document.querySelector('#music-row')).not.toBeNull();
-    const gallery = document.querySelector('#music-row')!;
+    const gallery = document.querySelector<HTMLElement>('#music-row')!;
     expect(gallery.querySelectorAll('li').length).toBeGreaterThanOrEqual(2);
+    const play = within(gallery).getAllByRole('button', { name: /재생$/ })[0]!;
+    await userEvent.setup().click(play);
+    expect(within(gallery).getAllByRole('button', { name: /일시 정지$/ })).toHaveLength(1);
   });
   /** Unsafe dot path segments cannot become requests to a different endpoint after URL normalization. */
   it('should reject encoded traversal while accepting canonical opaque deep links', async () => {

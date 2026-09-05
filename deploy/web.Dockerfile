@@ -6,9 +6,11 @@ COPY apps/web/package.json ./apps/web/package.json
 COPY packages/contracts/package.json ./packages/contracts/package.json
 COPY packages/test-support/package.json ./packages/test-support/package.json
 RUN test "$(npm --version)" = "11.19.0" && npm ci --ignore-scripts
+COPY packages/contracts/src ./packages/contracts/src
+COPY packages/contracts/tsconfig.json ./packages/contracts/tsconfig.json
 COPY apps/web/index.html apps/web/vite.config.ts apps/web/tsconfig.json ./apps/web/
 COPY apps/web/src ./apps/web/src
-RUN npm run build -w @musiclatte/web
+RUN npm run build -w @musiclatte/contracts && npm run build -w @musiclatte/web
 
 FROM nginx:1.28.0-alpine
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html

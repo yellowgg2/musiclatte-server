@@ -8,11 +8,13 @@ export function AppShell({
   base,
   capabilities,
   children,
+  player,
 }: {
   locale: Locale;
   base: string;
   capabilities: CapabilitiesResponse | null;
   children: ReactNode;
+  player?: ReactNode;
 }) {
   const copy = messages[locale];
   // Both direct route guards and the navigation registry stay closed until a consumer exists.
@@ -80,6 +82,7 @@ export function AppShell({
       <main id="main" tabIndex={-1} className={styles.content}>
         {children}
       </main>
+      {player}
     </div>
   );
 }

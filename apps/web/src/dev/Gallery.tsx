@@ -22,6 +22,8 @@ export function Gallery() {
   const [favorite, setFavorite] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [recovered, setRecovered] = useState(false);
+  const [previewSongId, setPreviewSongId] = useState<string | null>(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
   const t = messages[locale];
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -287,7 +289,20 @@ export function Gallery() {
           <h2>{t['music.songs']}</h2>
           <ul style={{ listStyle: 'none', padding: 0 }}>
             {librarySongs.map((song) => (
-              <MusicRow key={song.id} song={song} locale={locale} />
+              <MusicRow
+                key={song.id}
+                song={song}
+                songs={librarySongs}
+                locale={locale}
+                current={previewSongId === song.id}
+                playbackStatus={previewPlaying && previewSongId === song.id ? 'playing' : 'paused'}
+                onActivate={({ song: selected }) => {
+                  setPreviewSongId(selected.id);
+                  setPreviewPlaying(true);
+                }}
+                onPause={() => setPreviewPlaying(false)}
+                onResume={() => setPreviewPlaying(true)}
+              />
             ))}
           </ul>
         </section>

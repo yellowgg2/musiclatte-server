@@ -10,7 +10,8 @@ import { createMusicClient, type LibraryData } from '../../music/client';
 import { musicHref, musicRoute, scopeQuery, pageOffset } from '../../music/queries';
 import { FolderRow } from '../../music/components/FolderRow';
 import { MusicRow } from '../../music/components/MusicRow';
-import type { ApiErrorCode } from '@musiclatte/contracts';
+import { usePlayer } from '../../player/PlayerProvider';
+import type { ApiErrorCode, MusicEntry } from '@musiclatte/contracts';
 import styles from './Music.module.css';
 
 export function MusicPage({
@@ -21,6 +22,8 @@ export function MusicPage({
   fetcher,
   apiOrigin,
   onUnauthenticated,
+  canStream,
+  canRandom,
 }: {
   location: string;
   base: string;
@@ -29,7 +32,10 @@ export function MusicPage({
   fetcher: typeof fetch;
   apiOrigin: string;
   onUnauthenticated: () => void;
+  canStream: boolean;
+  canRandom: boolean;
 }) {
+  const player = usePlayer();
   const route = useMemo(() => musicRoute(location, base)!, [location, base]);
   const client = useMemo(() => createMusicClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
   const [state, setState] = useState<{
@@ -128,6 +134,22 @@ export function MusicPage({
     document.title = `${title} · Musiclatte`;
   }, [title]);
   const searchItems = data?.kind === 'search' ? data.result : null;
+  const songRow = (song: MusicEntry, songs: readonly MusicEntry[]) => (
+    <MusicRow
+      key={song.id}
+      song={song}
+      songs={songs}
+      locale={locale}
+      base={base}
+      scope={scope}
+      current={player.state.current?.id === song.id}
+      playbackStatus={player.state.status}
+      coverUrl={player.coverUrl}
+      {...(canStream ? { onActivate: player.activate } : {})}
+      onPause={player.pause}
+      onResume={player.resume}
+    />
+  );
   return (
     <div className={styles.page}>
       <div className={styles.topline}>
@@ -157,6 +179,26 @@ export function MusicPage({
           {route.kind === 'search' ? `${copy['music.query']}: ${q}` : copy['music.description']}
         </p>
       </header>
+      {canRandom && (
+        <div className={styles.random}>
+          <Action
+            busy={player.state.randomStatus === 'loading'}
+            onClick={() => void player.playRandom()}
+          >
+            {
+              copy[
+                player.state.randomStatus === 'loading' ? 'player.random.loading' : 'player.random'
+              ]
+            }
+          </Action>
+          {player.state.randomStatus === 'empty' && (
+            <p role="status">{copy['player.random.empty']}</p>
+          )}
+          {player.state.randomStatus === 'error' && (
+            <p role="alert">{copy['player.random.error']}</p>
+          )}
+        </div>
+      )}
       <form
         className={styles.search}
         role="search"
@@ -254,7 +296,7 @@ export function MusicPage({
               song.isDir ? (
                 <FolderRow key={song.id} title={song.title} href={link('folder', song.id)} />
               ) : (
-                <MusicRow key={song.id} song={song} locale={locale} base={base} scope={scope} />
+                songRow(song, data.directory.child)
               ),
             )}
           </ul>
@@ -289,9 +331,7 @@ export function MusicPage({
                 <span className={styles.count}>{formatCount(data.album.song.length, locale)}</span>
               </h2>
               <ul className={styles.list}>
-                {data.album.song.map((song) => (
-                  <MusicRow key={song.id} song={song} locale={locale} base={base} scope={scope} />
-                ))}
+                {data.album.song.map((song) => songRow(song, data.album.song))}
               </ul>
             </section>
           )}
@@ -315,15 +355,7 @@ export function MusicPage({
               </h2>
               <ul className={styles.list}>
                 {kind === 'song'
-                  ? searchItems.song.map((song) => (
-                      <MusicRow
-                        key={song.id}
-                        song={song}
-                        locale={locale}
-                        base={base}
-                        scope={scope}
-                      />
-                    ))
+                  ? searchItems.song.map((song) => songRow(song, searchItems.song))
                   : searchItems[kind].map((item) => (
                       <FolderRow
                         key={item.id}

@@ -5,6 +5,7 @@ export default defineConfig({
     include: [
       'tests/unit/**/*.test.ts',
       'apps/api/test/**/*.test.ts',
+      'apps/web/test/**/*.test.ts',
       'apps/web/test/**/*.test.tsx',
     ],
     passWithNoTests: false,

@@ -4,6 +4,18 @@
 .row:last-child {
   border-bottom: 0;
 }
+.rowMain {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding-right: var(--space-3);
+}
+.rowMain details {
+  min-width: 0;
+}
+.play {
+  flex-shrink: 0;
+}
 .summary {
   display: grid;
   grid-template-columns: var(--space-7) minmax(0, 1fr) auto var(--space-4);

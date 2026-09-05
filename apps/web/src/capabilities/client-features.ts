@@ -2,8 +2,8 @@ import type { FeatureCapability, FeatureKey, CapabilitiesResponse } from '@music
 /** S08 enables browsing; transport and future product consumers remain closed. */
 export const clientFeatures = {
   'music.browse': true,
-  'music.stream': false,
-  'library.randomSongs': false,
+  'music.stream': true,
+  'library.randomSongs': true,
   'library.scan': false,
   'playlists.read': false,
   'playlists.write': false,

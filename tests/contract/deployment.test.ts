@@ -83,6 +83,16 @@ describe('source-only deployment', () => {
     ])
       expect(ignored).toContain(path);
   });
+
+  /** Ensures the web image builds every workspace package imported by production UI code. */
+  it('should build declared web workspace dependencies inside the image', () => {
+    const source = read('deploy/web.Dockerfile');
+    expect(source).toContain('COPY packages/contracts/src ./packages/contracts/src');
+    expect(source).toContain(
+      'COPY packages/contracts/tsconfig.json ./packages/contracts/tsconfig.json',
+    );
+    expect(source).toContain('npm run build -w @musiclatte/contracts');
+  });
   /** LAN exposure needs an explicit setup attestation and must leave the admin endpoint on loopback. */
   it('should reject unconfirmed LAN startup and malformed gateway options', () => {
     const entry = read('deploy/gateway-entry.sh');

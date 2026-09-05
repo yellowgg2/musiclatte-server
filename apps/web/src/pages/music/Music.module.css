@@ -47,6 +47,16 @@
   gap: var(--space-3);
   align-items: end;
 }
+.random {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.random p {
+  color: var(--color-secondary);
+  overflow-wrap: anywhere;
+}
 .section {
   min-width: 0;
   display: grid;

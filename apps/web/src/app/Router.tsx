@@ -1,5 +1,8 @@
 import { navigateMusic } from '../music/navigation';
 import { MusicPage } from '../pages/music/MusicPage';
+import { PlayerProvider, type PlayerAudio } from '../player/PlayerProvider';
+import { DesktopPlayer } from '../player/DesktopPlayer';
+import { MiniPlayer } from '../player/MiniPlayer';
 import { musicRoute } from '../music/queries';
 import { availableEntries } from '../capabilities/client-features';
 import { useEffect, useState, useSyncExternalStore } from 'react';
@@ -20,10 +23,12 @@ export function Router({
   fetcher = fetch,
   base = '/',
   apiOrigin = '',
+  audioFactory,
 }: {
   fetcher?: typeof fetch;
   base?: string;
   apiOrigin?: string;
+  audioFactory?: () => PlayerAudio;
 }) {
   const [store] = useState(() => createSessionStore(createSessionClient({ fetcher, apiOrigin })));
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
@@ -31,6 +36,8 @@ export function Router({
   const [location, setLocation] = useState(window.location.pathname + window.location.search);
   const path = location.split('?')[0]!;
   const canBrowse = availableEntries(state.capabilities).includes('music.browse');
+  const canStream = availableEntries(state.capabilities).includes('music.stream');
+  const canRandom = availableEntries(state.capabilities).includes('library.randomSongs');
   const copy = messages[locale];
   useEffect(() => {
     void store.restore();
@@ -141,33 +148,52 @@ export function Router({
       />
     );
   return (
-    <AppShell locale={locale} base={base} capabilities={state.capabilities}>
-      {musicRoute(location, base) && canBrowse ? (
-        <MusicPage
-          location={location}
-          base={base}
-          locale={locale}
-          onLocale={onLocale}
-          fetcher={fetcher}
-          apiOrigin={apiOrigin}
-          onUnauthenticated={store.expire}
-        />
-      ) : isSettingsPath(path, base) || path === `${base}login` || path === base ? (
-        <SettingsPage
-          state={state}
-          locale={locale}
-          onLocale={onLocale}
-          onLogout={() => void store.logout()}
-        />
-      ) : (
-        <div className={styles.settings}>
-          <h1 tabIndex={-1} data-page-heading>
-            {copy['status.unavailable']}
-          </h1>
-          <p>{copy['status.unavailableHelp']}</p>
-          <a href={`${base}settings`}>{copy['status.back']}</a>
-        </div>
-      )}
-    </AppShell>
+    <PlayerProvider
+      fetcher={fetcher}
+      apiOrigin={apiOrigin}
+      onUnauthenticated={store.expire}
+      {...(audioFactory ? { audioFactory } : {})}
+    >
+      <AppShell
+        locale={locale}
+        base={base}
+        capabilities={state.capabilities}
+        player={
+          <>
+            <DesktopPlayer locale={locale} />
+            <MiniPlayer locale={locale} />
+          </>
+        }
+      >
+        {musicRoute(location, base) && canBrowse ? (
+          <MusicPage
+            location={location}
+            base={base}
+            locale={locale}
+            onLocale={onLocale}
+            fetcher={fetcher}
+            apiOrigin={apiOrigin}
+            onUnauthenticated={store.expire}
+            canStream={canStream}
+            canRandom={canRandom}
+          />
+        ) : isSettingsPath(path, base) || path === `${base}login` || path === base ? (
+          <SettingsPage
+            state={state}
+            locale={locale}
+            onLocale={onLocale}
+            onLogout={() => void store.logout()}
+          />
+        ) : (
+          <div className={styles.settings}>
+            <h1 tabIndex={-1} data-page-heading>
+              {copy['status.unavailable']}
+            </h1>
+            <p>{copy['status.unavailableHelp']}</p>
+            <a href={`${base}settings`}>{copy['status.back']}</a>
+          </div>
+        )}
+      </AppShell>
+    </PlayerProvider>
   );
 }
