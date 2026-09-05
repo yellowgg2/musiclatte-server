@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node --input-type=module -e \"import { cpSync } from 'node:fs'; cpSync('src/storage/migrations', 'dist/storage/migrations', { recursive: true });\"",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js"
   },
