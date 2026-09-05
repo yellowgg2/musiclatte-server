@@ -1,6 +1,6 @@
 # Session / instance 저장 경계 — S02
 
-관리 데이터만 소유하는 server-only 저장소다. S03이 이 모듈을 조립해 HTTP 로그인·cookie·rotation·logout·권한 재검증을 제공한다. S02는 기존 API entry에 저장소나 인증 route를 자동 연결하지 않는다.
+관리 데이터만 소유하는 server-only 저장소다. S03 `auth/runtime.ts`가 이 모듈을 조립해 HTTP 로그인·cookie·rotation·logout·권한 재검증을 제공한다 (`auth-api.md` 참조). S02는 기존 API entry에 저장소나 인증 route를 자동 연결하지 않는다.
 
 ## Provider와 실행
 
@@ -44,7 +44,7 @@ const vault = createCredentialVault(loadKey(keyPath));
 const sessions = createSessionRepository({ database, vault, maxAgeMs, clock: Date.now });
 ```
 
-- `SESSION_MAX_AGE_SECONDS`는 **필수 양수 정수**이며 기본 보존 기간은 없다. 공백/소수/지수/0/음수/unsafe 정수는 실패한다. 현재 S00 listening entry는 아직 이 설정을 소비하지 않으며 S03 조립 시 필수다.
+- `SESSION_MAX_AGE_SECONDS`는 **필수 양수 정수**이며 기본 보존 기간은 없다. 공백/소수/지수/0/음수/unsafe 정수는 실패한다. S03 `createConfiguredApp` listening entry가 이 설정을 필수로 소비한다.
 - `create(proof)`는 upstream 검증 완료 후에만 호출한다. S03은 `currentUser`가 반환한 canonical username을 사용한다. 이 함수 자체가 계정 인증을 수행하지 않는다.
 - 결과 `{token,expiresAt}`의 token은 32바이트 CSPRNG base64url bearer다. DB에는 SHA-256 hash만 저장한다. HTTP cookie 정책과 rotation은 S03 소유다.
 - `find(token)`은 유효하면 server-only `{username,proof,expiresAt,instanceId,policyRevision}`를 반환한다. unknown/expired/revoked/row 변조는 null이다. DB 장애는 고정 `Storage unavailable`로 실패해 운영 장애와 인증 부재를 구분할 수 있다.

@@ -9,6 +9,8 @@ export interface SearchOptions extends RequestOptions {
 export interface RandomOptions extends RequestOptions { size?: number; musicFolderId?: string; genre?: string; fromYear?: number; toYear?: number }
 export interface MediaOptions extends RequestOptions { size?: number; method?: 'GET' | 'HEAD'; range?: string }
 export interface SubsonicClient {
+  /** Explicit authenticated admin action only; never used for discovery. */
+  startScan(options?: RequestOptions): Promise<void>;
   ping(options?: RequestOptions): Promise<SubsonicPing>;
   currentUser(options?: RequestOptions): Promise<SubsonicIdentity>;
   folders(options?: RequestOptions): Promise<MusicFolder[]>;
@@ -25,7 +27,7 @@ export interface SubsonicClientOptions {
   upstream: string; proof: SubsonicTokenProof; timeoutMs: number;
   logger?: (event: Readonly<Record<string, unknown>>) => void;
 }
-type Operation = 'ping' | 'getUser' | 'getMusicFolders' | 'getIndexes' | 'getMusicDirectory' | 'search3' | 'getArtist' | 'getAlbum' | 'getRandomSongs' | 'stream' | 'getCoverArt';
+type Operation = 'startScan' | 'ping' | 'getUser' | 'getMusicFolders' | 'getIndexes' | 'getMusicDirectory' | 'search3' | 'getArtist' | 'getAlbum' | 'getRandomSongs' | 'stream' | 'getCoverArt';
 type Pair = readonly [string, string];
 function required(value: string): string {
   if (typeof value !== 'string' || value.length === 0) throw new SubsonicError('invalid_request');
@@ -89,6 +91,7 @@ export function createSubsonicClient(options: SubsonicClientOptions): SubsonicCl
     }
   }
   return {
+    async startScan(opts) { await request('startScan', [], opts); },
     async ping(opts) { const body = await request('ping', [], opts); return { status: 'ok', version: String(body.version) }; },
     async currentUser(opts) { return decodeIdentity((await request('getUser', [['username', proof.username]], opts)).user); },
     async folders(opts) { return decodeFolders((await request('getMusicFolders', [], opts)).musicFolders); },

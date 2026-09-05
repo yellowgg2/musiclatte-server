@@ -18,9 +18,9 @@ S00은 Node 24.20.0 LTS / npm 11.19.0에서 실행·검증했다. 정확한 직�
 ## 구성
 
 - `apps/web`: Vite + React, strict TypeScript, Vite CSS Modules. S00에는 스타일/공유 component/화면을 만들지 않고 `createRoot(root).render(null)`만 실행한다.
-- `apps/api`: Fastify `createApp`, `readConfig`와 별도 listening entry. `/health/live`는 `HealthResponse`를 반환한다. 인증·CORS·upstream·DB는 후속 owner가 추가한다.
-- `packages/contracts`: 현재는 `HealthResponse`만 정의한다. 음악/tag/import schema를 선제 추가하지 않는다.
-- `packages/test-support`: private, 합성 health fixture만 제공한다. production API와 web은 runtime import하지 않는다.
+- `apps/api`: Fastify `createApp`, `readConfig`와 별도 listening entry. `/health/live`는 `HealthResponse`를 반환한다. S03 listening entry는 `createConfiguredApp`으로 인증·고정 upstream·관리 DB를 조립하며 CORS를 열지 않는다. 필수 설정과 key provisioning은 `auth-api.md` 참조.
+- `packages/contracts`: HealthResponse, S01 Subsonic domain, S03 session/discovery/capability/error v1 schema를 제공한다.
+- `packages/test-support`: private, 합성 health/Subsonic fixture를 제공한다. production API와 web은 runtime import하지 않는다.
 - root unit와 contract config는 분리하며 0 test를 성공 처리하지 않는다. `typecheck`가 shared declaration build 후 전체 root/test/config와 각 workspace를 검사한다.
 
 ## 환경 설정

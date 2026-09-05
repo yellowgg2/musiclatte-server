@@ -70,3 +70,7 @@ Stock gonic's unknown view and missing data both use 70. There is no general “
 `tests/contract/subsonic-parity.test.ts` uses synthetic source-shaped HTTP fixtures. Native write endpoints are enumerated and query encoding is checked, but neither a proxy nor native execution is claimed. The fixture server rejects write endpoints and non-GET requests.
 
 Live devserver v0.22.0 passed 11 read-only checks using the compiled adapter over a session-owned SSH tunnel: ping, current user, roots, indexes, directory, search, artist, album, random, empty search, missing-directory 70. No personal metadata or auth values were persisted. No media bytes, scan, writes, gateway, real native or UI flow was exercised. See `docs/verification/phase-1/step-01.md`.
+
+## S03 addition
+
+S03 adds the explicit `SubsonicClient.startScan()` command through the existing fixed-origin/manual-redirect/error boundary. Only the authenticated, CSRF-protected `/api/v1/scan` route consumes it after current upstream adminRole and opt-in policy checks. Discovery never calls it. S01 read-only fixture behavior remains unchanged; a separate S03 HTTP harness verifies synthetic scan success/denial. Existing native `/rest` consumers are unchanged. See `auth-api.md` and `../verification/phase-1/step-03.md`.
