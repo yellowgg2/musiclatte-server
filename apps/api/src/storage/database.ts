@@ -3,7 +3,11 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+const MIGRATIONS = [
+  new URL('./migrations/001-session.sql', import.meta.url),
+  new URL('./migrations/002-playlist-operations.sql', import.meta.url),
+] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
   transaction<T>(work: () => T): T;
@@ -20,6 +24,9 @@ export function validateSchema(db: DatabaseSync): void {
   db.prepare('SELECT singleton, id, policy_revision, key_id FROM instance LIMIT 0');
   db.prepare(
     'SELECT id_hash, instance_id, policy_revision, username, encrypted_proof, created_at, expires_at, revoked_at FROM sessions LIMIT 0',
+  );
+  db.prepare(
+    'SELECT identity_key, operation_id_hash, request_hash, kind, resource_id, before_revision, after_revision, status, created_at, finished_at FROM playlist_operations LIMIT 0',
   );
 }
 export function openDatabase(directory: string): ManagementDatabase {
@@ -44,12 +51,23 @@ export function openDatabase(directory: string): ManagementDatabase {
     const empty =
       db.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'").get()
         ?.count === 0;
-    if (version === 0 && appId === 0 && empty) {
+    const fresh = version === 0 && appId === 0 && empty;
+    const upgrade = version === 1 && appId === APPLICATION_ID;
+    if (!fresh && !upgrade && !(version === SCHEMA_VERSION && appId === APPLICATION_ID))
+      throw new Error('Unsupported storage schema');
+    if (fresh || upgrade) {
       db.exec('BEGIN IMMEDIATE');
       try {
-        // Recheck after obtaining the writer lock: another startup may have migrated first.
-        if (db.prepare('PRAGMA user_version').get()?.user_version === 0)
-          db.exec(readFileSync(new URL('./migrations/001-session.sql', import.meta.url), 'utf8'));
+        // Recheck each version after obtaining the writer lock: another startup may migrate first.
+        let current = db.prepare('PRAGMA user_version').get()?.user_version;
+        while (typeof current === 'number' && current < SCHEMA_VERSION) {
+          const migration = MIGRATIONS[current];
+          if (!migration) throw new Error('Unsupported storage schema');
+          db.exec(readFileSync(migration, 'utf8'));
+          const next = db.prepare('PRAGMA user_version').get()?.user_version;
+          if (next !== current + 1) throw new Error('Unsupported storage schema');
+          current = next;
+        }
         validateSchema(db);
         db.exec('COMMIT');
       } catch (error) {

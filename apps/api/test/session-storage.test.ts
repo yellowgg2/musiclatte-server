@@ -3,7 +3,11 @@ import { readFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createTestContext, proof } from '../../../tests/support/session-storage-harness.js';
+import {
+  createLegacyV1,
+  createTestContext,
+  proof,
+} from '../../../tests/support/session-storage-harness.js';
 let ctx: Awaited<ReturnType<typeof createTestContext>> | undefined;
 afterEach(() => {
   ctx?.cleanup();
@@ -21,12 +25,54 @@ describe('session and instance storage', () => {
     c.db.close();
     const reopened = c.open();
     expect(c.createInstanceRepository(reopened, c.vault.keyId).get()).toEqual(instance);
-    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 1 });
+    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
     const tables = reopened.connection
       .prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
       .all()
       .map((row) => row.name);
-    expect(tables).toEqual(['instance', 'sessions']);
+    expect(tables).toEqual(['instance', 'playlist_operations', 'sessions']);
+  });
+  /** A real v1-shaped database upgrades in one transaction without losing existing records. */
+  it('should migrate v1 storage to v2 atomically and preserve management data', async () => {
+    const c = await makeSUT();
+    const legacy = join(c.root, 'legacy');
+    createLegacyV1(legacy);
+    const path = join(legacy, 'management.sqlite');
+    const raw = new DatabaseSync(path);
+    raw
+      .prepare('INSERT INTO instance(singleton,id,policy_revision,key_id) VALUES(1,?,?,?)')
+      .run('legacy-instance', 7, c.vault.keyId);
+    raw
+      .prepare(
+        'INSERT INTO sessions(id_hash,instance_id,policy_revision,username,encrypted_proof,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?,?,?)',
+      )
+      .run('a'.repeat(64), 'legacy-instance', 7, 'legacy-user', null, 10, 20, 15);
+    raw.close();
+
+    const migrated = c.open(legacy);
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
+    expect(
+      migrated.connection.prepare('SELECT id,policy_revision,key_id FROM instance').get(),
+    ).toEqual({ id: 'legacy-instance', policy_revision: 7, key_id: c.vault.keyId });
+    expect(migrated.connection.prepare('SELECT username,revoked_at FROM sessions').get()).toEqual({
+      username: 'legacy-user',
+      revoked_at: 15,
+    });
+
+    migrated.close();
+    const broken = join(c.root, 'broken-legacy');
+    createLegacyV1(broken);
+    const brokenPath = join(broken, 'management.sqlite');
+    const conflicting = new DatabaseSync(brokenPath);
+    conflicting.exec('CREATE TABLE playlist_operations(value TEXT) STRICT');
+    conflicting.close();
+    expect(() => c.open(broken)).toThrow('Storage unavailable');
+    const inspected = new DatabaseSync(brokenPath, { readOnly: true });
+    expect(inspected.prepare('PRAGMA user_version').get()).toEqual({ user_version: 1 });
+    expect(
+      inspected.prepare('SELECT sql FROM sqlite_schema WHERE name=?').get('playlist_operations'),
+    ).toMatchObject({ sql: 'CREATE TABLE playlist_operations(value TEXT) STRICT' });
+    inspected.close();
   });
   /** Persistent sessions contain hashes and encrypted proof, not browser tokens. */
   it('should recover session after restart without storing bearer or plaintext proof', async () => {

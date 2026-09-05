@@ -14,12 +14,14 @@ import { createCredentialVault } from '../security/credential-vault.js';
 import { loadKey } from '../security/key-store.js';
 import { validateSchema, type ManagementDatabase } from './database.js';
 import { decodeSessionRow, sessionContext } from './session-repository.js';
+import { validatePlaylistOperationReceipts } from './playlist-operation-repository.js';
 
 /** Read-only verification: never initialize a missing instance or migrate a recovery artifact. */
 function verifySnapshot(path: string, key: Uint8Array): void {
   const db = new DatabaseSync(path, { readOnly: true });
   try {
     validateSchema(db);
+    validatePlaylistOperationReceipts(db);
     if (
       db.prepare('PRAGMA quick_check').get()?.quick_check !== 'ok' ||
       db.prepare('PRAGMA foreign_key_check').all().length

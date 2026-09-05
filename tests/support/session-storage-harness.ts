@@ -1,10 +1,20 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import {
+  closeSync,
+  constants,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { openDatabase, type ManagementDatabase } from '../../apps/api/src/storage/database.js';
 import { createKey, loadKey } from '../../apps/api/src/security/key-store.js';
 import { createCredentialVault } from '../../apps/api/src/security/credential-vault.js';
 import { createInstanceRepository } from '../../apps/api/src/storage/instance-repository.js';
+import { createPlaylistOperationRepository } from '../../apps/api/src/storage/playlist-operation-repository.js';
 import { createSessionRepository } from '../../apps/api/src/storage/session-repository.js';
 import { readSessionPolicy } from '../../apps/api/src/config/session-policy.js';
 import { createBackup, restoreBackup } from '../../apps/api/src/storage/backup.js';
@@ -15,11 +25,29 @@ const modules = {
   loadKey,
   createCredentialVault,
   createInstanceRepository,
+  createPlaylistOperationRepository,
   createSessionRepository,
   readSessionPolicy,
   createBackup,
   restoreBackup,
 };
+export function createLegacyV1(directory: string): void {
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const path = join(directory, 'management.sqlite');
+  const fd = openSync(path, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+  closeSync(fd);
+  const database = new DatabaseSync(path);
+  try {
+    database.exec(
+      readFileSync(
+        new URL('../../apps/api/src/storage/migrations/001-session.sql', import.meta.url),
+        'utf8',
+      ),
+    );
+  } finally {
+    database.close();
+  }
+}
 /** Synthetic only; never derived from a live account. */
 export const proof = { username: 'fixture-user', t: 'synthetic-token-proof', s: 'synthetic-salt' };
 export async function createTestContext() {
@@ -40,6 +68,8 @@ export async function createTestContext() {
     const instances = modules.createInstanceRepository(db, vault.keyId);
     const sessionsFor = (database = db, maxAgeMs = 1000) =>
       modules.createSessionRepository({ database, vault, maxAgeMs, clock: () => now });
+    const playlistOperationsFor = (database = db) =>
+      modules.createPlaylistOperationRepository({ database, clock: () => now });
     return {
       ...modules,
       root,
@@ -51,6 +81,8 @@ export async function createTestContext() {
       open,
       sessionsFor,
       sessions: sessionsFor(),
+      playlistOperationsFor,
+      playlistOperations: playlistOperationsFor(),
       setNow: (value: number) => {
         now = value;
       },

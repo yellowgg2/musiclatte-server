@@ -1,4 +1,4 @@
-# Session / instance 저장 경계 — S02
+# Session / instance / operation receipt 저장 경계
 
 관리 데이터만 소유하는 server-only 저장소다. S03 `auth/runtime.ts`가 이 모듈을 조립해 HTTP 로그인·cookie·rotation·logout·권한 재검증을 제공한다 (`auth-api.md` 참조). S02는 기존 API entry에 저장소나 인증 route를 자동 연결하지 않는다.
 
@@ -12,16 +12,25 @@
 
 ## Schema와 원자성
 
-`storage/migrations/001-session.sql`은 하나의 transaction으로 적용된다. SQLite application ID `1296843092`, user_version `1`을 검사하며 foreign/미지원 version을 자동 reset·downgrade하지 않는다.
+`storage/migrations/001-session.sql`은 변경하지 않고 `002-playlist-operations.sql`을 순서대로 적용한다. fresh DB의 0→1→2와 기존 v1의 1→2 upgrade 전체를 하나의 `BEGIN IMMEDIATE` transaction으로 실행하며, 어느 migration이나 최종 schema 검증이 실패하면 시작 version과 기존 table/data를 그대로 보존한다. SQLite application ID `1296843092`, 현재 user_version `2`를 검사하며 foreign/미지원 version을 자동 reset·downgrade하지 않는다.
 
-| 원장     | 필드 / 의미                                                                                                                |
-| -------- | -------------------------------------------------------------------------------------------------------------------------- |
-| instance | singleton, UUID id, 양수 policy_revision, key_id(SHA-256 key fingerprint)                                                  |
-| sessions | id_hash(SHA-256 opaque token), instance_id, policy_revision, username, encrypted_proof, created_at, expires_at, revoked_at |
+| 원장                | 필드 / 의미                                                                                                                |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| instance            | singleton, UUID id, 양수 policy_revision, key_id(SHA-256 key fingerprint)                                                  |
+| sessions            | id_hash(SHA-256 opaque token), instance_id, policy_revision, username, encrypted_proof, created_at, expires_at, revoked_at |
+| playlist_operations | identity_key(HMAC), operation_id_hash, request_hash, kind, nullable resource/revision 결과, status, created/finished epoch |
 
 모든 시간은 epoch milliseconds, 정수이며 expiry는 created보다 커야 한다. playlist/media payload, raw password, adminRole, 사용자별 가짜 음악 ACL은 저장하지 않는다. username은 개인정보이므로 DB 자체도 비공개다.
 
 `createInstanceRepository`는 최초 UUID를 보존하고 key fingerprint를 검사한다. `bumpPolicyRevision()`은 revision 증가와 기존 credential 폐기를 원자적으로 처리한다. revision은 권한 값의 cache가 아니다. S03 관리 action은 실제 upstream identity/role을 다시 확인해야 한다.
+
+## Playlist operation receipt
+
+`createPlaylistOperationRepository({database,clock})`는 synchronous `claim/get/markApplied/markUncertain/markFailed` API를 제공한다. `(identity_key,operation_id_hash)`가 primary key다. 최초 `claim`만 `pending`을 만들고, 같은 request hash와 kind의 재호출은 저장된 receipt를 반환하며, 다른 요청으로 같은 operation hash를 재사용하면 `conflict`를 반환한다. 계정과 instance를 포함해 caller가 만든 identity HMAC이 다른 operation은 서로 격리된다.
+
+허용 상태 전이는 `pending→applied|uncertain|failed`와 복구 확인을 위한 `uncertain→applied`뿐이다. `applied`에는 caller가 재조회로 확정한 nullable resource ID와 before/after revision만 기록한다. transaction 내부에서는 SQLite 읽기·쓰기만 하며 Subsonic/network promise나 async callback을 실행하지 않는다.
+
+receipt는 playlist 원장이 아니다. raw operation ID, playlist 이름, song ID/order, credential을 받거나 저장하지 않으며 현재 playlist 내용은 항상 gonic에서 재조회한다. Phase 2에서는 correctness를 위해 자동 삭제하지 않는다. 보관 기간이나 cleanup schedule은 운영 근거가 생기는 후속 owner가 정한다.
 
 WAL + synchronous FULL + foreign_keys ON, writer busy timeout 100ms를 사용한다. timeout은 lock 충돌의 빠른 실패를 위한 구현값이며 SLA가 아니다. `transaction`은 BEGIN IMMEDIATE/COMMIT/ROLLBACK이며 **동기 callback만** 허용한다. callback 내부에 async 작업을 예약하지 않는다. HTTP/network 작업은 transaction 밖에서 수행한다. 다른 connection의 writer 충돌은 `Storage unavailable`로 실패하며 호출자가 작업 의미에 맞게 재시도한다.
 
@@ -58,7 +67,7 @@ const sessions = createSessionRepository({ database, vault, maxAgeMs, clock: Dat
 
 1. 현재 key와 instance fingerprint/schema를 확인한다.
 2. SQLite online backup으로 커밋된 WAL 상태를 일관된 DB에 담는다. 실행 중 DB 파일 하나를 복사하는 방식이 아니다.
-3. 같은 immutable key를 보관하고 quick_check, foreign keys, instance/key와 미폐기 credential envelope를 확인한다. DB/key/directory를 fsync한다.
+3. 같은 immutable key를 보관하고 quick_check, foreign keys, schema v2, instance/key, 미폐기 credential envelope와 모든 receipt row를 확인한다. receipt와 그 status도 같은 online SQLite snapshot에 포함되며 CHECK를 우회해 변조된 row는 복원 전에 거절한다. DB/key/directory를 fsync한다.
 4. 함수 실패 시 이번 호출이 만든 목적지만 정리한다. 프로세스 강제 종료의 잔여 디렉터리는 완료된 backup으로 취급하지 않는다. 성공 전 artifact를 외부에 게시하지 않는다.
 
 `restoreBackup(completedSnapshot,newDirectory)`는 **offline 새 경로** 복원이다. 기존 디렉터리/서비스를 덮어쓰지 않으며 raw file copy 대신 SQLite backup API로 복원한다. schema, key, integrity, envelope를 복사 전후 검증하고 실패 시 부분 복원을 정리한다. 이후 관리 DB path와 keyPath를 새 복원 위치에 함께 지정한다. 복원 경로의 key는 `credential.key`이며 별도 secrets volume으로 옮길 경우 서비스가 정지한 상태에서 대응 key를 보존한다.
@@ -67,8 +76,8 @@ const sessions = createSessionRepository({ database, vault, maxAgeMs, clock: Dat
 
 Snapshot 이후 logout/revocation/policy 변경은 오래된 backup에 없을 수 있다. 과거로 rollback할 때는 HTTP serving 전에 복원 instance의 `bumpPolicyRevision()`으로 기존 세션을 모두 무효화하고 재로그인을 요구한다. 정상 같은 시점 복원 fixture는 당시 유효 session과 당시 revocation/expiry를 보존한다.
 
-이는 관리 DB/key의 경계다. gonic DB/playlist/media와 전체 stack의 일치하는 복원·운영 cutover는 S04 및 후속 데이터 owner가 별도로 검증한다.
+복원된 applied receipt의 동일 claim은 새 write가 아니라 기존 receipt다. 단, 이는 관리 DB/key의 경계일 뿐이며 gonic DB/playlist/media와 전체 stack의 일치하는 복원·운영 cutover는 S04 및 후속 데이터 owner가 별도로 검증한다.
 
 ## 검증
 
-`docs/verification/phase-1/step-02.md`에 RED/GREEN, 두 connection lock/rollback, WAL backup, key/schema 실패, compiled runtime 및 회귀 결과를 기록한다. 공개 test는 합성 proof만 사용하고 모든 파일은 고유 OS temporary directory에 생성·정리한다.
+초기 session 저장소 evidence는 `docs/verification/phase-1/step-02.md`, schema v2와 playlist operation receipt evidence는 `docs/verification/phase-2/step-02.md`에 기록한다. 공개 test는 합성 fingerprint/proof만 사용하고 모든 파일은 고유 OS temporary directory에 생성·정리한다.
