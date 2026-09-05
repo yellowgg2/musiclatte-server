@@ -57,7 +57,7 @@ const object = (required: string[], properties: Record<string, unknown>) => ({
   required,
   properties,
 });
-const entry = object(['id', 'title', 'isDir'], {
+export const musicEntrySchema = object(['id', 'title', 'isDir'], {
   id: text,
   title: text,
   isDir: { type: 'boolean' },
@@ -85,7 +85,7 @@ const album = object(['id', 'name', 'song'], {
   songCount: number,
   duration: number,
   year: number,
-  song: array(entry),
+  song: array(musicEntrySchema),
 });
 const artist = object(['id', 'name', 'album'], {
   id: text,
@@ -110,19 +110,24 @@ export const musicResponseSchemas = {
   },
   directory: response(
     'directory',
-    object(['id', 'name', 'child'], { id: text, name: text, parent: text, child: array(entry) }),
+    object(['id', 'name', 'child'], {
+      id: text,
+      name: text,
+      parent: text,
+      child: array(musicEntrySchema),
+    }),
   ),
   search: response(
     'result',
     object(['artist', 'album', 'song'], {
       artist: array(artist),
       album: array(album),
-      song: array(entry),
+      song: array(musicEntrySchema),
     }),
   ),
   artist: response('artist', artist),
   album: response('album', album),
-  random: response('songs', array(entry)),
+  random: response('songs', array(musicEntrySchema)),
 };
 const integer = { type: 'string', pattern: '^(0|[1-9][0-9]*)$', maxLength: 16 };
 export const musicQuerySchemas = {

@@ -3,7 +3,7 @@ export interface HealthResponse {
   status: 'ok';
 }
 export type * from './subsonic.js';
-export type * from './collections.js';
+export * from './collections.js';
 export * from './session.js';
 export * from './capabilities.js';
 export * from './api-error.js';

@@ -1,25 +1,40 @@
 import type { SubsonicEnvelope } from '@musiclatte/contracts';
 
+export interface CollectionFixtureOptions {
+  empty?: boolean;
+  owner?: string;
+  public?: boolean;
+  name?: string;
+  changed?: string;
+  entryIds?: string[];
+  coverArt?: string;
+}
+
 /** Synthetic gonic v0.22.0 playlist and song-star payloads with no user data. */
-export function collectionFixture(operation: string, empty = false): SubsonicEnvelope {
-  const song = {
-    id: 'tr-A',
-    title: 'Synthetic A',
+export function collectionFixture(
+  operation: string,
+  input: boolean | CollectionFixtureOptions = false,
+): SubsonicEnvelope {
+  const options = typeof input === 'boolean' ? { empty: input } : input;
+  const empty = options.empty ?? false;
+  const entryIds = empty ? [] : (options.entryIds ?? ['tr-A', 'tr-B', 'tr-A']);
+  const songs = entryIds.map((id, position) => ({
+    id,
+    title: `Synthetic ${id.slice(-1)}`,
     isDir: false,
     starred: '2026-09-05T02:03:04Z',
-  };
+    ...(position === 0 && options.coverArt ? { coverArt: options.coverArt } : {}),
+  }));
   const playlist = {
     id: 'pl-1',
-    name: 'Synthetic List',
-    owner: 'fixture-listener',
-    songCount: empty ? 0 : 3,
+    name: options.name ?? 'Synthetic List',
+    owner: options.owner ?? 'fixture-listener',
+    songCount: entryIds.length,
     created: '2026-09-05T01:02:03Z',
-    changed: '2026-09-05T02:03:04Z',
-    duration: empty ? 0 : 360,
-    public: false,
-    ...(operation === 'getPlaylists'
-      ? {}
-      : { entry: empty ? undefined : [song, { ...song, id: 'tr-B' }, song] }),
+    changed: options.changed ?? '2026-09-05T02:03:04Z',
+    duration: entryIds.length * 120,
+    public: options.public ?? false,
+    ...(operation === 'getPlaylists' ? {} : { entry: empty ? undefined : songs }),
   };
   const payloads: Record<string, Record<string, unknown>> = {
     getPlaylists: { playlists: { playlist: empty ? undefined : [playlist] } },
@@ -27,7 +42,7 @@ export function collectionFixture(operation: string, empty = false): SubsonicEnv
     createPlaylist: { playlist },
     updatePlaylist: {},
     deletePlaylist: {},
-    getStarred2: { starred2: { song: empty ? undefined : [song] } },
+    getStarred2: { starred2: { song: empty ? undefined : songs.slice(0, 1) } },
     star: {},
     unstar: {},
   };

@@ -12,6 +12,7 @@ import {
   subsonicFixture,
   subsonicErrorFixture,
 } from '../../packages/test-support/src/subsonic-fixtures.js';
+import { collectionFixture } from '../../packages/test-support/src/collection-fixtures.js';
 
 export const origin = 'https://music.example.test';
 export const password = {
@@ -73,6 +74,18 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     libraryStall: false,
     malformedLibrary: false,
     closedLibraryRequests: 0,
+    collectionError: 0,
+    emptyCollections: false,
+    malformedCollections: false,
+    collectionStall: false,
+    collectionDelayMs: 0,
+    closedCollectionRequests: 0,
+    playlistOwner: password.username,
+    playlistPublic: false,
+    playlistName: 'Synthetic List',
+    playlistChanged: '2026-09-05T02:03:04Z',
+    playlistEntryIds: ['tr-A', 'tr-B', 'tr-A'],
+    playlistCoverArt: 'cover-A',
     mediaStatus: 0,
     mediaContentType: '',
     mediaRedirect: '',
@@ -101,6 +114,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     const operation = url.pathname.slice('/rest/'.length);
     const isMedia = operation === 'stream' || operation === 'getCoverArt';
     const isRandom = operation === 'getRandomSongs';
+    const isCollection = operation === 'getPlaylists' || operation === 'getPlaylist';
     const isLibrary = [
       'getMusicFolders',
       'getIndexes',
@@ -113,6 +127,12 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     if (isLibrary && state.libraryStall) {
       res.on('close', () => {
         state.closedLibraryRequests += 1;
+      });
+      return;
+    }
+    if (isCollection && state.collectionStall) {
+      res.on('close', () => {
+        state.closedCollectionRequests += 1;
       });
       return;
     }
@@ -204,12 +224,14 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       'content-type': 'application/json',
     });
     const code =
-      isLibrary && state.libraryError
-        ? state.libraryError
-        : !valid
-          ? 40
-          : state.error ||
-            (isRandom ? state.randomError : operation === 'startScan' ? state.scanError : 0);
+      isCollection && state.collectionError
+        ? state.collectionError
+        : isLibrary && state.libraryError
+          ? state.libraryError
+          : !valid
+            ? 40
+            : state.error ||
+              (isRandom ? state.randomError : operation === 'startScan' ? state.scanError : 0);
     const body = code
       ? subsonicErrorFixture(code, 'synthetic-secret-upstream-message')
       : operation === 'getUser'
@@ -228,14 +250,27 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
                 scanStatus: { scanning: true, count: 0 },
               },
             }
-          : subsonicFixture(operation, state.emptyLibrary);
-    res.end(
-      JSON.stringify(
-        isLibrary && state.malformedLibrary
-          ? { 'subsonic-response': { status: 'ok', version: '1.15.0' } }
-          : body,
-      ),
+          : isCollection
+            ? collectionFixture(operation, {
+                empty: state.emptyCollections,
+                owner: state.playlistOwner,
+                public: state.playlistPublic,
+                name: state.playlistName,
+                changed: state.playlistChanged,
+                entryIds: state.playlistEntryIds,
+                coverArt: state.playlistCoverArt,
+              })
+            : subsonicFixture(operation, state.emptyLibrary);
+    const payload = JSON.stringify(
+      (isLibrary && state.malformedLibrary) || (isCollection && state.malformedCollections)
+        ? { 'subsonic-response': { status: 'ok', version: '1.15.0' } }
+        : body,
     );
+    if (isCollection && state.collectionDelayMs > 0) {
+      setTimeout(() => res.end(payload), state.collectionDelayMs);
+      return;
+    }
+    res.end(payload);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();

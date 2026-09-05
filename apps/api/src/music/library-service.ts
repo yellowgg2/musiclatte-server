@@ -9,7 +9,11 @@ export async function libraryRead<T>(
   service: SessionService,
   request: FastifyRequest,
   reply: FastifyReply,
-  read: (upstream: SubsonicClient, signal: AbortSignal) => Promise<T>,
+  read: (
+    upstream: SubsonicClient,
+    signal: AbortSignal,
+    verified: Awaited<ReturnType<SessionService['verify']>>,
+  ) => Promise<T>,
 ): Promise<T> {
   const auth = requiredCredentials(request, service);
   const controller = new AbortController();
@@ -24,7 +28,7 @@ export async function libraryRead<T>(
   try {
     const verified = await service.verify(auth.token, auth.scheme, { signal: controller.signal });
     raw = verified.session.raw;
-    const result = await read(verified.upstream, controller.signal);
+    const result = await read(verified.upstream, controller.signal, verified);
     service.find(auth.token, auth.scheme);
     return result;
   } catch (error) {
