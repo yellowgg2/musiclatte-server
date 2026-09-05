@@ -76,7 +76,7 @@ const sessions = createSessionRepository({ database, vault, maxAgeMs, clock: Dat
 
 Snapshot 이후 logout/revocation/policy 변경은 오래된 backup에 없을 수 있다. 과거로 rollback할 때는 HTTP serving 전에 복원 instance의 `bumpPolicyRevision()`으로 기존 세션을 모두 무효화하고 재로그인을 요구한다. 정상 같은 시점 복원 fixture는 당시 유효 session과 당시 revocation/expiry를 보존한다.
 
-복원된 applied receipt의 동일 claim은 새 write가 아니라 기존 receipt다. 단, 이는 관리 DB/key의 경계일 뿐이며 gonic DB/playlist/media와 전체 stack의 일치하는 복원·운영 cutover는 S04 및 후속 데이터 owner가 별도로 검증한다.
+복원된 applied receipt의 동일 claim은 새 write가 아니라 기존 receipt다. P2 S04는 새 API process와 복원 repository fixture에서 no-write replay를 검증한다. 단, 이는 관리 DB/key의 경계일 뿐이며 gonic DB/playlist/media와 전체 stack의 일치하는 복원·운영 cutover는 P2 S11 데이터 owner가 별도로 검증한다.
 
 ## 검증
 

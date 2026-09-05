@@ -47,11 +47,55 @@ export interface PlaylistDetailResponse {
   playlist: PlaylistDetail;
 }
 
+export interface PlaylistCreateRequest {
+  operationId: string;
+  name: string;
+}
+
+interface PlaylistMutationBase {
+  operationId: string;
+  expectedRevision: string;
+}
+
+export type PlaylistMutationRequest =
+  | (PlaylistMutationBase & { action: 'rename'; name: string })
+  | (PlaylistMutationBase & { action: 'append'; songIds: string[] })
+  | (PlaylistMutationBase & {
+      action: 'remove';
+      occurrence: { position: number; songId: string };
+    })
+  | (PlaylistMutationBase & { action: 'reorder'; order: number[] });
+
+export interface PlaylistDeleteRequest extends PlaylistMutationBase {}
+
+export type PlaylistMutationOutcome = 'applied' | 'already_applied';
+
+export interface PlaylistMutationResponse {
+  schemaVersion: 1;
+  outcome: PlaylistMutationOutcome;
+  playlist: PlaylistDetail;
+}
+
+export interface PlaylistDeleteResponse {
+  schemaVersion: 1;
+  outcome: PlaylistMutationOutcome;
+  playlistId: string;
+  deleted: true;
+}
+
+export interface PlaylistMutationConflictResponse {
+  schemaVersion: 1;
+  error: { code: 'conflict' | 'outcome_unknown'; retryable: false };
+  current?: PlaylistDetail;
+}
+
 const text = { type: 'string' } as const;
 const id = { type: 'string', minLength: 1, maxLength: 2048 } as const;
 const integer = { type: 'integer', minimum: 0 } as const;
 const timestamp = { type: 'string', format: 'date-time' } as const;
 const revision = { type: 'string', pattern: '^[A-Za-z0-9_-]{43}$' } as const;
+const operationId = { type: 'string', pattern: '^[A-Za-z0-9_-]{22,128}$' } as const;
+const playlistName = { type: 'string', minLength: 1, maxLength: 255 } as const;
 const object = (required: string[], properties: Record<string, unknown>) => ({
   type: 'object',
   additionalProperties: false,
@@ -79,9 +123,61 @@ const detailProperties = {
   entries: { type: 'array', items: occurrence },
 };
 const detailRequired = [...summaryRequired, 'entries'];
+const detailSchema = {
+  oneOf: [
+    object(detailRequired, detailProperties),
+    object([...detailRequired, 'coverArt'], {
+      ...detailProperties,
+      coverState: { const: 'available' },
+      coverArt: id,
+    }),
+  ],
+};
+
+const mutationBase = {
+  operationId,
+  expectedRevision: revision,
+};
+const mutationConflictProperties = {
+  schemaVersion: { const: 1 },
+  error: object(['code', 'retryable'], {
+    code: { enum: ['conflict', 'outcome_unknown'] },
+    retryable: { const: false },
+  }),
+};
 
 export const playlistQuerySchemas = {
   empty: object([], {}),
+};
+
+export const playlistMutationSchemas = {
+  empty: object([], {}),
+  create: object(['operationId', 'name'], { operationId, name: playlistName }),
+  patch: {
+    oneOf: [
+      object(['operationId', 'expectedRevision', 'action', 'name'], {
+        ...mutationBase,
+        action: { const: 'rename' },
+        name: playlistName,
+      }),
+      object(['operationId', 'expectedRevision', 'action', 'songIds'], {
+        ...mutationBase,
+        action: { const: 'append' },
+        songIds: { type: 'array', minItems: 1, items: id },
+      }),
+      object(['operationId', 'expectedRevision', 'action', 'occurrence'], {
+        ...mutationBase,
+        action: { const: 'remove' },
+        occurrence: object(['position', 'songId'], { position: integer, songId: id }),
+      }),
+      object(['operationId', 'expectedRevision', 'action', 'order'], {
+        ...mutationBase,
+        action: { const: 'reorder' },
+        order: { type: 'array', uniqueItems: true, items: integer },
+      }),
+    ],
+  },
+  delete: object(['operationId', 'expectedRevision'], mutationBase),
 };
 
 export const playlistIdSchema = object(['id'], { id });
@@ -93,15 +189,26 @@ export const playlistResponseSchemas = {
   }),
   detail: object(['schemaVersion', 'playlist'], {
     schemaVersion: { const: 1 },
-    playlist: {
-      oneOf: [
-        object(detailRequired, detailProperties),
-        object([...detailRequired, 'coverArt'], {
-          ...detailProperties,
-          coverState: { const: 'available' },
-          coverArt: id,
-        }),
-      ],
-    },
+    playlist: detailSchema,
   }),
+  mutation: object(['schemaVersion', 'outcome', 'playlist'], {
+    schemaVersion: { const: 1 },
+    outcome: { enum: ['applied', 'already_applied'] },
+    playlist: detailSchema,
+  }),
+  deleted: object(['schemaVersion', 'outcome', 'playlistId', 'deleted'], {
+    schemaVersion: { const: 1 },
+    outcome: { enum: ['applied', 'already_applied'] },
+    playlistId: id,
+    deleted: { const: true },
+  }),
+  mutationConflict: {
+    oneOf: [
+      object(['schemaVersion', 'error'], mutationConflictProperties),
+      object(['schemaVersion', 'error', 'current'], {
+        ...mutationConflictProperties,
+        current: detailSchema,
+      }),
+    ],
+  },
 };

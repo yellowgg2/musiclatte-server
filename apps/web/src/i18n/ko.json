@@ -102,6 +102,8 @@
   "error.not_found": "요청한 기능을 사용할 수 없어요.",
   "error.internal_error": "요청을 완료하지 못했어요. 다시 시도해 주세요.",
   "error.upstream_incompatible": "음악 서버의 API 버전이 호환되지 않습니다.",
+  "error.conflict": "재생목록이 변경되었어요. 새로고침한 뒤 다시 시도해 주세요.",
+  "error.outcome_unknown": "작업 결과를 확인하지 못했어요. 새로고침한 뒤 다시 시도해 주세요.",
   "music.title": "음악",
   "music.eyebrow": "나만의 작은 음악 공간",
   "music.description": "폴더를 둘러보거나 좋아하는 곡을 찾아보세요.",

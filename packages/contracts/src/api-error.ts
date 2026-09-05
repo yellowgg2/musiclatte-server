@@ -8,6 +8,8 @@ export const apiErrorCodes = [
   'upstream_incompatible',
   'storage_unavailable',
   'not_found',
+  'conflict',
+  'outcome_unknown',
   'internal_error',
 ] as const;
 export type ApiErrorCode = (typeof apiErrorCodes)[number];

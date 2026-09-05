@@ -65,7 +65,8 @@ HTTPS cookie: `__Host-musiclatte-session`, `Path=/`, `HttpOnly`, `Secure`, `Same
 | `music.browse`, `music.stream`                                                      | configured gonic의 표준 음악 계약 true/allowed/available; private web data/media route 완료 주장은 아님(S07/S09) |
 | `library.randomSongs`                                                               | size=1 read-only 성공 true; 401 폐기, 403 denied, 404/70/5xx/timeout은 unsupported로 추론하지 않음               |
 | `library.scan`                                                                      | gonic 표준 지원 true; 기본 denied, ALLOW_SCAN와 실제 adminRole의 교집합만 allowed                                |
-| `playlists.read`, `playlists.write`, `favorites.songs`                              | private P2 consumer 미구현 false; 기존 native `/rest` 지원을 제거한다는 의미가 아님                              |
+| `playlists.read`, `playlists.write`                                                 | 인증된 server producer true/allowed/available; write는 resource `editable`을 별도 재검사                         |
+| `favorites.songs`                                                                   | P2 Step 05 전까지 false/denied; 기존 native `/rest` 지원을 제거한다는 의미가 아님                                |
 | `library.recentDownloads`, `imports.youtube`, `engine.manage`                       | P3 미구현 false/denied                                                                                           |
 | `metadata.write`, `metadata.lyrics.write`, `metadata.curation`, `automation.tokens` | P4/P6 미구현 false/denied                                                                                        |
 
@@ -91,7 +92,7 @@ revision은 token·policy revision·실제 identity/role·현재 feature 상태�
 | 503         | upstream_unavailable / storage_unavailable | retryable 일시 장애                                         |
 | 500         | internal_error                             | 정제된 내부 오류, raw cause 없음                            |
 
-새 UI copy 0개, locale은 기존 ko/en을 유지한다. `sessionExchangeSchema`, `sessionResponseSchema`, `discoverySchema`, `capabilitiesSchema`, `apiErrorSchema`와 test fixture를 함께 변경해야 한다. 전체 검증은 [S03 evidence](../verification/phase-1/step-03.md)에 있다.
+Step 04는 `conflict`, `outcome_unknown` 안정 code의 KO/EN generic copy를 함께 추가했다. `sessionExchangeSchema`, `sessionResponseSchema`, `discoverySchema`, `capabilitiesSchema`, `apiErrorSchema`와 test fixture를 함께 변경해야 한다. 인증/capability baseline 검증은 [S03 evidence](../verification/phase-1/step-03.md), playlist mutation 검증은 [P2 S04 evidence](../verification/phase-2/step-04.md)에 있다.
 
 ## S06 web consumer
 

@@ -102,6 +102,8 @@
   "error.not_found": "The requested feature is unavailable.",
   "error.internal_error": "Could not complete your request. Please try again.",
   "error.upstream_incompatible": "The music server API version is incompatible.",
+  "error.conflict": "This playlist changed. Refresh it before trying again.",
+  "error.outcome_unknown": "The result could not be confirmed. Refresh before trying again.",
   "music.title": "Music",
   "music.eyebrow": "A little space for your music",
   "music.description": "Explore your folders or find a favorite.",

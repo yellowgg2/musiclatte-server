@@ -4,6 +4,7 @@ import { createApp } from '../app.js';
 import { openDatabase } from '../storage/database.js';
 import { createInstanceRepository } from '../storage/instance-repository.js';
 import { createSessionRepository } from '../storage/session-repository.js';
+import { createPlaylistOperationRepository } from '../storage/playlist-operation-repository.js';
 import { loadKey } from '../security/key-store.js';
 import { createCredentialVault } from '../security/credential-vault.js';
 import { readSessionPolicy } from '../config/session-policy.js';
@@ -46,9 +47,11 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
     database = openDatabase(directory);
     const instances = createInstanceRepository(database, vault.keyId);
     const sessions = createSessionRepository({ database, vault, maxAgeMs, clock: Date.now });
+    const playlistOperations = createPlaylistOperationRepository({ database, clock: Date.now });
     const app = createApp({
       sessions,
       instances,
+      playlistOperations,
       signingKey: key,
       origin,
       upstream,

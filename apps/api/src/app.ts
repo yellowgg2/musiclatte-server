@@ -6,6 +6,7 @@ import { registerRandomRoute } from './routes/music/random.js';
 import { registerStreamRoute } from './routes/media/stream.js';
 import { registerCoverRoute } from './routes/media/cover.js';
 import { registerPlaylistReadRoutes } from './routes/playlists/read.js';
+import { registerPlaylistMutationRoutes } from './routes/playlists/mutations.js';
 import { ApiError, createSessionService, type AuthOptions } from './auth/session-service.js';
 import { registerSessionRoutes } from './routes/session.js';
 import { registerDiscoveryRoute } from './routes/discovery.js';
@@ -90,6 +91,7 @@ export function createApp(options?: AuthOptions) {
     registerStreamRoute(app, service);
     registerCoverRoute(app, service);
     registerPlaylistReadRoutes(app, service);
+    registerPlaylistMutationRoutes(app, service);
   }
   app.get<{ Reply: HealthResponse }>('/health/live', async () => ({ status: 'ok' }));
   return app;

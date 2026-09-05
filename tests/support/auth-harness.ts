@@ -36,6 +36,7 @@ export const browserHeaders = {
 export interface AuthOptions {
   sessions: Awaited<ReturnType<typeof storageContext>>['sessions'];
   instances: Awaited<ReturnType<typeof storageContext>>['instances'];
+  playlistOperations: Awaited<ReturnType<typeof storageContext>>['playlistOperations'];
   signingKey: Uint8Array;
   origin: string;
   upstream: string;
@@ -81,11 +82,17 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     collectionDelayMs: 0,
     closedCollectionRequests: 0,
     playlistOwner: password.username,
+    playlistExists: true,
+    playlistId: 'pl-1',
     playlistPublic: false,
     playlistName: 'Synthetic List',
     playlistChanged: '2026-09-05T02:03:04Z',
     playlistEntryIds: ['tr-A', 'tr-B', 'tr-A'],
     playlistCoverArt: 'cover-A',
+    mutationError: 0,
+    mutationDelayMs: 0,
+    mutationResponseLoss: false,
+    mutationMismatch: false,
     mediaStatus: 0,
     mediaContentType: '',
     mediaRedirect: '',
@@ -114,7 +121,17 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     const operation = url.pathname.slice('/rest/'.length);
     const isMedia = operation === 'stream' || operation === 'getCoverArt';
     const isRandom = operation === 'getRandomSongs';
-    const isCollection = operation === 'getPlaylists' || operation === 'getPlaylist';
+    const isCollection = [
+      'getPlaylists',
+      'getPlaylist',
+      'createPlaylist',
+      'updatePlaylist',
+      'deletePlaylist',
+    ].includes(operation);
+    const isCollectionRead = operation === 'getPlaylists' || operation === 'getPlaylist';
+    const isCollectionWrite = ['createPlaylist', 'updatePlaylist', 'deletePlaylist'].includes(
+      operation,
+    );
     const isLibrary = [
       'getMusicFolders',
       'getIndexes',
@@ -130,7 +147,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       });
       return;
     }
-    if (isCollection && state.collectionStall) {
+    if (isCollectionRead && state.collectionStall) {
       res.on('close', () => {
         state.closedCollectionRequests += 1;
       });
@@ -141,6 +158,33 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       createHash('md5')
         .update(password.password + url.searchParams.get('s'))
         .digest('hex');
+    if (valid && operation === 'getPlaylist' && !state.playlistExists) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(subsonicErrorFixture(70, 'synthetic-secret-upstream-message')));
+      return;
+    }
+    if (valid && isCollectionWrite && !state.mutationError) {
+      const nextIds = url.searchParams.getAll('songId');
+      if (!state.mutationMismatch) {
+        if (operation === 'createPlaylist') {
+          state.playlistExists = true;
+          state.playlistId = url.searchParams.get('playlistId') ?? 'pl-created';
+          state.playlistName = url.searchParams.get('name') ?? state.playlistName;
+          state.playlistEntryIds = nextIds;
+        } else if (operation === 'updatePlaylist') {
+          state.playlistName = url.searchParams.get('name') ?? state.playlistName;
+          state.playlistEntryIds.push(...url.searchParams.getAll('songIdToAdd'));
+        } else {
+          state.playlistExists = false;
+        }
+        state.playlistChanged = new Date(Date.parse(state.playlistChanged) + 1000).toISOString();
+      }
+      if (state.mutationResponseLoss) {
+        state.mutationResponseLoss = false;
+        req.socket.destroy();
+        return;
+      }
+    }
     if (isMedia) {
       mediaRequests.push({
         url,
@@ -224,14 +268,16 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       'content-type': 'application/json',
     });
     const code =
-      isCollection && state.collectionError
+      isCollectionRead && state.collectionError
         ? state.collectionError
-        : isLibrary && state.libraryError
-          ? state.libraryError
-          : !valid
-            ? 40
-            : state.error ||
-              (isRandom ? state.randomError : operation === 'startScan' ? state.scanError : 0);
+        : isCollectionWrite && state.mutationError
+          ? state.mutationError
+          : isLibrary && state.libraryError
+            ? state.libraryError
+            : !valid
+              ? 40
+              : state.error ||
+                (isRandom ? state.randomError : operation === 'startScan' ? state.scanError : 0);
     const body = code
       ? subsonicErrorFixture(code, 'synthetic-secret-upstream-message')
       : operation === 'getUser'
@@ -252,7 +298,9 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
             }
           : isCollection
             ? collectionFixture(operation, {
-                empty: state.emptyCollections,
+                empty:
+                  state.emptyCollections || (operation === 'getPlaylists' && !state.playlistExists),
+                id: state.playlistId,
                 owner: state.playlistOwner,
                 public: state.playlistPublic,
                 name: state.playlistName,
@@ -266,8 +314,9 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
         ? { 'subsonic-response': { status: 'ok', version: '1.15.0' } }
         : body,
     );
-    if (isCollection && state.collectionDelayMs > 0) {
-      setTimeout(() => res.end(payload), state.collectionDelayMs);
+    const delayMs = isCollectionWrite ? state.mutationDelayMs : state.collectionDelayMs;
+    if (isCollection && delayMs > 0) {
+      setTimeout(() => res.end(payload), delayMs);
       return;
     }
     res.end(payload);
@@ -278,6 +327,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
   const options: AuthOptions = {
     sessions: storage.sessions,
     instances: storage.instances,
+    playlistOperations: storage.playlistOperations,
     signingKey: new Uint8Array(32).fill(7),
     origin,
     upstream: `http://127.0.0.1:${address.port}`,

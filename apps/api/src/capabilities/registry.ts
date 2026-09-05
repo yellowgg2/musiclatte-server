@@ -24,6 +24,7 @@ export async function capabilities(
   features['music.browse'] = { ...standard };
   features['music.stream'] = { ...standard };
   features['playlists.read'] = { ...standard };
+  features['playlists.write'] = { ...standard };
   features['library.scan'] = {
     ...standard,
     permission: service.options.allowScan && identity.adminRole ? 'allowed' : 'denied',

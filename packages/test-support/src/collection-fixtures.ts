@@ -2,6 +2,7 @@ import type { SubsonicEnvelope } from '@musiclatte/contracts';
 
 export interface CollectionFixtureOptions {
   empty?: boolean;
+  id?: string;
   owner?: string;
   public?: boolean;
   name?: string;
@@ -26,7 +27,7 @@ export function collectionFixture(
     ...(position === 0 && options.coverArt ? { coverArt: options.coverArt } : {}),
   }));
   const playlist = {
-    id: 'pl-1',
+    id: options.id ?? 'pl-1',
     name: options.name ?? 'Synthetic List',
     owner: options.owner ?? 'fixture-listener',
     songCount: entryIds.length,

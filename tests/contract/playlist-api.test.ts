@@ -69,4 +69,31 @@ describe('playlist read producer contract', () => {
     );
     expect(ctx.requests).toHaveLength(before);
   });
+
+  /** Mutation producers publish stable applied, replay, conflict, and unknown wire outcomes. */
+  it('should publish strict playlist mutation wire shapes', async () => {
+    const ctx = await createTestContext();
+    contexts.push(ctx);
+    const login = await ctx.login();
+    const headers = {
+      origin: 'https://music.example.test',
+      'x-musiclatte-client': 'web',
+      'content-type': 'application/json',
+      'x-csrf-token': login.json().csrfToken as string,
+      cookie: cookieOf(login),
+    };
+    ctx.state.playlistExists = false;
+    const response = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/playlists',
+      headers,
+      payload: { operationId: `${'A'.repeat(21)}p`, name: ' Contract list ' },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(Object.keys(response.json()).sort()).toEqual(['outcome', 'playlist', 'schemaVersion']);
+    expect(response.json()).toMatchObject({
+      outcome: 'applied',
+      playlist: { name: 'Contract list', entries: [] },
+    });
+  });
 });
