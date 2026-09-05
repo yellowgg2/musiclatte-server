@@ -59,6 +59,31 @@ export function AppShell({
           </a>
         )}
 
+        {entries.includes('playlists.read') && (
+          <a
+            href={`${base}playlists`}
+            aria-current={
+              window.location.pathname.startsWith(`${base}playlists`) ? 'page' : undefined
+            }
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="22"
+              height="22"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              aria-hidden="true"
+            >
+              <path d="M4 6h11M4 12h11M4 18h7" />
+              <path d="M18 10v8M18 10l4-1v7" />
+              <ellipse cx="15.5" cy="19" rx="2.5" ry="1.8" />
+              <ellipse cx="19.5" cy="17" rx="2.5" ry="1.8" />
+            </svg>
+            {copy['playlists.title']}
+          </a>
+        )}
+
         <a
           href={`${base}settings`}
           aria-current={window.location.pathname.startsWith(`${base}settings`) ? 'page' : undefined}

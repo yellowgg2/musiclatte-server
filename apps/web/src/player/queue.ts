@@ -15,10 +15,17 @@ export function createQueue(
   items: readonly MusicEntry[],
   currentId: string,
   source: string,
+  position?: number,
 ): PlayerQueue {
   const playable = items.filter((item) => !item.isDir);
-  const selected = playable.findIndex((item) => item.id === currentId);
-  if (selected < 0) throw new RangeError('Selected song is not in the queue');
+  const selected = position ?? playable.findIndex((item) => item.id === currentId);
+  if (
+    selected < 0 ||
+    !Number.isInteger(selected) ||
+    selected >= playable.length ||
+    playable[selected]?.id !== currentId
+  )
+    throw new RangeError('Selected song position is not in the queue');
   return {
     items: playable,
     order: playable.map((_, index) => index),

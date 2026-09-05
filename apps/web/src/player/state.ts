@@ -29,7 +29,13 @@ export const initialPlayerState: PlayerState = {
 };
 
 export type PlayerAction =
-  | { type: 'activate'; songs: readonly MusicEntry[]; song: MusicEntry; source: string }
+  | {
+      type: 'activate';
+      songs: readonly MusicEntry[];
+      song: MusicEntry;
+      source: string;
+      position?: number;
+    }
   | { type: 'queue'; queue: PlayerQueue; status?: PlaybackStatus }
   | { type: 'loading' }
   | { type: 'playing' }
@@ -51,7 +57,7 @@ function finite(value: number, fallback = 0): number {
 export function reducePlayerState(state: PlayerState, action: PlayerAction): PlayerState {
   switch (action.type) {
     case 'activate': {
-      const queue = createQueue(action.songs, action.song.id, action.source);
+      const queue = createQueue(action.songs, action.song.id, action.source, action.position);
       return {
         ...state,
         queue,

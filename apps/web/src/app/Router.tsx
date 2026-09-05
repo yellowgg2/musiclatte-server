@@ -4,7 +4,10 @@ import { PlayerProvider, type PlayerAudio } from '../player/PlayerProvider';
 import { DesktopPlayer } from '../player/DesktopPlayer';
 import { MiniPlayer } from '../player/MiniPlayer';
 import { musicRoute } from '../music/queries';
-import { availableEntries } from '../capabilities/client-features';
+import { availableEntries, featureState } from '../capabilities/client-features';
+import { playlistRoute } from '../playlists/routes';
+import { PlaylistsPage } from '../pages/playlists/PlaylistsPage';
+import { PlaylistDetailPage } from '../pages/playlists/PlaylistDetailPage';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createSessionClient } from '../auth/client';
 import { createSessionStore } from '../auth/session-store';
@@ -38,6 +41,9 @@ export function Router({
   const canBrowse = availableEntries(state.capabilities).includes('music.browse');
   const canStream = availableEntries(state.capabilities).includes('music.stream');
   const canRandom = availableEntries(state.capabilities).includes('library.randomSongs');
+  const canReadPlaylists = availableEntries(state.capabilities).includes('playlists.read');
+  const currentPlaylistRoute = playlistRoute(location, base);
+  const playlistCapability = featureState(state.capabilities?.features['playlists.read']);
   const copy = messages[locale];
   useEffect(() => {
     void store.restore();
@@ -96,17 +102,26 @@ export function Router({
         next = safeReturnPath(
           new URLSearchParams(window.location.search).get('returnTo'),
           base,
-          canBrowse ? 'music' : 'settings',
+          canBrowse ? 'music' : canReadPlaylists ? 'playlists' : 'settings',
         );
     if (next) {
       window.history.replaceState(null, '', next);
       setLocation(window.location.pathname + window.location.search);
     }
-  }, [state.status, location, base, state.capabilities, state.capabilityUnavailable, canBrowse]);
+  }, [
+    state.status,
+    location,
+    base,
+    state.capabilities,
+    state.capabilityUnavailable,
+    canBrowse,
+    canReadPlaylists,
+  ]);
   useEffect(() => {
     if (state.status === 'signed-in' && canBrowse && musicRoute(location, base)) return;
-    document.title = `${state.status === 'signed-in' ? (musicRoute(location, base) ? copy['music.title'] : copy['shell.settings']) : copy['login.title']} · Musiclatte`;
-  }, [state.status, copy, location, base, canBrowse]);
+    if (state.status === 'signed-in' && canReadPlaylists && currentPlaylistRoute) return;
+    document.title = `${state.status === 'signed-in' ? (musicRoute(location, base) ? copy['music.title'] : currentPlaylistRoute ? copy['playlists.title'] : copy['shell.settings']) : copy['login.title']} · Musiclatte`;
+  }, [state.status, copy, location, base, canBrowse, canReadPlaylists, currentPlaylistRoute]);
   useEffect(() => {
     const heading = document.querySelector<HTMLElement>('[data-page-heading]');
     if (heading) heading.focus({ preventScroll: true });
@@ -165,7 +180,47 @@ export function Router({
           </>
         }
       >
-        {musicRoute(location, base) && canBrowse ? (
+        {currentPlaylistRoute && canReadPlaylists ? (
+          currentPlaylistRoute.kind === 'list' ? (
+            <PlaylistsPage
+              base={base}
+              locale={locale}
+              onLocale={onLocale}
+              fetcher={fetcher}
+              apiOrigin={apiOrigin}
+              onUnauthenticated={store.expire}
+            />
+          ) : (
+            <PlaylistDetailPage
+              id={currentPlaylistRoute.id}
+              base={base}
+              locale={locale}
+              onLocale={onLocale}
+              fetcher={fetcher}
+              apiOrigin={apiOrigin}
+              onUnauthenticated={store.expire}
+              canStream={canStream}
+            />
+          )
+        ) : currentPlaylistRoute ? (
+          <div className={styles.settings}>
+            <h1 tabIndex={-1} data-page-heading>
+              {copy[playlistCapability === 'denied' ? 'status.denied' : 'status.unavailable']}
+            </h1>
+            <p>
+              {
+                copy[
+                  playlistCapability === 'denied'
+                    ? 'playlists.deniedHelp'
+                    : 'playlists.unavailableHelp'
+                ]
+              }
+            </p>
+            <a href={canBrowse ? `${base}music` : `${base}settings`}>
+              {copy[canBrowse ? 'playlists.browseMusic' : 'status.back']}
+            </a>
+          </div>
+        ) : musicRoute(location, base) && canBrowse ? (
           <MusicPage
             location={location}
             base={base}

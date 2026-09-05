@@ -1,14 +1,17 @@
 import { musicRoute } from '../music/queries';
+import { playlistRoute } from '../playlists/routes';
 /** Only implemented canonical relative routes can be restored after authentication. */
 export function safeReturnPath(
   value: string | null | undefined,
   base = '/',
-  fallbackPage: 'music' | 'settings' = 'music',
+  fallbackPage: 'music' | 'playlists' | 'settings' = 'music',
 ): string {
   const fallback = `${base}${fallbackPage}`;
   if (!value || !value.startsWith(base) || value.startsWith('//') || /[\\#\x00-\x1f]/.test(value))
     return fallback;
   if (value === `${base}settings`) return value;
+  const playlist = playlistRoute(value, base);
+  if (playlist) return value;
   const route = musicRoute(value, base);
   if (!route) return fallback;
   const allowed =

@@ -5,7 +5,7 @@ export const clientFeatures = {
   'music.stream': true,
   'library.randomSongs': true,
   'library.scan': false,
-  'playlists.read': false,
+  'playlists.read': true,
   'playlists.write': false,
   'favorites.songs': false,
   'library.recentDownloads': false,

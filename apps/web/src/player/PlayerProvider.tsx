@@ -116,9 +116,15 @@ export function PlayerProvider({
   );
 
   const activate = useCallback<SongActivation>(
-    ({ song, songs, source }) => {
-      const queue = createQueue(songs, song.id, source);
-      commit({ type: 'activate', song, songs, source });
+    ({ song, songs, source, position }) => {
+      const queue = createQueue(songs, song.id, source, position);
+      commit({
+        type: 'activate',
+        song,
+        songs,
+        source,
+        ...(position === undefined ? {} : { position }),
+      });
       startSong(currentSong(queue)!.id);
     },
     [commit, startSong],

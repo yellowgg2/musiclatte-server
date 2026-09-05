@@ -1,0 +1,145 @@
+.page {
+  width: 100%;
+  max-width: 68rem;
+  display: grid;
+  gap: var(--space-5);
+  margin-inline: auto;
+}
+
+.topline,
+.headingActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.eyebrow,
+.description,
+.count,
+.meta {
+  color: var(--color-secondary);
+}
+
+.eyebrow,
+.count,
+.meta {
+  font-size: var(--text-small);
+}
+
+.heading,
+.headingCopy {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.heading h1 {
+  font-size: var(--text-display);
+  letter-spacing: -0.04em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.headingCopy h1 {
+  font-size: clamp(2rem, 4vw, var(--text-display));
+  letter-spacing: -0.04em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: start;
+  min-height: var(--control-size);
+  font-size: var(--text-small);
+}
+
+.detailHeader {
+  display: grid;
+  grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.detailArtwork {
+  width: 100%;
+  max-width: 10rem;
+}
+
+.songList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+}
+
+.section {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.section h2 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--text-title);
+}
+
+.recoveryLink {
+  min-height: var(--control-size);
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  font-weight: 650;
+}
+
+@media (max-width: 42rem) {
+  .list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .detailHeader {
+    grid-template-columns: 5rem minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .headingCopy h1 {
+    font-size: 1.75rem;
+  }
+}
+
+@media (max-width: 22rem) {
+  .page {
+    gap: var(--space-4);
+  }
+
+  .eyebrow {
+    display: none;
+  }
+
+  .detailHeader {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .detailArtwork {
+    width: 5rem;
+  }
+
+  .headingCopy h1 {
+    font-size: 1.5rem;
+  }
+}

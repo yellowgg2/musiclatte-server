@@ -4,4 +4,5 @@ export type SongActivation = (selection: {
   song: MusicEntry;
   songs: readonly MusicEntry[];
   source: string;
+  position?: number;
 }) => void;
