@@ -49,6 +49,11 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     redirect: '',
     stall: false,
     scanError: 0,
+    libraryError: 0,
+    emptyLibrary: false,
+    libraryStall: false,
+    malformedLibrary: false,
+    closedLibraryRequests: 0,
   };
   const requests: URL[] = [];
   const server = createServer((req, res) => {
@@ -62,6 +67,21 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     }
     const operation = url.pathname.slice('/rest/'.length);
     const isRandom = operation === 'getRandomSongs';
+    const isLibrary = [
+      'getMusicFolders',
+      'getIndexes',
+      'getMusicDirectory',
+      'search3',
+      'getArtist',
+      'getAlbum',
+      'getRandomSongs',
+    ].includes(operation);
+    if (isLibrary && state.libraryStall) {
+      res.on('close', () => {
+        state.closedLibraryRequests += 1;
+      });
+      return;
+    }
     res.writeHead(isRandom ? state.randomStatus : state.status, {
       'content-type': 'application/json',
     });
@@ -70,10 +90,13 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       createHash('md5')
         .update(password.password + url.searchParams.get('s'))
         .digest('hex');
-    const code = !valid
-      ? 40
-      : state.error ||
-        (isRandom ? state.randomError : operation === 'startScan' ? state.scanError : 0);
+    const code =
+      isLibrary && state.libraryError
+        ? state.libraryError
+        : !valid
+          ? 40
+          : state.error ||
+            (isRandom ? state.randomError : operation === 'startScan' ? state.scanError : 0);
     const body = code
       ? subsonicErrorFixture(code, 'synthetic-secret-upstream-message')
       : operation === 'getUser'
@@ -92,8 +115,14 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
                 scanStatus: { scanning: true, count: 0 },
               },
             }
-          : subsonicFixture(operation);
-    res.end(JSON.stringify(body));
+          : subsonicFixture(operation, state.emptyLibrary);
+    res.end(
+      JSON.stringify(
+        isLibrary && state.malformedLibrary
+          ? { 'subsonic-response': { status: 'ok', version: '1.15.0' } }
+          : body,
+      ),
+    );
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();

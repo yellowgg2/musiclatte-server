@@ -100,5 +100,6 @@
   "error.upstream_unavailable": "서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.",
   "error.storage_unavailable": "로그인 정보를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.",
   "error.not_found": "요청한 기능을 사용할 수 없어요.",
-  "error.internal_error": "요청을 완료하지 못했어요. 다시 시도해 주세요."
+  "error.internal_error": "요청을 완료하지 못했어요. 다시 시도해 주세요.",
+  "error.upstream_incompatible": "음악 서버의 API 버전이 호환되지 않습니다."
 }

@@ -5,6 +5,7 @@ export const apiErrorCodes = [
   'csrf_rejected',
   'token_auth_unsupported',
   'upstream_unavailable',
+  'upstream_incompatible',
   'storage_unavailable',
   'not_found',
   'internal_error',

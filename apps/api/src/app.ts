@@ -1,3 +1,8 @@
+import { registerFoldersRoutes } from './routes/music/folders.js';
+import { registerSearchRoute } from './routes/music/search.js';
+import { registerArtistRoute } from './routes/music/artists.js';
+import { registerAlbumRoute } from './routes/music/albums.js';
+import { registerRandomRoute } from './routes/music/random.js';
 import { ApiError, createSessionService, type AuthOptions } from './auth/session-service.js';
 import { registerSessionRoutes } from './routes/session.js';
 import { registerDiscoveryRoute } from './routes/discovery.js';
@@ -74,6 +79,11 @@ export function createApp(options?: AuthOptions) {
     registerDiscoveryRoute(app, service);
     registerCapabilitiesRoute(app, service);
     registerScanRoute(app, service);
+    registerFoldersRoutes(app, service);
+    registerSearchRoute(app, service);
+    registerArtistRoute(app, service);
+    registerAlbumRoute(app, service);
+    registerRandomRoute(app, service);
   }
   app.get<{ Reply: HealthResponse }>('/health/live', async () => ({ status: 'ok' }));
   return app;

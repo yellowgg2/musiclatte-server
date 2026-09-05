@@ -100,5 +100,6 @@
   "error.upstream_unavailable": "Cannot reach the server. Please try again shortly.",
   "error.storage_unavailable": "Cannot check your session. Please try again shortly.",
   "error.not_found": "The requested feature is unavailable.",
-  "error.internal_error": "Could not complete your request. Please try again."
+  "error.internal_error": "Could not complete your request. Please try again.",
+  "error.upstream_incompatible": "The music server API version is incompatible."
 }

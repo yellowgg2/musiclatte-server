@@ -101,11 +101,15 @@ export function createSessionService(input: AuthOptions) {
     }
     throw mapped;
   }
-  async function verify(value: string, scheme: AuthScheme) {
+  async function verify(
+    value: string,
+    scheme: AuthScheme,
+    requestOptions: { signal?: AbortSignal } = {},
+  ) {
     const session = find(value, scheme);
     const upstream = client(session.proof);
     try {
-      const identity = await upstream.currentUser();
+      const identity = await upstream.currentUser(requestOptions);
       if (identity.username !== session.username) throw new ApiError(401, 'unauthenticated');
       // A logout/policy change during network I/O cannot resurrect a session.
       find(value, scheme);
