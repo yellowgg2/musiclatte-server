@@ -1,0 +1,39 @@
+.surface {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+.surface[data-state='error'] {
+  background: var(--color-error-surface);
+}
+.message {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  overflow-wrap: anywhere;
+}
+.message > div {
+  min-width: 0;
+}
+.symbol {
+  display: grid;
+  place-items: center;
+  width: var(--space-5);
+  flex-shrink: 0;
+  color: var(--color-accent);
+  font-weight: 700;
+}
+.surface[data-state='error'] .symbol {
+  color: var(--color-error);
+}
+.title {
+  font-weight: 600;
+}
+.description {
+  color: var(--color-secondary);
+  font-size: var(--text-small);
+  margin-top: var(--space-1);
+}
+.recovery {
+  margin-top: var(--space-3);
+}

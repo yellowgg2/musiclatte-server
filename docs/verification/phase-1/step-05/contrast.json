@@ -1,0 +1,90 @@
+{
+  "tokens": {
+    "accent": "#69508b",
+    "background": "#f7f5f2",
+    "control-border": "#8c8195",
+    "disabled": "#eeeaf0",
+    "error": "#a33345",
+    "error-surface": "#fff3f3",
+    "focus": "#4c3376",
+    "info": "#435e80",
+    "secondary": "#686170",
+    "selection": "#eee7f5",
+    "success": "#35644d",
+    "surface": "#ffffff",
+    "text": "#292633",
+    "warning": "#805315"
+  },
+  "ratios": [
+    {
+      "fg": "text",
+      "bg": "surface",
+      "ratio": 14.8
+    },
+    {
+      "fg": "secondary",
+      "bg": "surface",
+      "ratio": 5.94
+    },
+    {
+      "fg": "secondary",
+      "bg": "background",
+      "ratio": 5.46
+    },
+    {
+      "fg": "surface",
+      "bg": "accent",
+      "ratio": 6.73
+    },
+    {
+      "fg": "surface",
+      "bg": "error",
+      "ratio": 6.74
+    },
+    {
+      "fg": "error",
+      "bg": "surface",
+      "ratio": 6.74
+    },
+    {
+      "fg": "secondary",
+      "bg": "error-surface",
+      "ratio": 5.48
+    },
+    {
+      "fg": "focus",
+      "bg": "surface",
+      "ratio": 10.28
+    },
+    {
+      "fg": "control-border",
+      "bg": "surface",
+      "ratio": 3.69
+    },
+    {
+      "fg": "accent",
+      "bg": "selection",
+      "ratio": 5.57
+    },
+    {
+      "fg": "success",
+      "bg": "surface",
+      "ratio": 6.82
+    },
+    {
+      "fg": "warning",
+      "bg": "surface",
+      "ratio": 6.63
+    },
+    {
+      "fg": "info",
+      "bg": "surface",
+      "ratio": 6.66
+    },
+    {
+      "fg": "secondary",
+      "bg": "disabled",
+      "ratio": 5
+    }
+  ]
+}

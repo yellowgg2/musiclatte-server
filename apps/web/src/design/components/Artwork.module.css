@@ -1,0 +1,34 @@
+.artwork {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  background: var(--color-selection);
+  color: var(--color-accent);
+}
+.placeholder {
+  position: absolute;
+  width: 48%;
+  height: 48%;
+  top: 26%;
+  left: 26%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.image {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+.artwork[data-state='available'] .image {
+  opacity: 1;
+}
+.artwork[data-state='loading'] {
+  background: var(--color-disabled);
+}

@@ -1,0 +1,26 @@
+.action {
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-size);
+  height: var(--control-size);
+  flex-shrink: 0;
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: background-color var(--motion-response);
+}
+.action > span {
+  display: flex;
+}
+.action:hover:not(:disabled),
+.action[aria-pressed='true'] {
+  background: var(--color-selection);
+}
+.action:disabled {
+  color: var(--color-secondary);
+  background: var(--color-disabled);
+  border-color: transparent;
+  cursor: default;
+}

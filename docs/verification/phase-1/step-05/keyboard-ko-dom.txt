@@ -1,0 +1,102 @@
+- link "컴포넌트로 건너뛰기":
+  - /url: "#foundations"
+- banner:
+  - link "musiclatte / 컴포넌트 갤러리":
+    - /url: "#top"
+    - generic: ♪
+    - text: musiclatte
+    - generic: / 컴포넌트 갤러리
+  - group "언어":
+    - button "한국어" [pressed]
+    - button "English"
+- main:
+  - paragraph: 작은 음악 공간을 위한 디자인
+  - heading "차분하게, 음악답게." [level=1]
+  - paragraph: 따뜻한 바탕, 은은한 보라, 편안한 여백. Musiclatte의 첫 화면을 만들 작은 요소들을 살펴보세요.
+  - generic: v0 · 밝은 테마 · 검토 중
+  - generic: "01"
+  - heading "기본 스타일" [level=2]
+  - paragraph: 음악을 돋보이게 하는 조용한 색과 읽기 편한 글자.
+  - generic: 바탕
+  - generic: 표면
+  - generic: 본문
+  - generic: 보조 글자
+  - generic: 강조
+  - generic: 선택
+  - paragraph:
+    - generic: ✓
+    - generic: △
+    - generic: "!"
+    - generic: i
+    - text: 성공 · 주의 · 오류 · 안내
+  - heading "오후의 작은 플레이리스트" [level=3]
+  - paragraph: 좋아하는 음악을 가까이 두세요.
+  - text: 곡 제목은 또렷하게, 보조 정보는 부드럽게.
+  - generic: "02"
+  - heading "작은 행동, 분명한 의미" [level=2]
+  - paragraph: 중요한 행동은 선명하게, 나머지는 조용하게. 버튼을 눌러 반응을 확인하세요.
+  - button "음악 듣기"
+  - button "폴더 선택"
+  - button "나중에"
+  - button "목록 삭제"
+  - button "연결 확인 중" [disabled]:
+    - generic: ···
+    - text: 연결 확인 중
+  - button "선택한 곡 없음" [disabled]
+  - button "선택한 폴더의 모든 음악을 현재 재생목록에 추가하기"
+  - status: 동작을 확인했어요. 실제 음악은 변경되지 않습니다.
+  - generic: "03"
+  - heading "이름이 있는 아이콘" [level=2]
+  - paragraph: 작아 보여도 누르기 편하게. 선택 상태는 모양과 이름으로 전달합니다.
+  - button "즐겨찾기" [pressed]:
+  - button "다음 곡" [disabled]:
+  - status: 즐겨찾기 선택됨
+  - generic: "04"
+  - heading "편안하게 입력하기" [level=2]
+  - paragraph: 라벨은 항상 보이고, 도움말과 오류는 입력 가까이에.
+  - generic: 사용자 이름
+  - textbox "사용자 이름" [active]:
+    - /placeholder: "예: musiclover"
+    - text: latte
+  - paragraph: 음악 서버에서 사용하는 이름을 입력하세요. 길이가 긴 안내도 빠짐없이 읽을 수 있습니다.
+  - generic: 사용자 이름 확인
+  - textbox "사용자 이름 확인": musiclover
+  - paragraph: 이름을 찾을 수 없어요. 철자를 확인한 뒤 다시 입력해 주세요.
+  - generic: 현재 사용할 수 없는 입력
+  - textbox "현재 사용할 수 없는 입력" [disabled]: musiclover
+  - button "입력 확인"
+  - status: 입력 내용을 확인했어요.
+  - generic: "05"
+  - heading "어떤 순간에도 차분하게" [level=2]
+  - paragraph: 기다림과 빈 공간, 오류에도 다음 행동이 보이도록.
+  - status:
+    - generic: ···
+    - paragraph: 음악을 불러오는 중
+    - paragraph: 목록을 준비하고 있어요. 듣던 음악은 계속 재생됩니다.
+  - status:
+    - generic: —
+    - paragraph: 아직 음악이 없어요
+    - paragraph: 다른 폴더를 선택해 좋아하는 음악을 찾아보세요.
+  - button "폴더 선택"
+  - alert:
+    - generic: "!"
+    - paragraph: 이 폴더를 불러오지 못했어요
+    - paragraph: 연결을 확인한 뒤 다시 시도해 주세요. 이미 불러온 음악은 그대로 유지됩니다.
+  - button "다시 시도"
+  - generic: "06"
+  - heading "음악의 작은 얼굴" [level=2]
+  - paragraph: 커버가 늦게 도착하거나 없어도 자리는 그대로.
+  - figure "커버 있음":
+    - img "오후의 작은 플레이리스트 앨범 커버":
+    - generic: 커버 있음
+  - figure "불러오는 중":
+    - img "오후의 작은 플레이리스트 앨범 커버":
+    - generic: 불러오는 중
+  - figure "커버 없음":
+    - img "오후의 작은 플레이리스트 앨범 커버":
+    - generic: 커버 없음
+  - figure "불러오기 실패":
+    - img "오후의 작은 플레이리스트 앨범 커버":
+    - generic: 불러오기 실패
+  - generic: musiclatte
+  - paragraph: 실제 공유 컴포넌트 · 개발 전용 미리보기

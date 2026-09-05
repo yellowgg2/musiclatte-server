@@ -1,0 +1,101 @@
+- link "Skip to components":
+  - /url: "#foundations"
+- banner:
+  - link "musiclatte":
+    - /url: "#top"
+    - generic: ♪
+    - text: musiclatte
+  - group "Language":
+    - button "한국어"
+    - button "English" [active] [pressed]
+- main:
+  - paragraph: A little space for your music
+  - heading "Quietly, beautifully musical." [level=1]
+  - paragraph: Warm surfaces, soft violet, room to breathe. Meet the small details that will shape your Musiclatte space.
+  - generic: v0 · Light theme · In review
+  - generic: "01"
+  - heading "Foundations" [level=2]
+  - paragraph: A quiet palette and clear type, leaving the spotlight to your music.
+  - generic: Background
+  - generic: Surface
+  - generic: Text
+  - generic: Secondary
+  - generic: Accent
+  - generic: Selection
+  - paragraph:
+    - generic: ✓
+    - generic: △
+    - generic: "!"
+    - generic: i
+    - text: Success · Warning · Error · Info
+  - heading "A little afternoon playlist" [level=3]
+  - paragraph: Keep your favorite music close.
+  - text: Clear titles. Gentle supporting details.
+  - generic: "02"
+  - heading "Small actions, clear intentions" [level=2]
+  - paragraph: Give the main action a clear voice. Try a button to see its response.
+  - button "Listen to music"
+  - button "Choose a folder"
+  - button "Not now"
+  - button "Delete playlist"
+  - button "Checking connection" [disabled]:
+    - generic: ···
+    - text: Checking connection
+  - button "No songs selected" [disabled]
+  - button "Add all music in the selected folder to the current playlist"
+  - status: Action received. Your music stays unchanged.
+  - generic: "03"
+  - heading "Icons with a name" [level=2]
+  - paragraph: Small in appearance, comfortable to press. Every icon has an accessible name.
+  - button "Favorite" [pressed]:
+  - button "Next track" [disabled]:
+  - status: Favorite selected
+  - generic: "04"
+  - heading "Make yourself at home" [level=2]
+  - paragraph: Labels stay visible. Help and errors stay close to the field.
+  - generic: Username
+  - textbox "Username":
+    - /placeholder: e.g. musiclover
+    - text: latte
+  - paragraph: Enter the name you use on your music server. Longer guidance stays readable without hiding any information.
+  - generic: Check your username
+  - textbox "Check your username": musiclover
+  - paragraph: We could not find that name. Check the spelling and enter it again.
+  - generic: Currently unavailable input
+  - textbox "Currently unavailable input" [disabled]: musiclover
+  - button "Check input"
+  - status: Your input has been received.
+  - generic: "05"
+  - heading "Calm in every moment" [level=2]
+  - paragraph: A clear next step, through waiting, empty spaces, and errors.
+  - status:
+    - generic: ···
+    - paragraph: Finding your music
+    - paragraph: Your library is on its way. The music you are listening to keeps playing.
+  - status:
+    - generic: —
+    - paragraph: No music here yet
+    - paragraph: Choose another folder to find something you love.
+  - button "Choose a folder"
+  - alert:
+    - generic: "!"
+    - paragraph: This folder could not be loaded
+    - paragraph: Check your connection and try again. Music already loaded is still available.
+  - button "Try again"
+  - generic: "06"
+  - heading "A little face for your music" [level=2]
+  - paragraph: The same space, even when a cover is loading or missing.
+  - figure "Available":
+    - img "A little afternoon playlist album cover":
+    - generic: Available
+  - figure "Loading":
+    - img "A little afternoon playlist album cover":
+    - generic: Loading
+  - figure "Missing":
+    - img "A little afternoon playlist album cover":
+    - generic: Missing
+  - figure "Failed to load":
+    - img "A little afternoon playlist album cover":
+    - generic: Failed to load
+  - generic: musiclatte
+  - paragraph: Real shared components · Development preview only

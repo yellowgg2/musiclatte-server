@@ -39,6 +39,7 @@ tests
 **/test
 **/*.test.ts
 packages/test-support/src
+apps/web/src/dev
 apps/web/src/**/Gallery*
 apps/web/src/**/__gallery__
 apps/web/src/**/__fixtures__
