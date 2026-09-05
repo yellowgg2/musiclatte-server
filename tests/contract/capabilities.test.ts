@@ -68,7 +68,7 @@ describe('private capability contract', () => {
       expect(decoded.features[key]).toEqual(feature);
     expect(decoded.features['playlists.read']).toEqual(feature);
     expect(decoded.features['playlists.write']).toEqual(feature);
-    expect(decoded.features['favorites.songs']?.supported).toBe(false);
+    expect(decoded.features['favorites.songs']).toEqual(feature);
     for (const key of [
       'imports.youtube',
       'library.recentDownloads',

@@ -66,7 +66,7 @@ HTTPS cookie: `__Host-musiclatte-session`, `Path=/`, `HttpOnly`, `Secure`, `Same
 | `library.randomSongs`                                                               | size=1 read-only 성공 true; 401 폐기, 403 denied, 404/70/5xx/timeout은 unsupported로 추론하지 않음               |
 | `library.scan`                                                                      | gonic 표준 지원 true; 기본 denied, ALLOW_SCAN와 실제 adminRole의 교집합만 allowed                                |
 | `playlists.read`, `playlists.write`                                                 | 인증된 server producer true/allowed/available; write는 resource `editable`을 별도 재검사                         |
-| `favorites.songs`                                                                   | P2 Step 05 전까지 false/denied; 기존 native `/rest` 지원을 제거한다는 의미가 아님                                |
+| `favorites.songs`                                                                   | P2 Step 05 producer true/allowed/available; web consumer는 Step 10까지 false                                     |
 | `library.recentDownloads`, `imports.youtube`, `engine.manage`                       | P3 미구현 false/denied                                                                                           |
 | `metadata.write`, `metadata.lyrics.write`, `metadata.curation`, `automation.tokens` | P4/P6 미구현 false/denied                                                                                        |
 

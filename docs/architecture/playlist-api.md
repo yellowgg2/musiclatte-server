@@ -59,7 +59,7 @@ Conflict and outcome-unknown responses include the readable current snapshot whe
 
 ## Capabilities, residual risk, and compatibility
 
-Authenticated server capability now reports both `playlists.read` and `playlists.write` as supported, allowed, and available. Resource `editable=false` still wins over the account-level capability. `favorites.songs` remains disabled, and all web `clientFeatures` remain false until their owning consumer Steps.
+Authenticated server capability reports `playlists.read`, `playlists.write`, and, as of Step 05, `favorites.songs` as supported, allowed, and available. Resource `editable=false` still wins over the account-level playlist capability. All web `clientFeatures` remain false until their owning consumer Steps.
 
 The preflight revision check, process-local queue, and post-write reconciliation expose known conflicts but cannot provide CAS against a native client that writes between the BFF read and upstream write. This native TOCTOU residual is intentional and is never hidden as transactional success.
 

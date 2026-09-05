@@ -43,7 +43,7 @@ export function collectionFixture(
     createPlaylist: { playlist },
     updatePlaylist: {},
     deletePlaylist: {},
-    getStarred2: { starred2: { song: empty ? undefined : songs.slice(0, 1) } },
+    getStarred2: { starred2: { song: empty ? undefined : songs } },
     star: {},
     unstar: {},
   };

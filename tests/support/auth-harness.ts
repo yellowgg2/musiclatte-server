@@ -81,6 +81,16 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     collectionStall: false,
     collectionDelayMs: 0,
     closedCollectionRequests: 0,
+    accountIdentityFromProof: false,
+    favoriteSongIdsByUsername: new Map<string, string[]>(),
+    favoriteReadError: 0,
+    favoriteWriteError: 0,
+    favoritePostwriteError: 0,
+    favoriteWriteObserved: false,
+    favoriteSilentNoop: false,
+    favoriteReadStall: false,
+    favoriteDelayMs: 0,
+    closedFavoriteRequests: 0,
     playlistOwner: password.username,
     playlistExists: true,
     playlistId: 'pl-1',
@@ -127,11 +137,16 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       'createPlaylist',
       'updatePlaylist',
       'deletePlaylist',
+      'getStarred2',
+      'star',
+      'unstar',
     ].includes(operation);
     const isCollectionRead = operation === 'getPlaylists' || operation === 'getPlaylist';
     const isCollectionWrite = ['createPlaylist', 'updatePlaylist', 'deletePlaylist'].includes(
       operation,
     );
+    const isFavoriteRead = operation === 'getStarred2';
+    const isFavoriteWrite = operation === 'star' || operation === 'unstar';
     const isLibrary = [
       'getMusicFolders',
       'getIndexes',
@@ -150,6 +165,12 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     if (isCollectionRead && state.collectionStall) {
       res.on('close', () => {
         state.closedCollectionRequests += 1;
+      });
+      return;
+    }
+    if (isFavoriteRead && state.favoriteReadStall) {
+      res.on('close', () => {
+        state.closedFavoriteRequests += 1;
       });
       return;
     }
@@ -183,6 +204,22 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
         state.mutationResponseLoss = false;
         req.socket.destroy();
         return;
+      }
+    }
+    if (valid && isFavoriteWrite && !state.favoriteWriteError) {
+      state.favoriteWriteObserved = true;
+      const username = url.searchParams.get('u') ?? '';
+      const id = url.searchParams.get('id') ?? '';
+      const current = state.favoriteSongIdsByUsername.get(username) ?? [];
+      if (!state.favoriteSilentNoop) {
+        state.favoriteSongIdsByUsername.set(
+          username,
+          operation === 'star'
+            ? current.includes(id)
+              ? current
+              : [id, ...current]
+            : current.filter((songId) => songId !== id),
+        );
       }
     }
     if (isMedia) {
@@ -268,16 +305,26 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       'content-type': 'application/json',
     });
     const code =
-      isCollectionRead && state.collectionError
-        ? state.collectionError
-        : isCollectionWrite && state.mutationError
-          ? state.mutationError
-          : isLibrary && state.libraryError
-            ? state.libraryError
-            : !valid
-              ? 40
-              : state.error ||
-                (isRandom ? state.randomError : operation === 'startScan' ? state.scanError : 0);
+      isFavoriteRead && state.favoriteWriteObserved && state.favoritePostwriteError
+        ? state.favoritePostwriteError
+        : isFavoriteRead && state.favoriteReadError
+          ? state.favoriteReadError
+          : isFavoriteWrite && state.favoriteWriteError
+            ? state.favoriteWriteError
+            : isCollectionRead && state.collectionError
+              ? state.collectionError
+              : isCollectionWrite && state.mutationError
+                ? state.mutationError
+                : isLibrary && state.libraryError
+                  ? state.libraryError
+                  : !valid
+                    ? 40
+                    : state.error ||
+                      (isRandom
+                        ? state.randomError
+                        : operation === 'startScan'
+                          ? state.scanError
+                          : 0);
     const body = code
       ? subsonicErrorFixture(code, 'synthetic-secret-upstream-message')
       : operation === 'getUser'
@@ -285,7 +332,13 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
             'subsonic-response': {
               status: 'ok',
               version: '1.15.0',
-              user: { username: state.username, adminRole: state.adminRole, folder: [999] },
+              user: {
+                username: state.accountIdentityFromProof
+                  ? (url.searchParams.get('u') ?? state.username)
+                  : state.username,
+                adminRole: state.adminRole,
+                folder: [999],
+              },
             },
           }
         : operation === 'startScan'
@@ -305,7 +358,9 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
                 public: state.playlistPublic,
                 name: state.playlistName,
                 changed: state.playlistChanged,
-                entryIds: state.playlistEntryIds,
+                entryIds: isFavoriteRead
+                  ? (state.favoriteSongIdsByUsername.get(url.searchParams.get('u') ?? '') ?? [])
+                  : state.playlistEntryIds,
                 coverArt: state.playlistCoverArt,
               })
             : subsonicFixture(operation, state.emptyLibrary);
@@ -314,7 +369,12 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
         ? { 'subsonic-response': { status: 'ok', version: '1.15.0' } }
         : body,
     );
-    const delayMs = isCollectionWrite ? state.mutationDelayMs : state.collectionDelayMs;
+    const delayMs =
+      isFavoriteRead || isFavoriteWrite
+        ? state.favoriteDelayMs
+        : isCollectionWrite
+          ? state.mutationDelayMs
+          : state.collectionDelayMs;
     if (isCollection && delayMs > 0) {
       setTimeout(() => res.end(payload), delayMs);
       return;

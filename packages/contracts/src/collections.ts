@@ -18,6 +18,19 @@ export interface SubsonicPlaylist extends SubsonicPlaylistSummary {
 
 export type SubsonicStarredSongs = MusicEntry[];
 
+export interface FavoriteSongSetRequest {
+  starred: boolean;
+}
+
+export interface FavoriteSongsResponse {
+  schemaVersion: 1;
+  songs: MusicEntry[];
+}
+
+export type FavoriteSongResponse =
+  | { schemaVersion: 1; id: string; starred: true; song: MusicEntry }
+  | { schemaVersion: 1; id: string; starred: false };
+
 export type PlaylistCoverState = 'fallback' | 'available';
 
 export interface PlaylistSummary extends SubsonicPlaylistSummary {
@@ -150,6 +163,11 @@ export const playlistQuerySchemas = {
   empty: object([], {}),
 };
 
+export const favoriteRequestSchemas = {
+  empty: object([], {}),
+  set: object(['starred'], { starred: { type: 'boolean' } }),
+};
+
 export const playlistMutationSchemas = {
   empty: object([], {}),
   create: object(['operationId', 'name'], { operationId, name: playlistName }),
@@ -181,6 +199,30 @@ export const playlistMutationSchemas = {
 };
 
 export const playlistIdSchema = object(['id'], { id });
+
+export const favoriteIdSchema = object(['id'], { id });
+
+export const favoriteResponseSchemas = {
+  list: object(['schemaVersion', 'songs'], {
+    schemaVersion: { const: 1 },
+    songs: { type: 'array', items: musicEntrySchema },
+  }),
+  set: {
+    oneOf: [
+      object(['schemaVersion', 'id', 'starred', 'song'], {
+        schemaVersion: { const: 1 },
+        id,
+        starred: { const: true },
+        song: musicEntrySchema,
+      }),
+      object(['schemaVersion', 'id', 'starred'], {
+        schemaVersion: { const: 1 },
+        id,
+        starred: { const: false },
+      }),
+    ],
+  },
+};
 
 export const playlistResponseSchemas = {
   list: object(['schemaVersion', 'playlists'], {
