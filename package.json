@@ -1,0 +1,35 @@
+{
+  "name": "musiclatte-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "24.20.0",
+    "npm": "11.19.0"
+  },
+  "packageManager": "npm@11.19.0",
+  "workspaces": [
+    "apps/web",
+    "apps/api",
+    "packages/contracts",
+    "packages/test-support"
+  ],
+  "scripts": {
+    "typecheck": "npm run build -w @musiclatte/contracts && npm run build -w @musiclatte/test-support && tsc --noEmit -p tsconfig.json && npm run typecheck --workspaces",
+    "build": "npm run build -w @musiclatte/contracts && npm run build -w @musiclatte/test-support && npm run build -w @musiclatte/api && npm run build -w @musiclatte/web",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:contract": "vitest run --config vitest.contract.config.ts",
+    "dev:web": "npm run dev -w @musiclatte/web --",
+    "dev:api": "npm run dev -w @musiclatte/api --"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.0",
+    "tsx": "4.23.13",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@types/node": "24.13.3"
+  }
+}

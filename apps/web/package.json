@@ -1,0 +1,15 @@
+{
+  "name": "@musiclatte/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1 --strictPort"
+  },
+  "dependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  }
+}
