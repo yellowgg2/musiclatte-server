@@ -62,6 +62,7 @@ describe('development Gallery boundary', () => {
       for (const file of readdirSync(join(output, 'assets'))) {
         const content = readFileSync(join(output, 'assets', file), 'utf8');
         expect(content.includes('MUSICLATTE_GALLERY_V0')).toBe(false);
+        expect(content.includes('Music shell fixture')).toBe(false);
         if (!file.endsWith('.map')) expect(content.includes('__dev/gallery')).toBe(false);
         if (file.endsWith('.map')) {
           const map = JSON.parse(content) as { sources: string[] };
@@ -79,7 +80,12 @@ describe('development Gallery boundary', () => {
       try {
         const origin = server.resolvedUrls!.local[0]!;
         expect((await fetch(origin)).status).toBe(200);
-        for (const path of ['__dev/gallery', '__dev/gallery/', '__dev/gallery?locale=en']) {
+        for (const path of [
+          '__dev/gallery',
+          '__dev/gallery/',
+          '__dev/gallery?locale=en',
+          '__dev/shell',
+        ]) {
           expect((await fetch(new URL(path, origin))).status).toBe(404);
         }
       } finally {

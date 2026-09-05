@@ -1,0 +1,14 @@
+- banner:
+  - generic: Musiclatte
+  - text: 언어
+  - combobox "언어":
+    - option "한국어" [selected]
+    - option "English"
+- main:
+  - heading "다시 만나 반가워요" [level=1]
+  - paragraph: 내 음악 공간에 로그인하세요.
+  - generic: 사용자 이름
+  - textbox "사용자 이름" [active]
+  - generic: 비밀번호
+  - textbox "비밀번호"
+  - button "로그인"

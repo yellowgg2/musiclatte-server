@@ -1,6 +1,6 @@
 # 인증·capability API — S03 / schema v1
 
-S01 고정 gonic adapter와 S02 관리 저장소를 Fastify HTTP API에 연결한다. 웹 UI는 S06, gateway/Compose는 S04다. 기존 gonic `/rest`·iOS·bot 코드는 변경하지 않는다. `getUser.folder`는 버리고 인증된 사용자가 인스턴스 library를 공유하는 기존 모델을 유지한다.
+S01 고정 gonic adapter와 S02 관리 저장소를 Fastify HTTP API에 연결한다. 웹 UI는 S06에서 연결했고 gateway/Compose는 S04다. 기존 gonic `/rest`·iOS·bot 코드는 변경하지 않는다. `getUser.folder`는 버리고 인증된 사용자가 인스턴스 library를 공유하는 기존 모델을 유지한다.
 
 ## 실행과 저장
 
@@ -92,3 +92,7 @@ revision은 token·policy revision·실제 identity/role·현재 feature 상태�
 | 500         | internal_error                             | 정제된 내부 오류, raw cause 없음                            |
 
 새 UI copy 0개, locale은 기존 ko/en을 유지한다. `sessionExchangeSchema`, `sessionResponseSchema`, `discoverySchema`, `capabilitiesSchema`, `apiErrorSchema`와 test fixture를 함께 변경해야 한다. 전체 검증은 [S03 evidence](../verification/phase-1/step-03.md)에 있다.
+
+## S06 web consumer
+
+`createSessionClient`와 `createSessionStore`가 위 cookie/CSRF 계약을 소비한다. 실제 producer/consumer expiry·logout·권한/장애 tests와 Chrome 검증을 완료했다. 구현 계약은 [login shell](login-shell.md), 증거는 [S06](../verification/phase-1/step-06/README.md)를 따른다. API producer/schema는 변경하지 않았다.
