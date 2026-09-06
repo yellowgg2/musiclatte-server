@@ -6,6 +6,7 @@ import { QueueView } from './QueueView';
 import { usePlayer } from './PlayerProvider';
 import { formatTime, playLabel } from './view-helpers';
 import styles from './Player.module.css';
+import { FavoriteAction } from '../favorites/components/FavoriteAction';
 
 export function ExpandedPlayer({ locale, onClose }: { locale: Locale; onClose: () => void }) {
   const player = usePlayer();
@@ -85,6 +86,7 @@ export function ExpandedPlayer({ locale, onClose }: { locale: Locale; onClose: (
           </span>
         </label>
         <div className={styles.sheetTransport}>
+          <FavoriteAction song={current} locale={locale} compact />
           <IconAction label={copy['player.previous']} onClick={player.previous}>
             ◀|
           </IconAction>

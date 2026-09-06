@@ -18,6 +18,7 @@ import { usePlayer } from '../../player/PlayerProvider';
 import { useSelection } from '../../selection/SelectionProvider';
 import { SelectionBar } from '../../selection/components/SelectionBar';
 import { selectionScopeKey } from '../../selection/model';
+import { FavoriteAction } from '../../favorites/components/FavoriteAction';
 import styles from './Playlist.module.css';
 
 function songCountLabel(count: number, locale: Locale) {
@@ -35,6 +36,7 @@ export function PlaylistDetailPage({
   onUnauthenticated,
   canStream,
   canWrite,
+  canFavorites,
   csrfToken,
 }: {
   id: string;
@@ -46,6 +48,7 @@ export function PlaylistDetailPage({
   onUnauthenticated: () => void;
   canStream: boolean;
   canWrite: boolean;
+  canFavorites: boolean;
   csrfToken: string;
 }) {
   const player = usePlayer();
@@ -396,9 +399,11 @@ export function PlaylistDetailPage({
                             }),
                         }
                       : {})}
-                    {...(canManage
-                      ? {
-                          actions: (
+                    actions={
+                      canFavorites || canManage ? (
+                        <>
+                          {canFavorites && <FavoriteAction song={entry.song} locale={locale} />}
+                          {canManage && (
                             <PlaylistOccurrenceActions
                               key={`${entry.position}:${entry.song.id}:${editError ?? 'ready'}`}
                               entry={entry}
@@ -416,9 +421,10 @@ export function PlaylistDetailPage({
                                 void editOccurrence(entry, 'remove');
                               }}
                             />
-                          ),
-                        }
-                      : {})}
+                          )}
+                        </>
+                      ) : undefined
+                    }
                   />
                 ))}
               </ul>

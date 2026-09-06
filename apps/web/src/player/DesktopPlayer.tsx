@@ -6,6 +6,7 @@ import { usePlayer } from './PlayerProvider';
 import { QueueView } from './QueueView';
 import { formatTime, playLabel } from './view-helpers';
 import styles from './Player.module.css';
+import { FavoriteAction } from '../favorites/components/FavoriteAction';
 
 export function DesktopPlayer({ locale }: { locale: Locale }) {
   const player = usePlayer();
@@ -55,6 +56,7 @@ export function DesktopPlayer({ locale }: { locale: Locale }) {
         <span aria-hidden="true">{formatTime(state.duration)}</span>
       </label>
       <div className={styles.options}>
+        <FavoriteAction song={state.current} locale={locale} compact />
         <IconAction
           label={copy['player.shuffle']}
           pressed={state.queue.shuffled}

@@ -7,7 +7,7 @@ export const clientFeatures = {
   'library.scan': false,
   'playlists.read': true,
   'playlists.write': true,
-  'favorites.songs': false,
+  'favorites.songs': true,
   'library.recentDownloads': false,
   'imports.youtube': false,
   'engine.manage': false,

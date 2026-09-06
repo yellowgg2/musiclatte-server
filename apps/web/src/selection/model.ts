@@ -1,7 +1,8 @@
 export type SelectionScope =
   | { kind: 'folder'; id: string }
   | { kind: 'search'; query: string; musicFolderId?: string }
-  | { kind: 'playlist'; id: string; revision: string };
+  | { kind: 'playlist'; id: string; revision: string }
+  | { kind: 'favorites' };
 
 export type SelectionItem = { id: string; order: number };
 export type SelectionState = { scopeKey?: string; active: boolean; items: SelectionItem[] };
@@ -20,6 +21,7 @@ export const initialSelectionState: SelectionState = { active: false, items: [] 
 export function selectionScopeKey(scope: SelectionScope): string {
   if (scope.kind === 'folder') return `folder:${scope.id}`;
   if (scope.kind === 'playlist') return `playlist:${scope.id}@${scope.revision}`;
+  if (scope.kind === 'favorites') return 'favorites:songs';
   return `search:${scope.musicFolderId ?? ''}:${scope.query.trim()}`;
 }
 

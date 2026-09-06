@@ -1,5 +1,6 @@
 import { musicRoute } from '../music/queries';
 import { playlistRoute } from '../playlists/routes';
+import { isFavoritesPath } from '../favorites/routes';
 /** Only implemented canonical relative routes can be restored after authentication. */
 export function safeReturnPath(
   value: string | null | undefined,
@@ -10,6 +11,7 @@ export function safeReturnPath(
   if (!value || !value.startsWith(base) || value.startsWith('//') || /[\\#\x00-\x1f]/.test(value))
     return fallback;
   if (value === `${base}settings`) return value;
+  if (isFavoritesPath(value, base)) return value;
   const playlist = playlistRoute(value, base);
   if (playlist) return value;
   const route = musicRoute(value, base);

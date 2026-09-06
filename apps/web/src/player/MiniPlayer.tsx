@@ -6,6 +6,7 @@ import { ExpandedPlayer } from './ExpandedPlayer';
 import { usePlayer } from './PlayerProvider';
 import { playLabel } from './view-helpers';
 import styles from './Player.module.css';
+import { FavoriteAction } from '../favorites/components/FavoriteAction';
 
 export function MiniPlayer({ locale }: { locale: Locale }) {
   const player = usePlayer();
@@ -39,6 +40,7 @@ export function MiniPlayer({ locale }: { locale: Locale }) {
         >
           {player.state.status === 'playing' ? 'Ⅱ' : '▶'}
         </IconAction>
+        <FavoriteAction song={current} locale={locale} compact />
         <IconAction label={copy['player.next']} onClick={player.next}>
           |▶
         </IconAction>

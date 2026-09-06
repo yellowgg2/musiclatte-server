@@ -21,6 +21,9 @@ import { LanguagePicker } from './LanguagePicker';
 import { StatusSurface } from '../design/components/StatusSurface';
 import { Action } from '../design/components/Action';
 import { SelectionProvider } from '../selection/SelectionProvider';
+import { FavoritesProvider } from '../favorites/FavoritesProvider';
+import { isFavoritesPath } from '../favorites/routes';
+import { FavoritesPage } from '../pages/music/FavoritesPage';
 import styles from './Shell.module.css';
 import '../design/global.css';
 export function Router({
@@ -44,8 +47,11 @@ export function Router({
   const canRandom = availableEntries(state.capabilities).includes('library.randomSongs');
   const canReadPlaylists = availableEntries(state.capabilities).includes('playlists.read');
   const canWritePlaylists = availableEntries(state.capabilities).includes('playlists.write');
+  const canFavorites = availableEntries(state.capabilities).includes('favorites.songs');
   const currentPlaylistRoute = playlistRoute(location, base);
+  const currentFavoritesPath = isFavoritesPath(location, base);
   const playlistCapability = featureState(state.capabilities?.features['playlists.read']);
+  const favoritesCapability = featureState(state.capabilities?.features['favorites.songs']);
   const copy = messages[locale];
   useEffect(() => {
     void store.restore();
@@ -120,10 +126,21 @@ export function Router({
     canReadPlaylists,
   ]);
   useEffect(() => {
+    if (state.status === 'signed-in' && currentFavoritesPath && canFavorites) return;
     if (state.status === 'signed-in' && canBrowse && musicRoute(location, base)) return;
     if (state.status === 'signed-in' && canReadPlaylists && currentPlaylistRoute) return;
     document.title = `${state.status === 'signed-in' ? (musicRoute(location, base) ? copy['music.title'] : currentPlaylistRoute ? copy['playlists.title'] : copy['shell.settings']) : copy['login.title']} · Musiclatte`;
-  }, [state.status, copy, location, base, canBrowse, canReadPlaylists, currentPlaylistRoute]);
+  }, [
+    state.status,
+    copy,
+    location,
+    base,
+    canBrowse,
+    canFavorites,
+    canReadPlaylists,
+    currentFavoritesPath,
+    currentPlaylistRoute,
+  ]);
   useEffect(() => {
     const heading = document.querySelector<HTMLElement>('[data-page-heading]');
     if (heading) heading.focus({ preventScroll: true });
@@ -165,39 +182,34 @@ export function Router({
       />
     );
   return (
-    <PlayerProvider
+    <FavoritesProvider
+      accountId={state.session.username}
+      csrfToken={state.session.csrfToken}
+      enabled={canFavorites}
       fetcher={fetcher}
       apiOrigin={apiOrigin}
       onUnauthenticated={store.expire}
-      {...(audioFactory ? { audioFactory } : {})}
     >
-      <SelectionProvider>
-        <AppShell
-          locale={locale}
-          base={base}
-          capabilities={state.capabilities}
-          player={
-            <>
-              <DesktopPlayer locale={locale} />
-              <MiniPlayer locale={locale} />
-            </>
-          }
-        >
-          {currentPlaylistRoute && canReadPlaylists ? (
-            currentPlaylistRoute.kind === 'list' ? (
-              <PlaylistsPage
-                base={base}
-                locale={locale}
-                onLocale={onLocale}
-                fetcher={fetcher}
-                apiOrigin={apiOrigin}
-                onUnauthenticated={store.expire}
-                canWrite={canWritePlaylists}
-                csrfToken={state.session.csrfToken}
-              />
-            ) : (
-              <PlaylistDetailPage
-                id={currentPlaylistRoute.id}
+      <PlayerProvider
+        fetcher={fetcher}
+        apiOrigin={apiOrigin}
+        onUnauthenticated={store.expire}
+        {...(audioFactory ? { audioFactory } : {})}
+      >
+        <SelectionProvider>
+          <AppShell
+            locale={locale}
+            base={base}
+            capabilities={state.capabilities}
+            player={
+              <>
+                <DesktopPlayer locale={locale} />
+                <MiniPlayer locale={locale} />
+              </>
+            }
+          >
+            {currentFavoritesPath && canFavorites ? (
+              <FavoritesPage
                 base={base}
                 locale={locale}
                 onLocale={onLocale}
@@ -205,60 +217,106 @@ export function Router({
                 apiOrigin={apiOrigin}
                 onUnauthenticated={store.expire}
                 canStream={canStream}
-                canWrite={canWritePlaylists}
+                canWritePlaylists={canWritePlaylists}
                 csrfToken={state.session.csrfToken}
               />
-            )
-          ) : currentPlaylistRoute ? (
-            <div className={styles.settings}>
-              <h1 tabIndex={-1} data-page-heading>
-                {copy[playlistCapability === 'denied' ? 'status.denied' : 'status.unavailable']}
-              </h1>
-              <p>
-                {
-                  copy[
-                    playlistCapability === 'denied'
-                      ? 'playlists.deniedHelp'
-                      : 'playlists.unavailableHelp'
-                  ]
-                }
-              </p>
-              <a href={canBrowse ? `${base}music` : `${base}settings`}>
-                {copy[canBrowse ? 'playlists.browseMusic' : 'status.back']}
-              </a>
-            </div>
-          ) : musicRoute(location, base) && canBrowse ? (
-            <MusicPage
-              location={location}
-              base={base}
-              locale={locale}
-              onLocale={onLocale}
-              fetcher={fetcher}
-              apiOrigin={apiOrigin}
-              onUnauthenticated={store.expire}
-              canStream={canStream}
-              canRandom={canRandom}
-              canWritePlaylists={canWritePlaylists}
-              csrfToken={state.session.csrfToken}
-            />
-          ) : isSettingsPath(path, base) || path === `${base}login` || path === base ? (
-            <SettingsPage
-              state={state}
-              locale={locale}
-              onLocale={onLocale}
-              onLogout={() => void store.logout()}
-            />
-          ) : (
-            <div className={styles.settings}>
-              <h1 tabIndex={-1} data-page-heading>
-                {copy['status.unavailable']}
-              </h1>
-              <p>{copy['status.unavailableHelp']}</p>
-              <a href={`${base}settings`}>{copy['status.back']}</a>
-            </div>
-          )}
-        </AppShell>
-      </SelectionProvider>
-    </PlayerProvider>
+            ) : currentFavoritesPath ? (
+              <div className={styles.settings}>
+                <h1 tabIndex={-1} data-page-heading>
+                  {copy[favoritesCapability === 'denied' ? 'status.denied' : 'status.unavailable']}
+                </h1>
+                <p>
+                  {
+                    copy[
+                      favoritesCapability === 'denied'
+                        ? 'favorites.deniedHelp'
+                        : 'favorites.unavailableHelp'
+                    ]
+                  }
+                </p>
+                <a href={canBrowse ? `${base}music` : `${base}settings`}>
+                  {copy[canBrowse ? 'favorites.back' : 'status.back']}
+                </a>
+              </div>
+            ) : currentPlaylistRoute && canReadPlaylists ? (
+              currentPlaylistRoute.kind === 'list' ? (
+                <PlaylistsPage
+                  base={base}
+                  locale={locale}
+                  onLocale={onLocale}
+                  fetcher={fetcher}
+                  apiOrigin={apiOrigin}
+                  onUnauthenticated={store.expire}
+                  canWrite={canWritePlaylists}
+                  csrfToken={state.session.csrfToken}
+                />
+              ) : (
+                <PlaylistDetailPage
+                  id={currentPlaylistRoute.id}
+                  base={base}
+                  locale={locale}
+                  onLocale={onLocale}
+                  fetcher={fetcher}
+                  apiOrigin={apiOrigin}
+                  onUnauthenticated={store.expire}
+                  canStream={canStream}
+                  canWrite={canWritePlaylists}
+                  canFavorites={canFavorites}
+                  csrfToken={state.session.csrfToken}
+                />
+              )
+            ) : currentPlaylistRoute ? (
+              <div className={styles.settings}>
+                <h1 tabIndex={-1} data-page-heading>
+                  {copy[playlistCapability === 'denied' ? 'status.denied' : 'status.unavailable']}
+                </h1>
+                <p>
+                  {
+                    copy[
+                      playlistCapability === 'denied'
+                        ? 'playlists.deniedHelp'
+                        : 'playlists.unavailableHelp'
+                    ]
+                  }
+                </p>
+                <a href={canBrowse ? `${base}music` : `${base}settings`}>
+                  {copy[canBrowse ? 'playlists.browseMusic' : 'status.back']}
+                </a>
+              </div>
+            ) : musicRoute(location, base) && canBrowse ? (
+              <MusicPage
+                location={location}
+                base={base}
+                locale={locale}
+                onLocale={onLocale}
+                fetcher={fetcher}
+                apiOrigin={apiOrigin}
+                onUnauthenticated={store.expire}
+                canStream={canStream}
+                canRandom={canRandom}
+                canWritePlaylists={canWritePlaylists}
+                canFavorites={canFavorites}
+                csrfToken={state.session.csrfToken}
+              />
+            ) : isSettingsPath(path, base) || path === `${base}login` || path === base ? (
+              <SettingsPage
+                state={state}
+                locale={locale}
+                onLocale={onLocale}
+                onLogout={() => void store.logout()}
+              />
+            ) : (
+              <div className={styles.settings}>
+                <h1 tabIndex={-1} data-page-heading>
+                  {copy['status.unavailable']}
+                </h1>
+                <p>{copy['status.unavailableHelp']}</p>
+                <a href={`${base}settings`}>{copy['status.back']}</a>
+              </div>
+            )}
+          </AppShell>
+        </SelectionProvider>
+      </PlayerProvider>
+    </FavoritesProvider>
   );
 }

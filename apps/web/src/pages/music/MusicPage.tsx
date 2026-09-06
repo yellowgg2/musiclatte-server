@@ -13,6 +13,7 @@ import { MusicRow } from '../../music/components/MusicRow';
 import { usePlayer } from '../../player/PlayerProvider';
 import { useSelection } from '../../selection/SelectionProvider';
 import { SelectionBar } from '../../selection/components/SelectionBar';
+import { FavoriteAction } from '../../favorites/components/FavoriteAction';
 import { selectionScopeKey } from '../../selection/model';
 import type { ApiErrorCode, MusicEntry } from '@musiclatte/contracts';
 import styles from './Music.module.css';
@@ -28,6 +29,7 @@ export function MusicPage({
   canStream,
   canRandom,
   canWritePlaylists,
+  canFavorites,
   csrfToken,
 }: {
   location: string;
@@ -40,6 +42,7 @@ export function MusicPage({
   canStream: boolean;
   canRandom: boolean;
   canWritePlaylists: boolean;
+  canFavorites: boolean;
   csrfToken: string;
 }) {
   const player = usePlayer();
@@ -194,6 +197,7 @@ export function MusicPage({
             onSelect: () => selection.dispatch({ type: 'toggle', item: { id: song.id, order } }),
           }
         : {})}
+      actions={canFavorites ? <FavoriteAction song={song} locale={locale} /> : undefined}
     />
   );
   return (
@@ -225,6 +229,11 @@ export function MusicPage({
           {route.kind === 'search' ? `${copy['music.query']}: ${q}` : copy['music.description']}
         </p>
       </header>
+      {canFavorites && (
+        <a className={styles.favoriteLink} href={`${base}music/favorites`}>
+          <span aria-hidden="true">★</span> {copy['favorites.title']}
+        </a>
+      )}
       {canRandom && (
         <div className={styles.random}>
           <Action
