@@ -7,7 +7,9 @@ import { Artwork } from '../../design/components/Artwork';
 import { StatusSurface } from '../../design/components/StatusSurface';
 import { formatCount, messages, type Locale } from '../../i18n';
 import { MusicRow } from '../../music/components/MusicRow';
-import { createPlaylistClient } from '../../playlists/client';
+import { createPlaylistClient, PlaylistMutationError } from '../../playlists/client';
+import { DeletePlaylistConfirmation } from '../../playlists/components/DeletePlaylistConfirmation';
+import { PlaylistForm } from '../../playlists/components/PlaylistForm';
 import { playlistHref } from '../../playlists/routes';
 import { usePlayer } from '../../player/PlayerProvider';
 import styles from './Playlist.module.css';
@@ -26,6 +28,8 @@ export function PlaylistDetailPage({
   apiOrigin,
   onUnauthenticated,
   canStream,
+  canWrite,
+  csrfToken,
 }: {
   id: string;
   base: string;
@@ -35,10 +39,13 @@ export function PlaylistDetailPage({
   apiOrigin: string;
   onUnauthenticated: () => void;
   canStream: boolean;
+  canWrite: boolean;
+  csrfToken: string;
 }) {
   const player = usePlayer();
   const client = useMemo(() => createPlaylistClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
   const [attempt, retry] = useState(0);
+  const [overlay, setOverlay] = useState<'rename' | 'delete' | undefined>(undefined);
   const [state, setState] = useState<{
     key: string;
     playlist?: PlaylistDetail;
@@ -81,6 +88,7 @@ export function PlaylistDetailPage({
   const loading = state.key !== id || state.loading;
   const source = playlist ? `playlist:${playlist.id}@${playlist.revision}` : '';
   const songs = playlist?.entries.map((entry) => entry.song) ?? [];
+  const canManage = Boolean(playlist?.editable && canWrite);
 
   useEffect(() => {
     document.title = `${playlist?.name ?? copy['playlists.title']} · Musiclatte`;
@@ -148,13 +156,27 @@ export function PlaylistDetailPage({
                 {playlist.name}
               </h1>
               <p className={styles.meta}>{songCountLabel(playlist.songCount, locale)}</p>
-              {canStream && songs.length > 0 && (
+              {(canManage || (canStream && songs.length > 0)) && (
                 <div className={styles.headingActions}>
-                  <Action
-                    onClick={() => player.activate({ song: songs[0]!, songs, source, position: 0 })}
-                  >
-                    {copy['playlists.play']}
-                  </Action>
+                  {canStream && songs.length > 0 && (
+                    <Action
+                      onClick={() =>
+                        player.activate({ song: songs[0]!, songs, source, position: 0 })
+                      }
+                    >
+                      {copy['playlists.play']}
+                    </Action>
+                  )}
+                  {canManage && (
+                    <>
+                      <Action variant="secondary" onClick={() => setOverlay('rename')}>
+                        {copy['playlists.rename']}
+                      </Action>
+                      <Action variant="destructive" onClick={() => setOverlay('delete')}>
+                        {copy['playlists.delete']}
+                      </Action>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -207,6 +229,63 @@ export function PlaylistDetailPage({
                 ))}
               </ul>
             </section>
+          )}
+          {overlay === 'rename' && (
+            <PlaylistForm
+              mode="rename"
+              initialName={playlist.name}
+              locale={locale}
+              onDismiss={() => setOverlay(undefined)}
+              onRefresh={() => {
+                setOverlay(undefined);
+                retry((value) => value + 1);
+              }}
+              onSubmit={async (name, operationId, signal) => {
+                try {
+                  const result = await client.rename(playlist.id, playlist.revision, name, {
+                    csrfToken,
+                    operationId,
+                    signal,
+                  });
+                  setState({ key: id, playlist: result.playlist, loading: false });
+                  retry((value) => value + 1);
+                } catch (error) {
+                  if (error instanceof PlaylistMutationError && error.current)
+                    setState({ key: id, playlist: error.current, loading: false });
+                  if (error instanceof ApiError && error.code === 'unauthenticated')
+                    onUnauthenticated();
+                  throw error;
+                }
+              }}
+            />
+          )}
+          {overlay === 'delete' && (
+            <DeletePlaylistConfirmation
+              name={playlist.name}
+              locale={locale}
+              onDismiss={() => setOverlay(undefined)}
+              onRefresh={() => {
+                setOverlay(undefined);
+                retry((value) => value + 1);
+              }}
+              onDelete={async (operationId, signal) => {
+                try {
+                  await client.delete(playlist.id, playlist.revision, {
+                    csrfToken,
+                    operationId,
+                    signal,
+                  });
+                  window.history.replaceState(null, '', playlistHref(base));
+                  window.dispatchEvent(new PopStateEvent('popstate'));
+                } catch (error) {
+                  if (error instanceof PlaylistMutationError && error.current)
+                    setState({ key: id, playlist: error.current, loading: false });
+                  if (error instanceof ApiError && error.code === 'unauthenticated')
+                    onUnauthenticated();
+                  throw error;
+                }
+              }}
+            />
           )}
         </>
       )}

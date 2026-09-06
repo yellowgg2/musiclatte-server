@@ -1,0 +1,89 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgb(41 38 51 / 52%);
+  overscroll-behavior: contain;
+}
+
+.panel {
+  width: min(100%, 32rem);
+  max-height: min(42rem, calc(100dvh - 2 * var(--space-4)));
+  overflow: auto;
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+  box-shadow: 0 1.5rem 4rem rgb(41 38 51 / 24%);
+  color: var(--color-text);
+}
+
+.heading {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.heading h2 {
+  font-size: var(--text-title);
+  overflow-wrap: anywhere;
+}
+
+.description,
+.impact {
+  color: var(--color-secondary);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap-reverse;
+  gap: var(--space-3);
+}
+
+.error {
+  padding: var(--space-3);
+  background: var(--color-error-surface);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+}
+
+.target {
+  padding: var(--space-4);
+  background: var(--color-background);
+  border-radius: var(--radius-control);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 42rem) {
+  .backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .panel {
+    width: 100%;
+    max-height: min(86dvh, 42rem);
+    padding: var(--space-5) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom));
+    border-inline: 0;
+    border-bottom: 0;
+    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+  }
+}
+
+@media (max-width: 22rem) {
+  .actions > * {
+    flex: 1 1 100%;
+  }
+}

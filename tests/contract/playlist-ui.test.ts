@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { clientFeatures } from '../../apps/web/src/capabilities/client-features.js';
 import { createPlaylistClient } from '../../apps/web/src/playlists/client.js';
-import { cookieOf, createTestContext } from '../support/auth-harness.js';
+import { cookieOf, createTestContext, origin } from '../support/auth-harness.js';
 
 describe('playlist web producer-consumer contract', () => {
   const contexts: Awaited<ReturnType<typeof createTestContext>>[] = [];
@@ -10,11 +10,13 @@ describe('playlist web producer-consumer contract', () => {
     for (const context of contexts.splice(0)) await context.cleanup();
   });
 
-  /** The web consumer opens only after the versioned list and ordered detail producers are available. */
-  it('should enable the playlist consumer for strict list and detail responses', async () => {
+  /** The web consumer exposes lifecycle writes only with the versioned read and mutation producers. */
+  it('should enable the playlist consumer for strict read and write responses', async () => {
     const context = await createTestContext();
     contexts.push(context);
-    const headers = { cookie: cookieOf(await context.login()) };
+    const login = await context.login();
+    const session = login.json<{ csrfToken: string }>();
+    const headers = { cookie: cookieOf(login) };
     const list = await context.app.inject({ url: '/api/v1/playlists', headers });
     const detail = await context.app.inject({ url: '/api/v1/playlists/pl-1', headers });
 
@@ -27,10 +29,20 @@ describe('playlist web producer-consumer contract', () => {
       song: { id: 'tr-A' },
     });
     expect(clientFeatures['playlists.read']).toBe(true);
+    expect(clientFeatures['playlists.write']).toBe(true);
 
-    const fetcher: typeof fetch = async (input) => {
+    const fetcher: typeof fetch = async (input, init) => {
       const url = new URL(String(input));
-      const response = await context.app.inject({ url: url.pathname + url.search, headers });
+      const response = await context.app.inject({
+        method: (init?.method ?? 'GET') as 'GET' | 'POST' | 'PATCH' | 'DELETE',
+        url: url.pathname + url.search,
+        headers: {
+          ...Object.fromEntries(new Headers(init?.headers).entries()),
+          ...headers,
+          origin,
+        },
+        ...(init?.body ? { payload: String(init.body) } : {}),
+      });
       return new Response(response.body, {
         status: response.statusCode,
         headers: { 'content-type': 'application/json' },
@@ -51,5 +63,28 @@ describe('playlist web producer-consumer contract', () => {
       [1, 'tr-B'],
       [2, 'tr-A'],
     ]);
+
+    const created = await client.create('Contract & playlist', {
+      csrfToken: session.csrfToken,
+      operationId: 'A'.repeat(22),
+      signal: new AbortController().signal,
+    });
+    expect(created).toMatchObject({
+      schemaVersion: 1,
+      outcome: 'applied',
+      playlist: { name: 'Contract & playlist', editable: true },
+    });
+    const renamed = await client.rename(created.playlist.id, created.playlist.revision, 'Renamed', {
+      csrfToken: session.csrfToken,
+      operationId: 'B'.repeat(22),
+      signal: new AbortController().signal,
+    });
+    expect(renamed.playlist.name).toBe('Renamed');
+    const deleted = await client.delete(renamed.playlist.id, renamed.playlist.revision, {
+      csrfToken: session.csrfToken,
+      operationId: 'C'.repeat(22),
+      signal: new AbortController().signal,
+    });
+    expect(deleted).toMatchObject({ outcome: 'applied', deleted: true });
   });
 });

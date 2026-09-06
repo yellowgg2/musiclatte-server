@@ -6,7 +6,7 @@ export const clientFeatures = {
   'library.randomSongs': true,
   'library.scan': false,
   'playlists.read': true,
-  'playlists.write': false,
+  'playlists.write': true,
   'favorites.songs': false,
   'library.recentDownloads': false,
   'imports.youtube': false,

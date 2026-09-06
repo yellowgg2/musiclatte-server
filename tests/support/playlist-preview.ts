@@ -47,16 +47,17 @@ const clock = setInterval(() => {
   if (mode === current) return;
   current = mode;
   context.state.playlistExists = mode !== 'list-empty' && mode !== 'missing';
-  context.state.playlistName = longName;
+  context.state.playlistName = mode === 'conflict' ? 'Server-updated playlist' : longName;
   context.state.playlistEntryIds = mode === 'detail-empty' ? [] : entries;
   context.state.collectionError = mode === 'error' ? 60 : mode === 'denied' ? 50 : 0;
   context.state.collectionDelayMs = mode === 'loading' ? 3500 : 0;
+  context.state.mutationMismatch = mode === 'outcome-unknown';
   context.state.playlistCoverArt = mode === 'cover-fallback' ? '' : 'cover-A';
   context.state.mediaStatus = mode === 'cover-error' ? 503 : 0;
 }, 50);
 
 await context.app.listen({ host: '127.0.0.1', port: 3000 });
-console.info('S06 playlist preview ready at 127.0.0.1:3000');
+console.info('S07 playlist preview ready at 127.0.0.1:3000');
 
 async function cleanup() {
   clearInterval(clock);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ApiErrorCode, PlaylistSummary } from '@musiclatte/contracts';
+import type { ApiErrorCode, PlaylistDetail, PlaylistSummary } from '@musiclatte/contracts';
 import { ApiError } from '../../auth/client';
 import { LanguagePicker } from '../../app/LanguagePicker';
 import { Action } from '../../design/components/Action';
@@ -7,11 +7,28 @@ import { StatusSurface } from '../../design/components/StatusSurface';
 import { formatCount, messages, type Locale } from '../../i18n';
 import { createPlaylistClient } from '../../playlists/client';
 import { PlaylistCard } from '../../playlists/components/PlaylistCard';
+import { PlaylistForm } from '../../playlists/components/PlaylistForm';
 import styles from './Playlist.module.css';
 
 function countLabel(count: number, locale: Locale, key: 'playlists.count' | 'playlists.songCount') {
   const suffix = count === 1 ? '.one' : '.many';
   return messages[locale][`${key}${suffix}`].replace('{count}', formatCount(count, locale));
+}
+
+function summaryOf(playlist: PlaylistDetail): PlaylistSummary {
+  return {
+    id: playlist.id,
+    name: playlist.name,
+    owner: playlist.owner,
+    songCount: playlist.songCount,
+    created: playlist.created,
+    changed: playlist.changed,
+    duration: playlist.duration,
+    public: playlist.public,
+    editable: playlist.editable,
+    coverState: 'fallback',
+    revision: playlist.revision,
+  };
 }
 
 export function PlaylistsPage({
@@ -21,6 +38,8 @@ export function PlaylistsPage({
   fetcher,
   apiOrigin,
   onUnauthenticated,
+  canWrite,
+  csrfToken,
 }: {
   base: string;
   locale: Locale;
@@ -28,9 +47,12 @@ export function PlaylistsPage({
   fetcher: typeof fetch;
   apiOrigin: string;
   onUnauthenticated: () => void;
+  canWrite: boolean;
+  csrfToken: string;
 }) {
   const client = useMemo(() => createPlaylistClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
   const [attempt, retry] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
   const [state, setState] = useState<{
     playlists?: PlaylistSummary[];
     error?: ApiErrorCode;
@@ -86,6 +108,11 @@ export function PlaylistsPage({
             {countLabel(state.playlists.length, locale, 'playlists.count')}
           </p>
         )}
+        {canWrite && (
+          <div className={styles.headingActions}>
+            <Action onClick={() => setCreateOpen(true)}>{copy['playlists.create']}</Action>
+          </div>
+        )}
       </header>
       {state.loading && !state.playlists && (
         <StatusSurface
@@ -129,6 +156,35 @@ export function PlaylistsPage({
             />
           ))}
         </ul>
+      )}
+      {createOpen && (
+        <PlaylistForm
+          mode="create"
+          locale={locale}
+          onDismiss={() => setCreateOpen(false)}
+          onRefresh={() => {
+            setCreateOpen(false);
+            retry((value) => value + 1);
+          }}
+          onSubmit={async (name, operationId, signal) => {
+            try {
+              const result = await client.create(name, { csrfToken, operationId, signal });
+              const created = summaryOf(result.playlist);
+              setState((previous) => ({
+                playlists: [
+                  ...(previous.playlists?.filter((playlist) => playlist.id !== created.id) ?? []),
+                  created,
+                ],
+                loading: false,
+              }));
+              retry((value) => value + 1);
+            } catch (error) {
+              if (error instanceof ApiError && error.code === 'unauthenticated')
+                onUnauthenticated();
+              throw error;
+            }
+          }}
+        />
       )}
     </div>
   );

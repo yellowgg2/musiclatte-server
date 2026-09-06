@@ -42,6 +42,7 @@ export function Router({
   const canStream = availableEntries(state.capabilities).includes('music.stream');
   const canRandom = availableEntries(state.capabilities).includes('library.randomSongs');
   const canReadPlaylists = availableEntries(state.capabilities).includes('playlists.read');
+  const canWritePlaylists = availableEntries(state.capabilities).includes('playlists.write');
   const currentPlaylistRoute = playlistRoute(location, base);
   const playlistCapability = featureState(state.capabilities?.features['playlists.read']);
   const copy = messages[locale];
@@ -189,6 +190,8 @@ export function Router({
               fetcher={fetcher}
               apiOrigin={apiOrigin}
               onUnauthenticated={store.expire}
+              canWrite={canWritePlaylists}
+              csrfToken={state.session.csrfToken}
             />
           ) : (
             <PlaylistDetailPage
@@ -200,6 +203,8 @@ export function Router({
               apiOrigin={apiOrigin}
               onUnauthenticated={store.expire}
               canStream={canStream}
+              canWrite={canWritePlaylists}
+              csrfToken={state.session.csrfToken}
             />
           )
         ) : currentPlaylistRoute ? (
