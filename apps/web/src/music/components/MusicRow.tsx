@@ -21,6 +21,8 @@ export function MusicRow({
   current = false,
   playbackStatus = 'idle',
   coverUrl,
+  selected,
+  onSelect,
 }: {
   song: MusicEntry;
   locale: Locale;
@@ -33,13 +35,30 @@ export function MusicRow({
   current?: boolean;
   playbackStatus?: PlaybackStatus;
   coverUrl?: (id: string) => string;
+  selected?: boolean;
+  onSelect?: (selected: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const copy = messages[locale];
   const seconds = song.duration === undefined ? null : Math.floor(song.duration);
   return (
     <li className={styles.row}>
-      <div className={styles.rowMain}>
+      <div className={styles.rowMain} data-selectable={onSelect ? 'true' : undefined}>
+        {onSelect && (
+          <label className={styles.selection}>
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={(event) => onSelect(event.currentTarget.checked)}
+            />
+            <span className={styles.srOnly}>
+              {copy[selected ? 'selection.deselectSong' : 'selection.selectSong'].replace(
+                '{title}',
+                song.title,
+              )}
+            </span>
+          </label>
+        )}
         <details onToggle={(event) => setExpanded(event.currentTarget.open)}>
           <summary
             className={styles.summary}

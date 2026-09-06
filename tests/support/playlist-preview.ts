@@ -46,12 +46,19 @@ const clock = setInterval(() => {
   }
   if (mode === current) return;
   current = mode;
+  context.state.mutationWriteCount = 0;
   context.state.playlistExists = mode !== 'list-empty' && mode !== 'missing';
   context.state.playlistName = mode === 'conflict' ? 'Server-updated playlist' : longName;
-  context.state.playlistEntryIds = mode === 'detail-empty' ? [] : entries;
+  context.state.playlistEntryIds =
+    mode === 'detail-empty'
+      ? []
+      : mode === 'selection-partial'
+        ? Array.from({ length: 40 }, (_, index) => `selection-${index}-${'x'.repeat(480)}`)
+        : entries;
   context.state.collectionError = mode === 'error' ? 60 : mode === 'denied' ? 50 : 0;
   context.state.collectionDelayMs = mode === 'loading' ? 3500 : 0;
   context.state.mutationMismatch = mode === 'outcome-unknown';
+  context.state.mutationErrorAfter = mode === 'selection-partial' ? 2 : -1;
   context.state.playlistCoverArt = mode === 'cover-fallback' ? '' : 'cover-A';
   context.state.mediaStatus = mode === 'cover-error' ? 503 : 0;
 }, 50);

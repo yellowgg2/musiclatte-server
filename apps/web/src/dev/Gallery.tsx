@@ -24,6 +24,7 @@ export function Gallery() {
   const [recovered, setRecovered] = useState(false);
   const [previewSongId, setPreviewSongId] = useState<string | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
+  const [selectedSongIds, setSelectedSongIds] = useState<string[]>([]);
   const t = messages[locale];
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -302,6 +303,14 @@ export function Gallery() {
                 }}
                 onPause={() => setPreviewPlaying(false)}
                 onResume={() => setPreviewPlaying(true)}
+                selected={selectedSongIds.includes(song.id)}
+                onSelect={() =>
+                  setSelectedSongIds((current) =>
+                    current.includes(song.id)
+                      ? current.filter((id) => id !== song.id)
+                      : [...current, song.id],
+                  )
+                }
               />
             ))}
           </ul>

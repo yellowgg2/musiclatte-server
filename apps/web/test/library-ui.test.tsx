@@ -300,6 +300,9 @@ describe('library regression boundaries', () => {
     const play = within(gallery).getAllByRole('button', { name: /재생$/ })[0]!;
     await userEvent.setup().click(play);
     expect(within(gallery).getAllByRole('button', { name: /일시 정지$/ })).toHaveLength(1);
+    const select = within(gallery).getAllByRole('checkbox')[0]!;
+    await userEvent.setup().click(select);
+    expect((select as HTMLInputElement).checked).toBe(true);
   });
   /** Unsafe dot path segments cannot become requests to a different endpoint after URL normalization. */
   it('should reject encoded traversal while accepting canonical opaque deep links', async () => {

@@ -20,6 +20,7 @@ import { AppShell } from './AppShell';
 import { LanguagePicker } from './LanguagePicker';
 import { StatusSurface } from '../design/components/StatusSurface';
 import { Action } from '../design/components/Action';
+import { SelectionProvider } from '../selection/SelectionProvider';
 import styles from './Shell.module.css';
 import '../design/global.css';
 export function Router({
@@ -170,32 +171,65 @@ export function Router({
       onUnauthenticated={store.expire}
       {...(audioFactory ? { audioFactory } : {})}
     >
-      <AppShell
-        locale={locale}
-        base={base}
-        capabilities={state.capabilities}
-        player={
-          <>
-            <DesktopPlayer locale={locale} />
-            <MiniPlayer locale={locale} />
-          </>
-        }
-      >
-        {currentPlaylistRoute && canReadPlaylists ? (
-          currentPlaylistRoute.kind === 'list' ? (
-            <PlaylistsPage
-              base={base}
-              locale={locale}
-              onLocale={onLocale}
-              fetcher={fetcher}
-              apiOrigin={apiOrigin}
-              onUnauthenticated={store.expire}
-              canWrite={canWritePlaylists}
-              csrfToken={state.session.csrfToken}
-            />
-          ) : (
-            <PlaylistDetailPage
-              id={currentPlaylistRoute.id}
+      <SelectionProvider>
+        <AppShell
+          locale={locale}
+          base={base}
+          capabilities={state.capabilities}
+          player={
+            <>
+              <DesktopPlayer locale={locale} />
+              <MiniPlayer locale={locale} />
+            </>
+          }
+        >
+          {currentPlaylistRoute && canReadPlaylists ? (
+            currentPlaylistRoute.kind === 'list' ? (
+              <PlaylistsPage
+                base={base}
+                locale={locale}
+                onLocale={onLocale}
+                fetcher={fetcher}
+                apiOrigin={apiOrigin}
+                onUnauthenticated={store.expire}
+                canWrite={canWritePlaylists}
+                csrfToken={state.session.csrfToken}
+              />
+            ) : (
+              <PlaylistDetailPage
+                id={currentPlaylistRoute.id}
+                base={base}
+                locale={locale}
+                onLocale={onLocale}
+                fetcher={fetcher}
+                apiOrigin={apiOrigin}
+                onUnauthenticated={store.expire}
+                canStream={canStream}
+                canWrite={canWritePlaylists}
+                csrfToken={state.session.csrfToken}
+              />
+            )
+          ) : currentPlaylistRoute ? (
+            <div className={styles.settings}>
+              <h1 tabIndex={-1} data-page-heading>
+                {copy[playlistCapability === 'denied' ? 'status.denied' : 'status.unavailable']}
+              </h1>
+              <p>
+                {
+                  copy[
+                    playlistCapability === 'denied'
+                      ? 'playlists.deniedHelp'
+                      : 'playlists.unavailableHelp'
+                  ]
+                }
+              </p>
+              <a href={canBrowse ? `${base}music` : `${base}settings`}>
+                {copy[canBrowse ? 'playlists.browseMusic' : 'status.back']}
+              </a>
+            </div>
+          ) : musicRoute(location, base) && canBrowse ? (
+            <MusicPage
+              location={location}
               base={base}
               locale={locale}
               onLocale={onLocale}
@@ -203,57 +237,28 @@ export function Router({
               apiOrigin={apiOrigin}
               onUnauthenticated={store.expire}
               canStream={canStream}
-              canWrite={canWritePlaylists}
+              canRandom={canRandom}
+              canWritePlaylists={canWritePlaylists}
               csrfToken={state.session.csrfToken}
             />
-          )
-        ) : currentPlaylistRoute ? (
-          <div className={styles.settings}>
-            <h1 tabIndex={-1} data-page-heading>
-              {copy[playlistCapability === 'denied' ? 'status.denied' : 'status.unavailable']}
-            </h1>
-            <p>
-              {
-                copy[
-                  playlistCapability === 'denied'
-                    ? 'playlists.deniedHelp'
-                    : 'playlists.unavailableHelp'
-                ]
-              }
-            </p>
-            <a href={canBrowse ? `${base}music` : `${base}settings`}>
-              {copy[canBrowse ? 'playlists.browseMusic' : 'status.back']}
-            </a>
-          </div>
-        ) : musicRoute(location, base) && canBrowse ? (
-          <MusicPage
-            location={location}
-            base={base}
-            locale={locale}
-            onLocale={onLocale}
-            fetcher={fetcher}
-            apiOrigin={apiOrigin}
-            onUnauthenticated={store.expire}
-            canStream={canStream}
-            canRandom={canRandom}
-          />
-        ) : isSettingsPath(path, base) || path === `${base}login` || path === base ? (
-          <SettingsPage
-            state={state}
-            locale={locale}
-            onLocale={onLocale}
-            onLogout={() => void store.logout()}
-          />
-        ) : (
-          <div className={styles.settings}>
-            <h1 tabIndex={-1} data-page-heading>
-              {copy['status.unavailable']}
-            </h1>
-            <p>{copy['status.unavailableHelp']}</p>
-            <a href={`${base}settings`}>{copy['status.back']}</a>
-          </div>
-        )}
-      </AppShell>
+          ) : isSettingsPath(path, base) || path === `${base}login` || path === base ? (
+            <SettingsPage
+              state={state}
+              locale={locale}
+              onLocale={onLocale}
+              onLogout={() => void store.logout()}
+            />
+          ) : (
+            <div className={styles.settings}>
+              <h1 tabIndex={-1} data-page-heading>
+                {copy['status.unavailable']}
+              </h1>
+              <p>{copy['status.unavailableHelp']}</p>
+              <a href={`${base}settings`}>{copy['status.back']}</a>
+            </div>
+          )}
+        </AppShell>
+      </SelectionProvider>
     </PlayerProvider>
   );
 }

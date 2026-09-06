@@ -12,6 +12,9 @@ import { DeletePlaylistConfirmation } from '../../playlists/components/DeletePla
 import { PlaylistForm } from '../../playlists/components/PlaylistForm';
 import { playlistHref } from '../../playlists/routes';
 import { usePlayer } from '../../player/PlayerProvider';
+import { useSelection } from '../../selection/SelectionProvider';
+import { SelectionBar } from '../../selection/components/SelectionBar';
+import { selectionScopeKey } from '../../selection/model';
 import styles from './Playlist.module.css';
 
 function songCountLabel(count: number, locale: Locale) {
@@ -43,6 +46,7 @@ export function PlaylistDetailPage({
   csrfToken: string;
 }) {
   const player = usePlayer();
+  const selection = useSelection();
   const client = useMemo(() => createPlaylistClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
   const [attempt, retry] = useState(0);
   const [overlay, setOverlay] = useState<'rename' | 'delete' | undefined>(undefined);
@@ -89,6 +93,19 @@ export function PlaylistDetailPage({
   const source = playlist ? `playlist:${playlist.id}@${playlist.revision}` : '';
   const songs = playlist?.entries.map((entry) => entry.song) ?? [];
   const canManage = Boolean(playlist?.editable && canWrite);
+  const selectionKey = playlist
+    ? selectionScopeKey({ kind: 'playlist', id: playlist.id, revision: playlist.revision })
+    : undefined;
+
+  useEffect(() => {
+    selection.dispatch({
+      type: 'scope',
+      ...(selectionKey ? { key: selectionKey } : {}),
+    });
+    return () => {
+      if (selectionKey) selection.dispatch({ type: 'leave', key: selectionKey });
+    };
+  }, [selection.dispatch, selectionKey]);
 
   useEffect(() => {
     document.title = `${playlist?.name ?? copy['playlists.title']} · Musiclatte`;
@@ -181,6 +198,33 @@ export function PlaylistDetailPage({
               )}
             </div>
           </header>
+          {playlist.entries.length > 0 && (
+            <SelectionBar
+              locale={locale}
+              scopeLabel={copy['selection.scope.playlist'].replace('{name}', playlist.name)}
+              pageItems={playlist.entries.map((entry) => ({
+                id: entry.song.id,
+                order: entry.position,
+              }))}
+              fetcher={fetcher}
+              apiOrigin={apiOrigin}
+              csrfToken={csrfToken}
+              canWrite={canWrite}
+              onUnauthenticated={onUnauthenticated}
+              onPlaylistUpdated={(updated) => {
+                if (updated.id !== playlist.id) return;
+                setState({ key: id, playlist: updated, loading: false });
+                selection.dispatch({
+                  type: 'rebase',
+                  key: selectionScopeKey({
+                    kind: 'playlist',
+                    id: updated.id,
+                    revision: updated.revision,
+                  }),
+                });
+              }}
+            />
+          )}
           {playlist.entries.length === 0 ? (
             <StatusSurface
               state="empty"
@@ -225,6 +269,18 @@ export function PlaylistDetailPage({
                       : {})}
                     onPause={player.pause}
                     onResume={player.resume}
+                    {...(selection.state.active
+                      ? {
+                          selected: selection.state.items.some(
+                            ({ id: selectedId }) => selectedId === entry.song.id,
+                          ),
+                          onSelect: () =>
+                            selection.dispatch({
+                              type: 'toggle',
+                              item: { id: entry.song.id, order: entry.position },
+                            }),
+                        }
+                      : {})}
                   />
                 ))}
               </ul>

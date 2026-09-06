@@ -235,6 +235,20 @@ export function createPlaylistClient({
         }),
       );
     },
+    async append(
+      id: string,
+      expectedRevision: string,
+      songIds: readonly string[],
+      { csrfToken, operationId, signal }: PlaylistMutationOptions,
+    ): Promise<PlaylistMutationResponse> {
+      return decodeMutationResponse(
+        await request(`/api/v1/playlists/${encodeURIComponent(id)}`, signal, {
+          method: 'PATCH',
+          csrfToken,
+          body: { operationId, expectedRevision, action: 'append', songIds },
+        }),
+      );
+    },
     async delete(
       id: string,
       expectedRevision: string,

@@ -11,6 +11,9 @@ import { musicHref, musicRoute, scopeQuery, pageOffset } from '../../music/queri
 import { FolderRow } from '../../music/components/FolderRow';
 import { MusicRow } from '../../music/components/MusicRow';
 import { usePlayer } from '../../player/PlayerProvider';
+import { useSelection } from '../../selection/SelectionProvider';
+import { SelectionBar } from '../../selection/components/SelectionBar';
+import { selectionScopeKey } from '../../selection/model';
 import type { ApiErrorCode, MusicEntry } from '@musiclatte/contracts';
 import styles from './Music.module.css';
 
@@ -24,6 +27,8 @@ export function MusicPage({
   onUnauthenticated,
   canStream,
   canRandom,
+  canWritePlaylists,
+  csrfToken,
 }: {
   location: string;
   base: string;
@@ -34,8 +39,11 @@ export function MusicPage({
   onUnauthenticated: () => void;
   canStream: boolean;
   canRandom: boolean;
+  canWritePlaylists: boolean;
+  csrfToken: string;
 }) {
   const player = usePlayer();
+  const selection = useSelection();
   const route = useMemo(() => musicRoute(location, base)!, [location, base]);
   const client = useMemo(() => createMusicClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
   const [state, setState] = useState<{
@@ -134,7 +142,39 @@ export function MusicPage({
     document.title = `${title} · Musiclatte`;
   }, [title]);
   const searchItems = data?.kind === 'search' ? data.result : null;
-  const songRow = (song: MusicEntry, songs: readonly MusicEntry[]) => (
+  const selectableSongs =
+    data?.kind === 'folder'
+      ? data.directory.child.filter((entry) => !entry.isDir)
+      : data?.kind === 'search'
+        ? data.result.song
+        : [];
+  const selectionKey =
+    data?.kind === 'folder'
+      ? selectionScopeKey({ kind: 'folder', id: data.directory.id })
+      : data?.kind === 'search'
+        ? selectionScopeKey({
+            kind: 'search',
+            query: q,
+            ...(route.query.get('musicFolderId')
+              ? { musicFolderId: route.query.get('musicFolderId')! }
+              : {}),
+          })
+        : undefined;
+  const selectionOffset = data?.kind === 'search' ? pageOffset(route.query, 'song') : 0;
+  const pageSelectionItems = selectableSongs.map((song, index) => ({
+    id: song.id,
+    order: selectionOffset + index,
+  }));
+  useEffect(() => {
+    selection.dispatch({
+      type: 'scope',
+      ...(selectionKey ? { key: selectionKey } : {}),
+    });
+    return () => {
+      if (selectionKey) selection.dispatch({ type: 'leave', key: selectionKey });
+    };
+  }, [selection.dispatch, selectionKey]);
+  const songRow = (song: MusicEntry, songs: readonly MusicEntry[], order = 0) => (
     <MusicRow
       key={song.id}
       song={song}
@@ -148,6 +188,12 @@ export function MusicPage({
       {...(canStream ? { onActivate: player.activate } : {})}
       onPause={player.pause}
       onResume={player.resume}
+      {...(selectionKey && selection.state.active
+        ? {
+            selected: selection.state.items.some(({ id }) => id === song.id),
+            onSelect: () => selection.dispatch({ type: 'toggle', item: { id: song.id, order } }),
+          }
+        : {})}
     />
   );
   return (
@@ -228,6 +274,25 @@ export function MusicPage({
         />
         <Action type="submit">{copy['music.searchAction']}</Action>
       </form>
+      {selectionKey && selectableSongs.length > 0 && (
+        <SelectionBar
+          locale={locale}
+          scopeLabel={
+            data?.kind === 'search'
+              ? copy['selection.scope.search'].replace('{query}', q)
+              : copy['selection.scope.folder'].replace(
+                  '{name}',
+                  data?.kind === 'folder' ? data.directory.name : '',
+                )
+          }
+          pageItems={pageSelectionItems}
+          fetcher={fetcher}
+          apiOrigin={apiOrigin}
+          csrfToken={csrfToken}
+          canWrite={canWritePlaylists}
+          onUnauthenticated={onUnauthenticated}
+        />
+      )}
       {loading && (
         <StatusSurface
           state="loading"
@@ -292,11 +357,11 @@ export function MusicPage({
             <span className={styles.count}>{formatCount(data.directory.child.length, locale)}</span>
           </h2>
           <ul className={styles.list}>
-            {data.directory.child.map((song) =>
+            {data.directory.child.map((song, index) =>
               song.isDir ? (
                 <FolderRow key={song.id} title={song.title} href={link('folder', song.id)} />
               ) : (
-                songRow(song, data.directory.child)
+                songRow(song, data.directory.child, index)
               ),
             )}
           </ul>
@@ -355,7 +420,9 @@ export function MusicPage({
               </h2>
               <ul className={styles.list}>
                 {kind === 'song'
-                  ? searchItems.song.map((song) => songRow(song, searchItems.song))
+                  ? searchItems.song.map((song, index) =>
+                      songRow(song, searchItems.song, offset + index),
+                    )
                   : searchItems[kind].map((item) => (
                       <FolderRow
                         key={item.id}

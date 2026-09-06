@@ -124,6 +124,9 @@
 .shell:has([data-persistent-player]) .content {
   padding-bottom: calc(var(--space-7) + 7rem);
 }
+.shell:has([data-selection-bar]) .content {
+  padding-bottom: calc(var(--space-7) + 13rem);
+}
 .settings {
   max-width: 46rem;
   display: grid;
@@ -222,6 +225,9 @@
   }
   .shell:has([data-persistent-player]) .content {
     padding-bottom: calc(10rem + env(safe-area-inset-bottom));
+  }
+  .shell:has([data-selection-bar]) .content {
+    padding-bottom: calc(22rem + env(safe-area-inset-bottom));
   }
   .navigation {
     display: flex;

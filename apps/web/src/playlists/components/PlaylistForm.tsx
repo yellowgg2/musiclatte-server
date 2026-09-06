@@ -20,7 +20,7 @@ export function PlaylistForm({
   mode: PlaylistFormMode;
   initialName?: string;
   locale: Locale;
-  onSubmit: (name: string, operationId: string, signal: AbortSignal) => Promise<void>;
+  onSubmit: (name: string, operationId: string, signal: AbortSignal) => Promise<void | boolean>;
   onDismiss: () => void;
   onRefresh?: () => void;
 }) {
@@ -56,8 +56,8 @@ export function PlaylistForm({
     controller.current = nextController;
     intent.current ??= newPlaylistOperationId();
     try {
-      await onSubmit(normalized, intent.current, nextController.signal);
-      dismiss();
+      const dismissAfterSubmit = await onSubmit(normalized, intent.current, nextController.signal);
+      if (dismissAfterSubmit !== false) dismiss();
     } catch (error) {
       if (nextController.signal.aborted) return;
       const code = error instanceof ApiError ? error.code : 'internal_error';

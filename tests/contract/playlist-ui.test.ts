@@ -80,7 +80,18 @@ describe('playlist web producer-consumer contract', () => {
       signal: new AbortController().signal,
     });
     expect(renamed.playlist.name).toBe('Renamed');
-    const deleted = await client.delete(renamed.playlist.id, renamed.playlist.revision, {
+    const appended = await client.append(
+      renamed.playlist.id,
+      renamed.playlist.revision,
+      ['tr-A', 'tr-B'],
+      {
+        csrfToken: session.csrfToken,
+        operationId: 'D'.repeat(22),
+        signal: new AbortController().signal,
+      },
+    );
+    expect(appended.playlist.entries.map((entry) => entry.song.id)).toEqual(['tr-A', 'tr-B']);
+    const deleted = await client.delete(appended.playlist.id, appended.playlist.revision, {
       csrfToken: session.csrfToken,
       operationId: 'C'.repeat(22),
       signal: new AbortController().signal,

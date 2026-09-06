@@ -100,6 +100,8 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     playlistEntryIds: ['tr-A', 'tr-B', 'tr-A'],
     playlistCoverArt: 'cover-A',
     mutationError: 0,
+    mutationErrorAfter: -1,
+    mutationWriteCount: 0,
     mutationDelayMs: 0,
     mutationResponseLoss: false,
     mutationMismatch: false,
@@ -184,7 +186,13 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       res.end(JSON.stringify(subsonicErrorFixture(70, 'synthetic-secret-upstream-message')));
       return;
     }
-    if (valid && isCollectionWrite && !state.mutationError) {
+    if (valid && isCollectionWrite) state.mutationWriteCount += 1;
+    const currentMutationError =
+      state.mutationError ||
+      (state.mutationErrorAfter > 0 && state.mutationWriteCount >= state.mutationErrorAfter
+        ? 60
+        : 0);
+    if (valid && isCollectionWrite && !currentMutationError) {
       const nextIds = url.searchParams.getAll('songId');
       if (!state.mutationMismatch) {
         if (operation === 'createPlaylist') {
@@ -313,8 +321,8 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
             ? state.favoriteWriteError
             : isCollectionRead && state.collectionError
               ? state.collectionError
-              : isCollectionWrite && state.mutationError
-                ? state.mutationError
+              : isCollectionWrite && currentMutationError
+                ? currentMutationError
                 : isLibrary && state.libraryError
                   ? state.libraryError
                   : !valid

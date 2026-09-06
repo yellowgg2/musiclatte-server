@@ -70,3 +70,17 @@ Existing gonic `/rest`, Musiclatte native, bot, music/media/player routes, and s
 All failures use the shared `{schemaVersion: 1, error: {code, retryable}}` envelope. Relevant mappings are `400 invalid_request`, `401 unauthenticated`, `403 forbidden`/`csrf_rejected`, `404 not_found`, `409 conflict`/`outcome_unknown`, `415 invalid_request`, `422 invalid_request`/`token_auth_unsupported`, and retryable `503 upstream_unavailable`. User-visible KO/EN clients translate the stable codes; upstream text is not exposed.
 
 Verification evidence is recorded in [Step 04](../verification/phase-2/step-04.md).
+
+## Step 08 web selection consumer
+
+The web selection consumer sends append requests in stable source order and budgets the encoded
+JSON operation envelope, revision, and song IDs together. Its 8KiB default is strictly below the
+16KiB Fastify body limit and provides practical headroom when the BFF maps IDs into repeated
+Subsonic query parameters. Each successful batch returns the detail revision required by the next
+batch and receives a new operation ID. A failed batch stops the sequence; retry reuses that batch's
+operation ID and revision, while already-applied IDs are removed from selection.
+
+The playlist picker uses summaries only for presentation, then rereads chosen detail to enforce the
+server's current `editable` and revision contract immediately before append. Create-new confirms an
+empty playlist before starting the same append pipeline. Verification is recorded in
+[Step 08](../verification/phase-2/step-08/README.md).
