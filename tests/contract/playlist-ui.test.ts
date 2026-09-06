@@ -91,7 +91,45 @@ describe('playlist web producer-consumer contract', () => {
       },
     );
     expect(appended.playlist.entries.map((entry) => entry.song.id)).toEqual(['tr-A', 'tr-B']);
-    const deleted = await client.delete(appended.playlist.id, appended.playlist.revision, {
+    const editClient = client as typeof client & {
+      reorder: (
+        id: string,
+        revision: string,
+        order: readonly number[],
+        options: Parameters<typeof client.append>[3],
+      ) => ReturnType<typeof client.append>;
+      remove: (
+        id: string,
+        revision: string,
+        occurrence: { position: number; songId: string },
+        options: Parameters<typeof client.append>[3],
+      ) => ReturnType<typeof client.append>;
+    };
+    expect(typeof editClient.reorder).toBe('function');
+    expect(typeof editClient.remove).toBe('function');
+    const reordered = await editClient.reorder(
+      appended.playlist.id,
+      appended.playlist.revision,
+      [1, 0],
+      {
+        csrfToken: session.csrfToken,
+        operationId: 'E'.repeat(22),
+        signal: new AbortController().signal,
+      },
+    );
+    expect(reordered.playlist.entries.map((entry) => entry.song.id)).toEqual(['tr-B', 'tr-A']);
+    const removed = await editClient.remove(
+      reordered.playlist.id,
+      reordered.playlist.revision,
+      { position: 1, songId: 'tr-A' },
+      {
+        csrfToken: session.csrfToken,
+        operationId: 'F'.repeat(22),
+        signal: new AbortController().signal,
+      },
+    );
+    expect(removed.playlist.entries.map((entry) => entry.song.id)).toEqual(['tr-B']);
+    const deleted = await client.delete(removed.playlist.id, removed.playlist.revision, {
       csrfToken: session.csrfToken,
       operationId: 'C'.repeat(22),
       signal: new AbortController().signal,

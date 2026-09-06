@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ApiErrorCode, PlaylistDetail } from '@musiclatte/contracts';
 import { ApiError } from '../../auth/client';
 import { LanguagePicker } from '../../app/LanguagePicker';
@@ -10,6 +10,9 @@ import { MusicRow } from '../../music/components/MusicRow';
 import { createPlaylistClient, PlaylistMutationError } from '../../playlists/client';
 import { DeletePlaylistConfirmation } from '../../playlists/components/DeletePlaylistConfirmation';
 import { PlaylistForm } from '../../playlists/components/PlaylistForm';
+import { PlaylistOccurrenceActions } from '../../playlists/components/PlaylistOccurrenceActions';
+import { moveOccurrenceOrder } from '../../playlists/occurrences';
+import { newPlaylistOperationId } from '../../playlists/operation-id';
 import { playlistHref } from '../../playlists/routes';
 import { usePlayer } from '../../player/PlayerProvider';
 import { useSelection } from '../../selection/SelectionProvider';
@@ -50,6 +53,15 @@ export function PlaylistDetailPage({
   const client = useMemo(() => createPlaylistClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
   const [attempt, retry] = useState(0);
   const [overlay, setOverlay] = useState<'rename' | 'delete' | undefined>(undefined);
+  const [mutation, setMutation] = useState<{ position: number; kind: 'move' | 'remove' }>();
+  const [editError, setEditError] = useState<ApiErrorCode>();
+  const [focusRequest, setFocusRequest] = useState<{
+    kind: 'move' | 'remove' | 'conflict';
+    songId: string;
+    position: number;
+  }>();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const occurrenceRefs = useRef(new Map<number, HTMLDivElement>());
   const [state, setState] = useState<{
     key: string;
     playlist?: PlaylistDetail;
@@ -111,6 +123,85 @@ export function PlaylistDetailPage({
     document.title = `${playlist?.name ?? copy['playlists.title']} · Musiclatte`;
   }, [copy, playlist?.name]);
 
+  useEffect(() => {
+    if (!focusRequest || !playlist) return;
+    let position: number | undefined;
+    if (focusRequest.kind === 'remove') {
+      position =
+        playlist.entries[Math.min(focusRequest.position, playlist.entries.length - 1)]?.position;
+    } else {
+      position = playlist.entries
+        .filter((entry) => entry.song.id === focusRequest.songId)
+        .sort(
+          (left, right) =>
+            Math.abs(left.position - focusRequest.position) -
+            Math.abs(right.position - focusRequest.position),
+        )[0]?.position;
+    }
+    const target = position === undefined ? undefined : occurrenceRefs.current.get(position);
+    (target ?? headingRef.current)?.focus();
+    setFocusRequest(undefined);
+  }, [focusRequest, playlist]);
+
+  async function editOccurrence(
+    entry: PlaylistDetail['entries'][number],
+    kind: 'remove' | 'move',
+    direction?: 'up' | 'down',
+  ) {
+    if (!playlist || mutation) return;
+    const order =
+      kind === 'move' && direction
+        ? moveOccurrenceOrder(
+            playlist.entries,
+            { position: entry.position, songId: entry.song.id },
+            direction,
+          )
+        : undefined;
+    if (kind === 'move' && !order) return;
+    const destination =
+      kind === 'move' ? entry.position + (direction === 'up' ? -1 : 1) : entry.position;
+    const controller = new AbortController();
+    setMutation({ position: entry.position, kind });
+    setEditError(undefined);
+    try {
+      const options = {
+        csrfToken,
+        operationId: newPlaylistOperationId(),
+        signal: controller.signal,
+      };
+      const result =
+        kind === 'remove'
+          ? await client.remove(
+              playlist.id,
+              playlist.revision,
+              { position: entry.position, songId: entry.song.id },
+              options,
+            )
+          : await client.reorder(playlist.id, playlist.revision, order!, options);
+      setState({ key: id, playlist: result.playlist, loading: false });
+      selection.dispatch({
+        type: 'rebase',
+        key: selectionScopeKey({
+          kind: 'playlist',
+          id: result.playlist.id,
+          revision: result.playlist.revision,
+        }),
+      });
+      setFocusRequest({ kind, songId: entry.song.id, position: destination });
+    } catch (error) {
+      if (error instanceof PlaylistMutationError) {
+        if (error.current) setState({ key: id, playlist: error.current, loading: false });
+        setEditError(error.code);
+        setFocusRequest({ kind: 'conflict', songId: entry.song.id, position: entry.position });
+      } else if (error instanceof ApiError) {
+        if (error.code === 'unauthenticated') onUnauthenticated();
+        else setEditError(error.code);
+      } else setEditError('internal_error');
+    } finally {
+      setMutation(undefined);
+    }
+  }
+
   return (
     <div className={styles.page}>
       <div className={styles.topline}>
@@ -169,7 +260,7 @@ export function PlaylistDetailPage({
             </div>
             <div className={styles.headingCopy}>
               <p className={styles.eyebrow}>{copy['playlists.eyebrow']}</p>
-              <h1 tabIndex={-1} data-page-heading>
+              <h1 ref={headingRef} tabIndex={-1} data-page-heading>
                 {playlist.name}
               </h1>
               <p className={styles.meta}>{songCountLabel(playlist.songCount, locale)}</p>
@@ -223,6 +314,30 @@ export function PlaylistDetailPage({
                   }),
                 });
               }}
+            />
+          )}
+          {editError && (
+            <StatusSurface
+              state="error"
+              title={copy['playlists.editErrorTitle']}
+              description={
+                editError === 'conflict'
+                  ? copy['playlists.editConflict']
+                  : editError === 'outcome_unknown'
+                    ? copy['playlists.outcomeUnknown']
+                    : copy[`error.${editError}`]
+              }
+              action={
+                <Action
+                  variant="secondary"
+                  onClick={() => {
+                    setEditError(undefined);
+                    retry((value) => value + 1);
+                  }}
+                >
+                  {copy['playlists.refresh']}
+                </Action>
+              }
             />
           )}
           {playlist.entries.length === 0 ? (
@@ -279,6 +394,29 @@ export function PlaylistDetailPage({
                               type: 'toggle',
                               item: { id: entry.song.id, order: entry.position },
                             }),
+                        }
+                      : {})}
+                    {...(canManage
+                      ? {
+                          actions: (
+                            <PlaylistOccurrenceActions
+                              key={`${entry.position}:${entry.song.id}:${editError ?? 'ready'}`}
+                              entry={entry}
+                              count={playlist.entries.length}
+                              locale={locale}
+                              pending={Boolean(mutation || editError)}
+                              groupRef={(node) => {
+                                if (node) occurrenceRefs.current.set(entry.position, node);
+                                else occurrenceRefs.current.delete(entry.position);
+                              }}
+                              onMove={(direction) => {
+                                void editOccurrence(entry, 'move', direction);
+                              }}
+                              onRemove={() => {
+                                void editOccurrence(entry, 'remove');
+                              }}
+                            />
+                          ),
                         }
                       : {})}
                   />

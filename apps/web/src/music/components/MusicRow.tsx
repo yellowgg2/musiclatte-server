@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { MusicEntry } from '@musiclatte/contracts';
 import { Artwork } from '../../design/components/Artwork';
 import { IconAction } from '../../design/components/IconAction';
@@ -23,6 +23,7 @@ export function MusicRow({
   coverUrl,
   selected,
   onSelect,
+  actions,
 }: {
   song: MusicEntry;
   locale: Locale;
@@ -37,6 +38,7 @@ export function MusicRow({
   coverUrl?: (id: string) => string;
   selected?: boolean;
   onSelect?: (selected: boolean) => void;
+  actions?: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   const copy = messages[locale];
@@ -183,6 +185,7 @@ export function MusicRow({
             {current && playbackStatus === 'playing' ? 'Ⅱ' : '▶'}
           </IconAction>
         )}
+        {actions && <div className={styles.rowActions}>{actions}</div>}
       </div>
     </li>
   );

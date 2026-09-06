@@ -5,6 +5,7 @@ import type { ComponentType } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MusicRow } from '../src/music/components/MusicRow';
 
 afterEach(cleanup);
 async function makeSUT(name: string): Promise<ComponentType<Record<string, unknown>>> {
@@ -129,5 +130,20 @@ describe('design foundation', () => {
     view.rerender(<Artwork alt="" />);
     expect(screen.queryByRole('img')).toBeNull();
     expect(view.container.firstElementChild?.getAttribute('aria-hidden')).toBe('true');
+  });
+  /** A feature action slot remains inside its MusicRow occurrence without changing default rows. */
+  it('should associate an optional action group with the rendered music row', () => {
+    const view = render(
+      <ul>
+        <MusicRow
+          song={{ id: 'song-a', title: 'First song', isDir: false }}
+          locale="en"
+          actions={<button aria-label="Edit First song">Edit</button>}
+        />
+      </ul>,
+    );
+    expect(screen.getByRole('button', { name: 'Edit First song' }).closest('li')).toBe(
+      view.container.querySelector('li'),
+    );
   });
 });

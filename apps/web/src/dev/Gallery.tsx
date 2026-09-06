@@ -1,4 +1,5 @@
 import { MusicRow } from '../music/components/MusicRow';
+import { PlaylistOccurrenceActions } from '../playlists/components/PlaylistOccurrenceActions';
 import { librarySongs } from './library-fixtures';
 import { useEffect, useState } from 'react';
 import { Action } from '../design/components/Action';
@@ -289,7 +290,7 @@ export function Gallery() {
         <section id="music-row" className={styles.section}>
           <h2>{t['music.songs']}</h2>
           <ul style={{ listStyle: 'none', padding: 0 }}>
-            {librarySongs.map((song) => (
+            {librarySongs.map((song, position) => (
               <MusicRow
                 key={song.id}
                 song={song}
@@ -311,6 +312,20 @@ export function Gallery() {
                       : [...current, song.id],
                   )
                 }
+                {...(position === 0
+                  ? {
+                      actions: (
+                        <PlaylistOccurrenceActions
+                          entry={{ position, song }}
+                          count={librarySongs.length}
+                          locale={locale}
+                          pending={false}
+                          onMove={respond}
+                          onRemove={respond}
+                        />
+                      ),
+                    }
+                  : {})}
               />
             ))}
           </ul>

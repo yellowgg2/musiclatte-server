@@ -249,6 +249,34 @@ export function createPlaylistClient({
         }),
       );
     },
+    async remove(
+      id: string,
+      expectedRevision: string,
+      occurrence: { position: number; songId: string },
+      { csrfToken, operationId, signal }: PlaylistMutationOptions,
+    ): Promise<PlaylistMutationResponse> {
+      return decodeMutationResponse(
+        await request(`/api/v1/playlists/${encodeURIComponent(id)}`, signal, {
+          method: 'PATCH',
+          csrfToken,
+          body: { operationId, expectedRevision, action: 'remove', occurrence },
+        }),
+      );
+    },
+    async reorder(
+      id: string,
+      expectedRevision: string,
+      order: readonly number[],
+      { csrfToken, operationId, signal }: PlaylistMutationOptions,
+    ): Promise<PlaylistMutationResponse> {
+      return decodeMutationResponse(
+        await request(`/api/v1/playlists/${encodeURIComponent(id)}`, signal, {
+          method: 'PATCH',
+          csrfToken,
+          body: { operationId, expectedRevision, action: 'reorder', order },
+        }),
+      );
+    },
     async delete(
       id: string,
       expectedRevision: string,
