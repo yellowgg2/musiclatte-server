@@ -1,0 +1,56 @@
+.panel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  scroll-margin-block: var(--space-5);
+}
+.heading,
+.recovery {
+  display: grid;
+  gap: var(--space-2);
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-5);
+  margin: 0;
+}
+.facts > div {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.facts dt {
+  color: var(--color-secondary);
+  font-size: var(--text-small);
+}
+.facts dd {
+  margin: 0;
+}
+.version {
+  font-weight: 650;
+}
+.help {
+  color: var(--color-secondary);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.actions > *,
+.recovery > button {
+  justify-self: start;
+}
+.panel button {
+  scroll-margin-block: 6rem;
+}
+@media (max-width: 30rem) {
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

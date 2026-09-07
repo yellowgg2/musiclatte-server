@@ -10,7 +10,7 @@ export const clientFeatures = {
   'favorites.songs': true,
   'library.recentDownloads': true,
   'imports.youtube': true,
-  'engine.manage': false,
+  'engine.manage': true,
   'metadata.write': false,
   'metadata.lyrics.write': false,
   'metadata.curation': false,

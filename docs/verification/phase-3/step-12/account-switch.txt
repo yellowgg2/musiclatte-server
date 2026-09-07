@@ -1,0 +1,48 @@
+- link "본문으로 건너뛰기":
+  - /url: "#main"
+- banner:
+  - generic: Musiclatte
+- navigation "주 메뉴":
+  - link "음악":
+    - /url: /music
+    - text: 음악
+  - link "재생목록":
+    - /url: /playlists
+    - text: 재생목록
+  - link "설정":
+    - /url: /settings
+    - text: 설정
+- main:
+  - heading "설정" [active] [level=1]
+  - paragraph: 계정과 언어를 관리하세요.
+  - region "계정":
+    - heading "계정" [level=2]
+    - generic: F
+    - paragraph: 로그인한 계정
+    - paragraph: fixture-other-manager
+    - button "로그아웃"
+  - text: 언어
+  - combobox "언어":
+    - option "한국어" [selected]
+    - option "English"
+  - paragraph: 언어를 바꿔도 현재 화면과 로그인 상태는 유지돼요.
+  - region "다운로드 엔진":
+    - heading "다운로드 엔진" [level=2]
+    - paragraph: 새 음악을 가져올 때 사용하는 yt-dlp nightly를 관리합니다.
+    - term: 현재 버전
+    - definition: nightly-2026.09.07
+    - term: 상태
+    - status: 사용 중
+    - term: 마지막 확인
+    - definition: 2026. 9. 7. 오전 9:00
+    - term: 마지막 확인 성공
+    - definition: 2026. 9. 7. 오전 9:00
+    - term: 후보 버전
+    - definition: 없음
+    - term: 이전 버전
+    - definition: nightly-2026.09.06
+    - group "엔진 작업":
+      - button "지금 확인"
+      - button "이전 버전으로 복구"
+    - status: 새 nightly 버전 확인을 요청합니다. 상태 조회만으로는 업데이트하지 않습니다.
+    - paragraph: 복구된 버전은 다음 가져오기 작업부터 적용됩니다. 진행 중인 가져오기와 저장된 음악 재생은 계속됩니다.

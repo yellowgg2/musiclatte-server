@@ -8,9 +8,9 @@ import {
 } from '../../apps/web/src/capabilities/client-features.js';
 
 describe('engine wire contract', () => {
-  /** A ready producer does not expose the settings consumer before Step 12. */
-  it('should keep engine settings disabled in the web client', () => {
-    expect(clientFeatures['engine.manage']).toBe(false);
+  /** Step 12 now owns the implemented settings consumer. */
+  it('should expose engine settings only for the ready manager intersection', () => {
+    expect(clientFeatures['engine.manage']).toBe(true);
     expect(
       availableEntries({
         schemaVersion: 1,
@@ -21,7 +21,7 @@ describe('engine wire contract', () => {
           'engine.manage': { supported: true, permission: 'allowed', availability: 'available' },
         },
       }),
-    ).not.toContain('engine.manage');
+    ).toContain('engine.manage');
   });
   /** Independent JSON-schema validation enforces a closed request union and public projection. */
   it('should export strict action and response schemas', async () => {

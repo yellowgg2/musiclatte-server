@@ -1,0 +1,47 @@
+- link "Skip to content":
+  - /url: "#main"
+- banner:
+  - generic: Musiclatte
+- navigation "Main navigation":
+  - link "Music":
+    - /url: /music
+    - text: Music
+  - link "Playlists":
+    - /url: /playlists
+    - text: Playlists
+  - link "Settings":
+    - /url: /settings
+    - text: Settings
+- main:
+  - heading "Settings" [active] [level=1]
+  - paragraph: Manage your account and language.
+  - region "Account":
+    - heading "Account" [level=2]
+    - generic: F
+    - paragraph: Signed in as
+    - paragraph: fixture-listener
+    - button "Sign out"
+  - text: Language
+  - combobox "Language":
+    - option "한국어"
+    - option "English" [selected]
+  - paragraph: Changing language keeps your current page and sign-in.
+  - region "Download engine":
+    - heading "Download engine" [level=2]
+    - paragraph: Manage yt-dlp nightly for new music imports.
+    - term: Active version
+    - definition: nightly-2026.09.07
+    - term: Status
+    - status: Not checked yet
+    - term: Last checked
+    - definition: Never
+    - term: Last successful check
+    - definition: Never
+    - term: Candidate version
+    - definition: None
+    - term: Previous version
+    - definition: None
+    - button "Check now"
+    - button "Restore previous version" [disabled]
+    - status: Request a check for a new nightly version. Reading status does not trigger an update.
+    - paragraph: There is no previous version to restore yet.

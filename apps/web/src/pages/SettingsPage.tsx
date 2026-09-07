@@ -1,3 +1,5 @@
+import { EngineStatusPanel } from './settings/EngineStatusPanel';
+import { clientFeatures } from '../capabilities/client-features';
 import type { SessionState } from '../auth/session-store';
 import { Action } from '../design/components/Action';
 import { StatusSurface } from '../design/components/StatusSurface';
@@ -9,13 +11,27 @@ export function SettingsPage({
   locale,
   onLocale,
   onLogout,
+  fetcher,
+  apiOrigin,
+  onRetryCapabilities,
+  onUnauthenticated,
 }: {
   state: SessionState;
   locale: Locale;
   onLocale: (locale: Locale) => void;
   onLogout: () => void;
+  fetcher: typeof fetch;
+  apiOrigin: string;
+  onRetryCapabilities: () => void;
+  onUnauthenticated: () => void;
 }) {
   const copy = messages[locale];
+  const feature = state.capabilities?.features['engine.manage'];
+  const manager =
+    clientFeatures['engine.manage'] &&
+    feature?.supported === true &&
+    feature.permission === 'allowed' &&
+    ['available', 'temporarily_unavailable'].includes(feature.availability);
   return (
     <div className={styles.settings}>
       <header className={styles.pageHeading}>
@@ -52,6 +68,24 @@ export function SettingsPage({
         <LanguagePicker locale={locale} onChange={onLocale} />
         <p className={styles.secondary}>{copy['settings.languageHelp']}</p>
       </section>
+      {manager && state.session && (
+        <EngineStatusPanel
+          key={JSON.stringify([
+            state.capabilities?.instanceId,
+            state.capabilities?.revision,
+            state.session.username,
+            state.session.csrfToken,
+            feature,
+          ])}
+          locale={locale}
+          fetcher={fetcher}
+          apiOrigin={apiOrigin}
+          csrfToken={state.session.csrfToken}
+          unavailable={feature?.availability === 'temporarily_unavailable'}
+          onRetryCapabilities={onRetryCapabilities}
+          onUnauthenticated={onUnauthenticated}
+        />
+      )}
     </div>
   );
 }

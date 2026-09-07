@@ -402,6 +402,10 @@ export function Router({
                 locale={locale}
                 onLocale={onLocale}
                 onLogout={() => void store.logout()}
+                fetcher={fetcher}
+                apiOrigin={apiOrigin}
+                onRetryCapabilities={() => void store.restore()}
+                onUnauthenticated={store.expire}
               />
             ) : (
               <div className={styles.settings}>
