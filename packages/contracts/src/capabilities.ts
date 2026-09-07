@@ -19,6 +19,9 @@ export interface FeatureCapability {
   supported: boolean | null;
   permission: 'allowed' | 'denied' | 'unknown';
   availability: 'available' | 'temporarily_unavailable' | 'unknown';
+  formats?: string[];
+  fields?: string[];
+  bulkFields?: string[];
 }
 export interface CapabilitiesResponse {
   schemaVersion: 1;
@@ -41,6 +44,24 @@ export const featureCapabilitySchema = {
     supported: { type: ['boolean', 'null'] },
     permission: { enum: ['allowed', 'denied', 'unknown'] },
     availability: { enum: ['available', 'temporarily_unavailable', 'unknown'] },
+    formats: {
+      type: 'array',
+      uniqueItems: true,
+      maxItems: 64,
+      items: { type: 'string', minLength: 1, maxLength: 64 },
+    },
+    fields: {
+      type: 'array',
+      uniqueItems: true,
+      maxItems: 64,
+      items: { type: 'string', minLength: 1, maxLength: 64 },
+    },
+    bulkFields: {
+      type: 'array',
+      uniqueItems: true,
+      maxItems: 64,
+      items: { type: 'string', minLength: 1, maxLength: 64 },
+    },
   },
 } as const;
 export const capabilitiesSchema = {
@@ -123,6 +144,18 @@ export function decodeCapabilities(value: unknown): CapabilitiesResponse {
     )
       throw new Error('Invalid private schema');
     features[key] = { supported, permission, availability };
+    for (const descriptor of ['formats', 'fields', 'bulkFields'] as const) {
+      if (!Object.hasOwn(f, descriptor)) continue;
+      const entries = f[descriptor];
+      if (
+        !Array.isArray(entries) ||
+        entries.length > 64 ||
+        new Set(entries).size !== entries.length ||
+        entries.some((entry) => typeof entry !== 'string' || !entry.trim() || entry.length > 64)
+      )
+        throw new Error('Invalid private schema');
+      features[key][descriptor] = [...entries];
+    }
   }
   return { schemaVersion: 1, instanceId: text(v.instanceId), revision: text(v.revision), features };
 }

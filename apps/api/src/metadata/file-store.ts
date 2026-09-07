@@ -13,7 +13,12 @@ export interface FileTransactionInput {
   patch: unknown;
   preserveOwnership: boolean;
   restore?: { relativeKey: string; digest: string };
-  cover?: { root: string; key: string; rootIdentity: { device: string; inode: string } };
+  cover?: {
+    root: string;
+    key: string;
+    rootIdentity: { device: string; inode: string };
+    expectedDigest?: string;
+  };
 }
 export interface FileBackup {
   id: string;

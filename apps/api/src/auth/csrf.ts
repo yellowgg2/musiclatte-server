@@ -10,6 +10,14 @@ export function cookieMutation(
   token?: string,
 ): void {
   requireJSON(request);
+  cookieOriginMutation(request, service, token);
+}
+/** Shared cookie intent guard for JSON and explicitly bounded raw-image endpoints. */
+export function cookieOriginMutation(
+  request: FastifyRequest,
+  service: SessionService,
+  token?: string,
+): void {
   if (
     request.headers.origin !== service.options.origin ||
     request.headers['sec-fetch-site'] === 'cross-site' ||

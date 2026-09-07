@@ -118,7 +118,7 @@ export function createMetadataHelper(
   if (![options.ffmpeg, options.ffprobe].every(isAbsolute))
     throw new Error('invalid_metadata_config');
   async function invoke(
-    action: 'read' | 'prepare',
+    action: 'read' | 'prepare' | 'preview' | 'cover' | 'validate-cover',
     key: string,
     extra: Record<string, unknown>,
     signal?: AbortSignal,
@@ -150,7 +150,11 @@ export function createMetadataHelper(
           ffprobe: options.ffprobe,
           ...extra,
         }),
-        limits: { stdoutBytes: 1024 * 1024, stderrBytes: 4096, graceMs: 100 },
+        limits: {
+          stdoutBytes: (action === 'cover' ? 12 : 1) * 1024 * 1024,
+          stderrBytes: 4096,
+          graceMs: 100,
+        },
       });
       if (result.exitCode !== 0) throw new Error('helper_unavailable');
       const value: unknown = JSON.parse(result.stdout);
@@ -171,6 +175,70 @@ export function createMetadataHelper(
     }
   }
   return {
+    async validateCover(key: string) {
+      const value = await invoke('validate-cover', key, {});
+      if (
+        !value ||
+        typeof value !== 'object' ||
+        !('digest' in value) ||
+        !('mimeType' in value) ||
+        !('size' in value) ||
+        typeof value.digest !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(value.digest) ||
+        !['image/jpeg', 'image/png'].includes(String(value.mimeType)) ||
+        typeof value.size !== 'number' ||
+        value.size < 1 ||
+        value.size > metadataProtectiveDefaults.coverBytes
+      )
+        throw new Error('invalid_cover');
+      return {
+        digest: value.digest,
+        mimeType: value.mimeType as 'image/jpeg' | 'image/png',
+        size: value.size,
+      };
+    },
+    async preview(input: {
+      key: string;
+      expectedDigest: string;
+      patch: unknown;
+      cover?: {
+        root: string;
+        key: string;
+        rootIdentity: { device: string; inode: string };
+        expectedDigest?: string;
+      };
+    }) {
+      const result = await invoke('preview', input.key, {
+        expectedDigest: input.expectedDigest,
+        patch: input.patch,
+        ...(input.cover ? { cover: input.cover } : {}),
+      });
+      if (!result || typeof result !== 'object' || !('valid' in result) || result.valid !== true)
+        throw new Error('invalid_metadata');
+    },
+    async cover(input: { key: string; expectedDigest: string; frameId: string }) {
+      const value = await invoke('cover', input.key, {
+        expectedDigest: input.expectedDigest,
+        frameId: input.frameId,
+      });
+      if (
+        !value ||
+        typeof value !== 'object' ||
+        !('mimeType' in value) ||
+        !('data' in value) ||
+        !['image/jpeg', 'image/png'].includes(String(value.mimeType)) ||
+        typeof value.data !== 'string'
+      )
+        throw new Error('invalid_cover');
+      const data = Buffer.from(value.data, 'base64');
+      if (
+        !data.length ||
+        data.length > metadataProtectiveDefaults.coverBytes ||
+        data.toString('base64') !== value.data
+      )
+        throw new Error('invalid_cover');
+      return { mimeType: value.mimeType as 'image/jpeg' | 'image/png', data };
+    },
     async read(input: { key: string; signal?: AbortSignal }) {
       return decodeSnapshot(await invoke('read', input.key, {}, input.signal));
     },

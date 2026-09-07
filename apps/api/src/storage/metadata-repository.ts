@@ -125,6 +125,19 @@ export function validateMetadataStorage(db: DatabaseSync): void {
   };
   for (const row of db
     .prepare(
+      'SELECT r.*,j.identity_key AS job_identity FROM metadata_rechecks r JOIN metadata_jobs j ON j.id=r.job_id',
+    )
+    .iterate()) {
+    if (
+      row.identity_key !== row.job_identity ||
+      !hex(text(row.identity_key)) ||
+      !hex(text(row.operation_id_hash)) ||
+      !hex(text(row.request_hash))
+    )
+      invalid();
+  }
+  for (const row of db
+    .prepare(
       'SELECT e.*,i.original_track_id FROM metadata_item_evidence e JOIN metadata_items i ON i.id=e.item_id',
     )
     .iterate()) {
@@ -306,6 +319,12 @@ export function createMetadataRepository({
         'SELECT id,request_hash FROM metadata_jobs WHERE identity_key=? AND operation_id_hash=?',
       )
       .get(input.identityKey, input.operationIdHash);
+    if (
+      db
+        .prepare('SELECT 1 FROM metadata_rechecks WHERE identity_key=? AND operation_id_hash=?')
+        .get(input.identityKey, input.operationIdHash)
+    )
+      throw new Error('conflict');
     if (replay) {
       if (replay.request_hash !== input.requestHash) throw new Error('conflict');
       return readJob(text(replay.id), input.identityKey)!;
@@ -344,6 +363,24 @@ export function createMetadataRepository({
       )
         throw new Error('conflict');
       const changedFields = Object.keys(item.patch);
+      if (item.patch.cover?.op === 'set') {
+        const uploadId = item.patch.cover.uploadId;
+        const upload = db
+          .prepare(
+            'SELECT expires_at FROM metadata_cover_uploads WHERE id=? AND identity_key=? AND library_id=?',
+          )
+          .get(uploadId, input.identityKey, input.libraryId);
+        if (
+          !upload ||
+          (integer(upload.expires_at) <= timestamp &&
+            !db
+              .prepare(
+                "SELECT 1 FROM metadata_items WHERE json_extract(patch_json,'$.cover.uploadId')=? LIMIT 1",
+              )
+              .get(uploadId))
+        )
+          throw new Error('conflict');
+      }
       if (
         (!changedFields.length && lineage?.kind !== 'restore') ||
         changedFields.some((field) => !metadataFields.includes(field as MetadataField))
@@ -390,6 +427,55 @@ export function createMetadataRepository({
   };
   return {
     getJob: readJob,
+    recheck(input: {
+      identityKey: string;
+      operationIdHash: string;
+      requestHash: string;
+      jobId: string;
+      itemIds: string[];
+    }) {
+      return database.transaction(() => {
+        const job = readJob(input.jobId, input.identityKey);
+        if (!job) throw new Error('conflict');
+        if (
+          db
+            .prepare('SELECT 1 FROM metadata_jobs WHERE identity_key=? AND operation_id_hash=?')
+            .get(input.identityKey, input.operationIdHash)
+        )
+          throw new Error('conflict');
+        const replay = db
+          .prepare(
+            'SELECT request_hash,job_id FROM metadata_rechecks WHERE identity_key=? AND operation_id_hash=?',
+          )
+          .get(input.identityKey, input.operationIdHash);
+        if (replay) {
+          if (replay.request_hash !== input.requestHash || replay.job_id !== input.jobId)
+            throw new Error('conflict');
+          return job;
+        }
+        if (
+          !input.itemIds.length ||
+          new Set(input.itemIds).size !== input.itemIds.length ||
+          input.itemIds.some(
+            (id) =>
+              !job.items.some(
+                (entry) =>
+                  entry.itemId === id && ['file_saved', 'reflecting'].includes(entry.stage),
+              ),
+          )
+        )
+          throw new Error('conflict');
+        const at = now();
+        db.prepare(
+          'INSERT INTO metadata_rechecks(identity_key,operation_id_hash,request_hash,job_id,created_at) VALUES(?,?,?,?,?)',
+        ).run(input.identityKey, input.operationIdHash, input.requestHash, input.jobId, at);
+        for (const id of input.itemIds) {
+          // An active reflector owns its lease until it exits; a user recheck never steals it.
+          db.prepare('UPDATE metadata_items SET next_reflection_at=0 WHERE id=?').run(id);
+        }
+        return job;
+      });
+    },
     hasSavedSuccessor(claim: MetadataClaim, digest: string): boolean {
       const row = owned(claim);
       return !!db
@@ -492,7 +578,7 @@ export function createMetadataRepository({
         if (input.status !== 'reflection_unavailable') {
           const job = db.prepare('SELECT * FROM metadata_jobs WHERE id=?').get(text(row.job_id))!;
           db.prepare(
-            'INSERT INTO metadata_changes(item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET reflection_result=excluded.reflection_result,related_ids_json=excluded.related_ids_json',
+            'INSERT INTO metadata_changes(item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET sequence=excluded.sequence,reflection_result=excluded.reflection_result,related_ids_json=excluded.related_ids_json WHERE metadata_changes.reflection_result<>excluded.reflection_result OR metadata_changes.related_ids_json<>excluded.related_ids_json',
           ).run(
             claim.itemId,
             text(row.media_link_id),

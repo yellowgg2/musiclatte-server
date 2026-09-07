@@ -13,8 +13,10 @@ import type { createInstanceRepository } from '../storage/instance-repository.js
 import type { createPlaylistOperationRepository } from '../storage/playlist-operation-repository.js';
 
 import type { ImportOptions } from '../imports/import-service.js';
+import type { MetadataOptions } from '../metadata/provider.js';
 
 export interface AuthOptions {
+  metadata?: MetadataOptions;
   imports?: ImportOptions;
   recent?: { musicRoot: string };
   sessions: ReturnType<typeof createSessionRepository>;

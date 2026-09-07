@@ -1,5 +1,6 @@
 import { isAbsolute } from 'node:path';
 import { readApiImportConfig } from '../imports/config.js';
+import { readApiMetadataOptions } from '../metadata/api-config.js';
 import { registerReadiness } from '../health/readiness.js';
 import { createApp } from '../app.js';
 import { openDatabase } from '../storage/database.js';
@@ -51,8 +52,10 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
     const sessions = createSessionRepository({ database, vault, maxAgeMs, clock: Date.now });
     const playlistOperations = createPlaylistOperationRepository({ database, clock: Date.now });
     const musicRoot = env.IMPORT_MUSIC_ROOT ?? '/music';
+    const metadata = readApiMetadataOptions(env, database, Date.now);
     if (importConfig.enabled && !isAbsolute(musicRoot)) throw new Error();
     const app = createApp({
+      ...(metadata ? { metadata } : {}),
       ...(importConfig.enabled ? { recent: { musicRoot } } : {}),
       imports: { database, policy: importConfig.policy, clock: Date.now },
       sessions,

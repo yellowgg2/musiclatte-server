@@ -1,5 +1,6 @@
 """Private MP3 read/prepare helper. Only agent-owned candidates may be edited."""
 
+import base64
 import datetime
 import hashlib
 import json
@@ -166,6 +167,8 @@ def image_data(request):
     try:
         with open_media(target["root"], target["key"], target["rootIdentity"]) as (fd, parent, name, verify):
             digest, before = digest_fd(fd, 8 * 1024 * 1024)
+            if "expectedDigest" in target and digest != target["expectedDigest"]:
+                fail("invalid_cover")
             os.lseek(fd, 0, os.SEEK_SET)
             data = os.read(fd, before.st_size)
             mime = "image/png" if data.startswith(b"\x89PNG\r\n\x1a\n") else "image/jpeg" if data.startswith(b"\xff\xd8\xff") else None
@@ -278,8 +281,12 @@ def apply_patch(tags, major, patch, request):
 
 
 def execute(request):
-    if version_string != "1.48.1" or request.get("schemaVersion") != 1 or request.get("action") not in ("read", "prepare"):
+    if version_string != "1.48.1" or request.get("schemaVersion") != 1 or request.get("action") not in ("read", "prepare", "preview", "cover", "validate-cover"):
         fail("helper_unavailable")
+    if request["action"] == "validate-cover":
+        request["cover"] = {"root": request["root"], "rootIdentity": request["rootIdentity"], "key": request["key"]}
+        data, mime = image_data(request)
+        return {"digest": hashlib.sha256(data).hexdigest(), "mimeType": mime, "size": len(data)}
     preparing = request["action"] == "prepare"
     key = request["key"]
     if preparing and (not key.endswith(".metadata-pending") or not re.fullmatch(r"[a-f0-9]{64}", request.get("expectedDigest", ""))):
@@ -287,8 +294,22 @@ def execute(request):
     with open_media(request["root"], key, request["rootIdentity"], writable=preparing) as (fd, parent, name, verify):
         before, tags = snapshot(fd, request)
         verify()
-        if not preparing:
+        if request["action"] == "read":
             return before
+        if before["fullDigest"] != request.get("expectedDigest"):
+            fail("revision_conflict")
+        if request["action"] == "cover":
+            frames = [frame for frame in tags.getall("APIC") if hashlib.sha256(frame.HashKey.encode()).hexdigest() == request.get("frameId")]
+            if len(frames) != 1:
+                fail("ambiguous_selector")
+            frame = frames[0]
+            mime = "image/png" if frame.data.startswith(b"\x89PNG\r\n\x1a\n") else "image/jpeg" if frame.data.startswith(b"\xff\xd8\xff") else None
+            if not mime or mime != frame.mime or len(frame.data) > 8 * 1024 * 1024:
+                fail("invalid_cover")
+            if digest_fd(fd, request["maxFileBytes"])[0] != before["fullDigest"]:
+                fail("read_unstable")
+            verify()
+            return {"mimeType": mime, "data": base64.b64encode(frame.data).decode()}
         if not before["editable"]:
             fail("unsupported_tag_layout")
         if before["fullDigest"] != request["expectedDigest"]:
@@ -299,6 +320,11 @@ def execute(request):
         untouched = frame_values(tags)
         unknown = list(tags.unknown_frames)
         touched = apply_patch(tags, major, request["patch"], request)
+        if request["action"] == "preview":
+            if digest_fd(fd, request["maxFileBytes"])[0] != before["fullDigest"]:
+                fail("read_unstable")
+            verify()
+            return {"valid": True, "changedFields": list(request["patch"])}
         expected = frame_values(tags)
         size = os.fstat(fd).st_size
         os.lseek(fd, max(0, size - 128), os.SEEK_SET)
@@ -330,7 +356,7 @@ def main():
             fail()
         result = execute(json.loads(payload))
         output = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
-        if len(output.encode()) > 1024 * 1024:
+        if len(output.encode()) > (12 * 1024 * 1024 if result.get("data") else 1024 * 1024):
             fail("unsupported_tag_layout")
     except FileAccessError as error:
         output = json.dumps({"error": str(error) if str(error) in ERRORS else "invalid_metadata"})

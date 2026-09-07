@@ -1,4 +1,5 @@
 import { registerEngineRoutes } from './routes/engine.js';
+import { registerMetadataRoutes } from './routes/metadata.js';
 import { registerRecentDownloadsRoute } from './routes/recent-downloads.js';
 import { registerImportRoutes } from './routes/imports.js';
 import { registerFoldersRoutes } from './routes/music/folders.js';
@@ -101,6 +102,7 @@ export function createApp(options?: AuthOptions) {
     registerImportRoutes(app, service);
     registerRecentDownloadsRoute(app, service);
     registerEngineRoutes(app, service);
+    registerMetadataRoutes(app, service);
   }
   app.get<{ Reply: HealthResponse }>('/health/live', async () => ({ status: 'ok' }));
   return app;

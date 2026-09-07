@@ -36,10 +36,15 @@ export function createMetadataFileResolver(options: {
     async resolve(
       verified: VerifiedMetadataSession,
       trackId: string,
-      mode: 'edit' | 'restore' = 'edit',
+      mode: 'read' | 'edit' | 'restore' = 'edit',
       signal?: AbortSignal,
     ): Promise<ResolvedMetadataFile> {
-      if (typeof trackId !== 'string' || !/^[A-Za-z0-9_.:-]{1,1024}$/.test(trackId))
+      if (
+        typeof trackId !== 'string' ||
+        !trackId.length ||
+        trackId.length > 2048 ||
+        /[\u0000-\u001f\u007f]/.test(trackId)
+      )
         throw new ApiError(400, 'invalid_request');
       const { sessionService, policy } = options;
       sessionService.find(verified.session.token, verified.session.scheme);
@@ -73,7 +78,7 @@ export function createMetadataFileResolver(options: {
         mode === 'restore'
           ? identity.adminRole && policy.restoreManagers.includes(identity.username)
           : library.editors.includes(identity.username);
-      if (!authorized) throw new ApiError(403, 'forbidden');
+      if (mode !== 'read' && !authorized) throw new ApiError(403, 'forbidden');
       const inspection = await options.fileAccess.inspect(key, signal);
       sessionService.find(verified.session.token, verified.session.scheme);
       const existing = links.findBySongId(library.id, trackId);

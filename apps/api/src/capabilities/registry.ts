@@ -1,4 +1,5 @@
 import { engineCapability } from '../engine/engine-service.js';
+import { metadataCapability } from '../metadata/provider.js';
 import { recentCapability } from '../imports/recent-service.js';
 import { importCapability } from '../imports/import-service.js';
 import {
@@ -51,10 +52,43 @@ export async function capabilities(
     identity.username,
   );
   features['imports.youtube'] = importCapability(service.options.imports, identity.username);
-  const currentIdentity = service.options.imports?.policy.enabled
-    ? (await service.verify(session.token, session.scheme)).identity
-    : identity;
+  const currentIdentity =
+    service.options.imports?.policy.enabled || service.options.metadata?.policy.enabled
+      ? (await service.verify(session.token, session.scheme)).identity
+      : identity;
   features['engine.manage'] = engineCapability(service.options.imports, currentIdentity);
+  let metadataLibraries: string[] = [];
+  let metadataScopeUnknown = false;
+  if (service.options.metadata?.policy.enabled) {
+    try {
+      const folders = (await upstream.folders()).map((folder) => folder.id);
+      metadataLibraries = service.options.metadata.policy.libraries
+        .filter((library) => folders.includes(library.musicFolderId))
+        .map((library) => library.id);
+    } catch (error) {
+      if (upstreamError(error).status === 401) service.rejectUpstream(error, session.raw);
+      metadataScopeUnknown = true;
+    }
+  }
+  features['metadata.write'] = metadataCapability(
+    service.options.metadata,
+    currentIdentity.username,
+    false,
+    metadataLibraries,
+  );
+  features['metadata.lyrics.write'] = metadataCapability(
+    service.options.metadata,
+    currentIdentity.username,
+    true,
+    metadataLibraries,
+  );
+  if (metadataScopeUnknown)
+    for (const key of ['metadata.write', 'metadata.lyrics.write'] as const)
+      features[key] = {
+        ...features[key]!,
+        permission: 'unknown',
+        availability: 'temporarily_unavailable',
+      };
   service.find(session.token, session.scheme);
   return {
     schemaVersion: 1,
@@ -67,6 +101,7 @@ export async function capabilities(
         currentIdentity,
         features,
         service.options.imports?.policy,
+        service.options.metadata?.policy,
       ]),
     ),
     features,

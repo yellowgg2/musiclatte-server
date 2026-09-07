@@ -26,6 +26,10 @@ export async function proxyMedia(
   reply: FastifyReply,
   kind: MediaTransportKind,
   id: string,
+  options?: {
+    freshCover?: boolean;
+    authorize?: (verified: Awaited<ReturnType<SessionService['verify']>>) => Promise<void>;
+  },
 ) {
   const auth = requiredCredentials(request, service);
   const controller = new AbortController();
@@ -46,7 +50,8 @@ export async function proxyMedia(
   try {
     const verified = await service.verify(auth.token, auth.scheme, { signal: controller.signal });
     raw = verified.session.raw;
-    const range = request.headers.range;
+    await options?.authorize?.(verified);
+    const range = options?.freshCover ? undefined : request.headers.range;
     if (range !== undefined && typeof range !== 'string')
       throw new ApiError(400, 'invalid_request');
     const upstreamRequest = verified.upstream.mediaRequest(
@@ -58,7 +63,7 @@ export async function proxyMedia(
         ...(range === undefined ? {} : { range }),
       },
     );
-    forwardMediaRequestHeaders(request, upstreamRequest);
+    if (!options?.freshCover) forwardMediaRequestHeaders(request, upstreamRequest);
 
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -77,7 +82,10 @@ export async function proxyMedia(
     }
 
     service.find(auth.token, auth.scheme);
-    if (!passthroughStatuses.has(response.status)) {
+    if (
+      !passthroughStatuses.has(response.status) ||
+      (options?.freshCover && response.status !== 200)
+    ) {
       await discard(response);
       if (response.status === 404) throw new ApiError(404, 'not_found');
       throw new SubsonicError('http_error', undefined, response.status);
@@ -92,6 +100,7 @@ export async function proxyMedia(
 
     reply.code(response.status);
     forwardMediaResponseHeaders(response, reply);
+    if (options?.freshCover) reply.header('Cache-Control', 'private, no-store');
     if (request.method === 'HEAD' || response.status === 304 || response.status === 416) {
       await discard(response);
       reply.hijack();

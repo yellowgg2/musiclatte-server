@@ -1,3 +1,4 @@
+import { playlistMutationSchemas } from './collections.js';
 /** File revision is opaque and independent of the numeric MediaLink binding revision. */
 export const metadataFields = [
   'title',
@@ -45,6 +46,44 @@ export interface MetadataJobRequest {
   patch: MetadataPatch;
   sourceReference?: string;
   usageBasis?: string;
+}
+export type MetadataPreviewRequest = Pick<MetadataJobRequest, 'targets' | 'patch'>;
+export interface MetadataPreview {
+  schemaVersion: 1;
+  libraryId: string;
+  targetCount: number;
+  changedFields: MetadataField[];
+  targets: { trackId: string; fileRevision: string }[];
+  writeGuaranteed: false;
+}
+export interface MetadataCoverUpload {
+  schemaVersion: 1;
+  uploadId: string;
+  libraryId: string;
+  mimeType: 'image/png' | 'image/jpeg';
+  size: number;
+  expiresAt: number;
+  previewUrl: string;
+}
+export interface MetadataChange {
+  sequence: number;
+  libraryId: string;
+  oldTrackId: string;
+  newTrackId: string;
+  oldRevision: string;
+  newRevision: string;
+  coverGeneration: string;
+  relatedIds: { trackIds: string[]; albumIds: string[]; artistIds: string[]; coverIds: string[] };
+  changedFields: MetadataField[];
+  fileSavedAt: number;
+  reflectedAt: number | null;
+  reflection: 'verified' | 'reflection_mismatch' | 'reference_conflict';
+}
+export interface MetadataChangesPage {
+  schemaVersion: 1;
+  changes: MetadataChange[];
+  hasMore: boolean;
+  nextCursor: string;
 }
 export const metadataStages = [
   'queued',
@@ -151,6 +190,12 @@ const id = {
   maxLength: 1024,
   pattern: '^[A-Za-z0-9_.:-]+$',
 } as const;
+const trackId = {
+  type: 'string',
+  minLength: 1,
+  maxLength: 2048,
+  pattern: '^[^\\u0000-\\u001f\\u007f]+$',
+} as const;
 const text = { type: 'string', minLength: 1, maxLength: 4096, pattern: '\\S' } as const;
 const description = { type: 'string', maxLength: 256 } as const;
 const instant = { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER } as const;
@@ -204,7 +249,7 @@ export const metadataPatchSchema = {
   }),
   minProperties: 1,
 } as const;
-const target = object(['trackId', 'expectedRevision'], { trackId: id, expectedRevision: id });
+const target = object(['trackId', 'expectedRevision'], { trackId, expectedRevision: id });
 const targets = {
   type: 'array',
   minItems: 1,
@@ -212,10 +257,7 @@ const targets = {
   uniqueItems: true,
   items: target,
 } as const;
-const operationId = {
-  type: 'string',
-  pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
-} as const;
+const operationId = playlistMutationSchemas.create.properties.operationId;
 const sourceProperties = {
   sourceReference: { type: 'string', minLength: 1, maxLength: 2048 },
   usageBasis: text,
@@ -228,6 +270,9 @@ const itemIds = {
   items: id,
 } as const;
 export const metadataRequestSchemas = {
+  empty: object([], {}),
+  trackParams: object(['id'], { id: trackId }),
+  frameParams: object(['id', 'frameId'], { id: trackId, frameId: id }),
   create: object(['operationId', 'targets', 'patch'], {
     operationId,
     targets,
@@ -277,8 +322,8 @@ export const metadataItemSchema = object(
   ],
   {
     itemId: id,
-    originalTrackId: id,
-    currentTrackId: id,
+    originalTrackId: trackId,
+    currentTrackId: trackId,
     stage: { enum: metadataStages },
     fileSavedAt: nullable(instant),
     reflectedAt: nullable(instant),
@@ -299,7 +344,79 @@ const job = object(['id', 'libraryId', 'createdAt', 'status', 'kind', 'parentJob
   parentJobId: nullable(id),
   items: { type: 'array', minItems: 1, maxItems: 100, items: metadataItemSchema },
 });
+const change = object(
+  [
+    'sequence',
+    'libraryId',
+    'oldTrackId',
+    'newTrackId',
+    'oldRevision',
+    'newRevision',
+    'coverGeneration',
+    'relatedIds',
+    'changedFields',
+    'fileSavedAt',
+    'reflectedAt',
+    'reflection',
+  ],
+  {
+    sequence: { ...instant, minimum: 1 },
+    libraryId: id,
+    oldTrackId: trackId,
+    newTrackId: trackId,
+    oldRevision: id,
+    newRevision: id,
+    coverGeneration: id,
+    relatedIds: object(
+      ['trackIds', 'albumIds', 'artistIds', 'coverIds'],
+      Object.fromEntries(
+        ['trackIds', 'albumIds', 'artistIds', 'coverIds'].map((key) => [
+          key,
+          { type: 'array', maxItems: 100, items: trackId },
+        ]),
+      ),
+    ),
+    changedFields: fields,
+    fileSavedAt: instant,
+    reflectedAt: nullable(instant),
+    reflection: { enum: ['verified', 'reflection_mismatch', 'reference_conflict'] },
+  },
+);
 export const metadataResponseSchemas = {
+  preview: object(
+    ['schemaVersion', 'libraryId', 'targetCount', 'changedFields', 'targets', 'writeGuaranteed'],
+    {
+      schemaVersion: { const: 1 },
+      libraryId: id,
+      targetCount: { type: 'integer', minimum: 1, maximum: 100 },
+      changedFields: fields,
+      targets: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 100,
+        items: object(['trackId', 'fileRevision'], { trackId, fileRevision: id }),
+      },
+      writeGuaranteed: { const: false },
+    },
+  ),
+  upload: object(
+    ['schemaVersion', 'uploadId', 'libraryId', 'mimeType', 'size', 'expiresAt', 'previewUrl'],
+    {
+      schemaVersion: { const: 1 },
+      uploadId: id,
+      libraryId: id,
+      mimeType: { enum: ['image/jpeg', 'image/png'] },
+      size: { type: 'integer', minimum: 1, maximum: 8 * 1024 * 1024 },
+      expiresAt: instant,
+      previewUrl: { type: 'string', maxLength: 4096, pattern: '^/api/v1/metadata-covers/' },
+    },
+  ),
+  changes: object(['schemaVersion', 'changes', 'hasMore', 'nextCursor'], {
+    schemaVersion: { const: 1 },
+    changes: { type: 'array', maxItems: 100, items: change },
+    hasMore: { type: 'boolean' },
+    nextCursor: { type: 'string', minLength: 1, maxLength: 4096 },
+  }),
   detail: object(['schemaVersion', 'job'], { schemaVersion: { const: 1 }, job }),
   list: object(['schemaVersion', 'jobs', 'nextCursor'], {
     schemaVersion: { const: 1 },
@@ -322,7 +439,7 @@ export const metadataResponseSchemas = {
     ],
     {
       schemaVersion: { const: 1 },
-      trackId: id,
+      trackId,
       editable: { type: 'boolean' },
       reason: nullable({ enum: metadataErrorCodes }),
       format: { enum: ['mp3', 'unsupported'] },
@@ -345,7 +462,7 @@ export const metadataResponseSchemas = {
           pictureType: { type: 'integer', minimum: 0, maximum: 20 },
           description,
           mimeType: { enum: ['image/jpeg', 'image/png'] },
-          previewUrl: { type: 'string', maxLength: 4096, pattern: '^/api/v1/' },
+          previewUrl: { type: 'string', maxLength: 20000, pattern: '^/api/v1/' },
         }),
       },
       lyricsFrames: {
@@ -377,6 +494,16 @@ function identifier(value: unknown): string {
     throw new Error('Invalid metadata response');
   return value;
 }
+function trackIdentifier(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    !value.length ||
+    value.length > 2048 ||
+    /[\u0000-\u001f\u007f]/.test(value)
+  )
+    throw new Error('Invalid metadata response');
+  return value;
+}
 function timestamp(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)
     throw new Error('Invalid metadata response');
@@ -397,8 +524,8 @@ export function decodeMetadataItem(value: unknown): MetadataItem {
   if (typeof v.restoreAvailable !== 'boolean') throw new Error('Invalid metadata response');
   const result: MetadataItem = {
     itemId: identifier(v.itemId),
-    originalTrackId: identifier(v.originalTrackId),
-    currentTrackId: identifier(v.currentTrackId),
+    originalTrackId: trackIdentifier(v.originalTrackId),
+    currentTrackId: trackIdentifier(v.currentTrackId),
     stage: member(v.stage, metadataStages),
     fileSavedAt: v.fileSavedAt === null ? null : timestamp(v.fileSavedAt),
     reflectedAt: v.reflectedAt === null ? null : timestamp(v.reflectedAt),
@@ -469,7 +596,7 @@ export function decodeMetadataSnapshot(value: unknown): MetadataSnapshot {
   const scalar = (value: unknown) => (value === null ? null : boundedText(value));
   const result: MetadataSnapshot = {
     schemaVersion: 1,
-    trackId: identifier(v.trackId),
+    trackId: trackIdentifier(v.trackId),
     editable: v.editable,
     reason: v.reason === null ? null : member(v.reason, metadataErrorCodes),
     format: member(v.format, ['mp3', 'unsupported']),
@@ -495,7 +622,7 @@ export function decodeMetadataSnapshot(value: unknown): MetadataSnapshot {
           'previewUrl',
         ]);
         const pictureType = timestamp(frame.pictureType);
-        const previewUrl = boundedText(frame.previewUrl);
+        const previewUrl = boundedText(frame.previewUrl, 20000);
         if (pictureType > 20 || !previewUrl.startsWith('/api/v1/'))
           throw new Error('Invalid metadata response');
         return {
@@ -530,4 +657,107 @@ export function decodeMetadataSnapshot(value: unknown): MetadataSnapshot {
   )
     throw new Error('Invalid metadata response');
   return result;
+}
+
+export function decodeMetadataPreview(value: unknown): MetadataPreview {
+  const v = record(value, metadataResponseSchemas.preview.required);
+  if (v.schemaVersion !== 1 || v.writeGuaranteed !== false)
+    throw new Error('Invalid metadata response');
+  const targets = list(
+    v.targets,
+    (entry) => {
+      const target = record(entry, ['trackId', 'fileRevision']);
+      return {
+        trackId: trackIdentifier(target.trackId),
+        fileRevision: identifier(target.fileRevision),
+      };
+    },
+    100,
+  );
+  if (
+    !targets.length ||
+    v.targetCount !== targets.length ||
+    new Set(targets.map((target) => target.trackId)).size !== targets.length
+  )
+    throw new Error('Invalid metadata response');
+  const changedFields = enumList(v.changedFields, metadataFields);
+  if (!changedFields.length) throw new Error('Invalid metadata response');
+  return {
+    schemaVersion: 1,
+    libraryId: identifier(v.libraryId),
+    targetCount: targets.length,
+    changedFields,
+    targets,
+    writeGuaranteed: false,
+  };
+}
+export function decodeMetadataCoverUpload(value: unknown): MetadataCoverUpload {
+  const v = record(value, metadataResponseSchemas.upload.required);
+  const size = timestamp(v.size);
+  const previewUrl = boundedText(v.previewUrl);
+  if (
+    v.schemaVersion !== 1 ||
+    !size ||
+    size > 8 * 1024 * 1024 ||
+    !previewUrl.startsWith('/api/v1/metadata-covers/')
+  )
+    throw new Error('Invalid metadata response');
+  return {
+    schemaVersion: 1,
+    uploadId: identifier(v.uploadId),
+    libraryId: identifier(v.libraryId),
+    mimeType: member(v.mimeType, ['image/jpeg', 'image/png']),
+    size,
+    expiresAt: timestamp(v.expiresAt),
+    previewUrl,
+  };
+}
+export function decodeMetadataChanges(value: unknown): MetadataChangesPage {
+  const v = record(value, metadataResponseSchemas.changes.required);
+  if (v.schemaVersion !== 1 || typeof v.hasMore !== 'boolean')
+    throw new Error('Invalid metadata response');
+  const changes = list(
+    v.changes,
+    (entry): MetadataChange => {
+      const c = record(entry, change.required);
+      const ids = record(c.relatedIds, ['trackIds', 'albumIds', 'artistIds', 'coverIds']);
+      const fileSavedAt = timestamp(c.fileSavedAt);
+      const reflectedAt = c.reflectedAt === null ? null : timestamp(c.reflectedAt);
+      const reflection = member(c.reflection, [
+        'verified',
+        'reflection_mismatch',
+        'reference_conflict',
+      ]);
+      const sequence = timestamp(c.sequence);
+      if (
+        sequence < 1 ||
+        (reflectedAt !== null && reflectedAt < fileSavedAt) ||
+        (reflection === 'verified') !== (reflectedAt !== null)
+      )
+        throw new Error('Invalid metadata response');
+      return {
+        sequence,
+        libraryId: identifier(c.libraryId),
+        oldTrackId: trackIdentifier(c.oldTrackId),
+        newTrackId: trackIdentifier(c.newTrackId),
+        oldRevision: identifier(c.oldRevision),
+        newRevision: identifier(c.newRevision),
+        coverGeneration: identifier(c.coverGeneration),
+        relatedIds: {
+          trackIds: list(ids.trackIds, trackIdentifier, 100),
+          albumIds: list(ids.albumIds, trackIdentifier, 100),
+          artistIds: list(ids.artistIds, trackIdentifier, 100),
+          coverIds: list(ids.coverIds, trackIdentifier, 100),
+        },
+        changedFields: enumList(c.changedFields, metadataFields),
+        fileSavedAt,
+        reflectedAt,
+        reflection,
+      };
+    },
+    100,
+  );
+  if (changes.some((entry, index) => index > 0 && entry.sequence <= changes[index - 1]!.sequence))
+    throw new Error('Invalid metadata response');
+  return { schemaVersion: 1, changes, hasMore: v.hasMore, nextCursor: boundedText(v.nextCursor) };
 }
