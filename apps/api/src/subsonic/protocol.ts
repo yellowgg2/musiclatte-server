@@ -1,4 +1,5 @@
 import type {
+  ScanStatus,
   MusicAlbum,
   MusicArtist,
   MusicDirectory,
@@ -196,4 +197,36 @@ export function decodePlaylist(value: unknown): SubsonicPlaylist {
 
 export function decodeStarred2(value: unknown): SubsonicStarredSongs {
   return list(record(value).song, decodeEntry);
+}
+
+/** Worker-only path projection; never exported through public MusicEntry. */
+export interface RegistrationTrack {
+  id: string;
+  isDir: false;
+  path: string;
+}
+export interface RegistrationDirectory {
+  id: string;
+  child: Array<RegistrationTrack | { id: string; isDir: true; name: string }>;
+}
+export function decodeScanStatus(value: unknown): ScanStatus {
+  const source = record(value);
+  return { scanning: boolean(source.scanning), count: integer(source.count) };
+}
+export function decodeSong(value: unknown): MusicEntry {
+  const song = decodeEntry(value);
+  if (song.isDir) return invalid();
+  return song;
+}
+export function decodeRegistrationDirectory(value: unknown): RegistrationDirectory {
+  const source = record(value);
+  return {
+    id: id(source.id),
+    child: list(source.child, (value) => {
+      const child = record(value);
+      return boolean(child.isDir)
+        ? { id: id(child.id), isDir: true as const, name: string(child.title) }
+        : { id: id(child.id), isDir: false as const, path: id(child.path) };
+    }),
+  };
 }

@@ -94,3 +94,8 @@ export interface SubsonicEnvelope {
     [key: string]: unknown;
   };
 }
+
+export interface ScanStatus {
+  scanning: boolean;
+  count: number;
+}

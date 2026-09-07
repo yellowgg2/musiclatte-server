@@ -464,7 +464,7 @@ it('should migrate existing v3 links without changing their gonic mapping', asyn
   });
   expect(c.importsFor(migrated).getJob('legacy-job')!.items[0]!.mediaLinkId).toBe('legacy');
   expect(migrated.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 });
+  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 5 });
 });
 
 /** Backup restores pending publication receipts and rejects unsafe recovery paths before activation. */
@@ -526,4 +526,39 @@ it('should record completed staging cleanup without deleting attempt history', a
   await s.worker.runOnce();
   const row = s.c.db.connection.prepare('SELECT * FROM import_attempts').get()!;
   expect(row).toMatchObject({ engine_version: 'seed-1', cleaned_at: 1000 });
+});
+
+/** Runtime-injected registration resumes published items without reacquiring the download engine. */
+it('should resume registration through the worker runtime injection', async () => {
+  const s = await workerSUT();
+  await s.worker.runOnce();
+  const key = s.c.mediaLinks.get(s.item().mediaLinkId!)!.relativeFileKey;
+  const parts = key.split('/');
+  const scanClient = {
+    getScanStatus: async () => ({ scanning: false, count: 1 }),
+    startScan: async () => {},
+    indexes: async () => ({
+      index: [{ name: '#', artist: [{ id: 'root', name: parts[0]!, album: [] }] }],
+    }),
+    registrationDirectory: async (id: string) => ({
+      id,
+      child:
+        id === 'root'
+          ? [{ id: 'channel', isDir: true as const, name: parts[1]! }]
+          : [{ id: 'registered-song', isDir: false as const, path: key }],
+    }),
+  };
+  const worker = createWorkerRunner(
+    Object.assign({}, s.options, {
+      registration: {
+        scanClient,
+        libraries: [{ id: 'library', musicFolderId: '0', relativeRoot: 'imports' }],
+      },
+    }),
+  );
+  expect(await worker.runOnce()).toBe(true);
+  expect(s.item().stage).toBe('ready');
+  expect(s.acquired()).toBe(1);
+  expect(s.files()).toHaveLength(1);
+  expect(s.events()).toHaveLength(1);
 });

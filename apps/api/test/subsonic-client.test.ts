@@ -341,3 +341,52 @@ describe('Subsonic adapter', () => {
     },
   );
 });
+
+/** New protocol methods must preserve private path and current-account boundaries. */
+it('should decode scan status, current-account song and server-only registration paths', async () => {
+  const { client } = await makeSUT({
+    body: ok({
+      scanStatus: { scanning: false, count: 7 },
+      song: { id: 'tr-exact', title: 'Same', isDir: false, path: 'user/channel/song.mp3' },
+      directory: {
+        id: 'dir',
+        name: 'channel',
+        child: [{ id: 'tr-exact', title: 'Same', isDir: false, path: 'user/channel/song.mp3' }],
+      },
+    }),
+  });
+  expect(await client.getScanStatus()).toEqual({
+    scanning: false,
+    count: 7,
+  });
+  expect(await client.getSong('tr-exact')).toEqual({
+    id: 'tr-exact',
+    title: 'Same',
+    isDir: false,
+  });
+  expect(await client.registrationDirectory('dir')).toMatchObject({
+    child: [{ id: 'tr-exact', path: 'user/channel/song.mp3' }],
+  });
+});
+
+/** Scan count/scanning and song shape are strictly decoded, not coerced or accepted as folders. */
+it.each([
+  { method: 'getScanStatus', payload: { scanStatus: { scanning: 'false', count: 0 } } },
+  { method: 'getScanStatus', payload: { scanStatus: { scanning: false, count: -1 } } },
+  { method: 'getScanStatus', payload: { scanStatus: { scanning: false, count: 1.5 } } },
+  { method: 'getSong', payload: { song: { id: 'dir', title: 'Folder', isDir: true } } },
+  {
+    method: 'registrationDirectory',
+    payload: { directory: { id: 'dir', child: [{ id: 'song', isDir: false }] } },
+  },
+])('should reject malformed $method payload', async ({ method, payload }) => {
+  const { client } = await makeSUT({ body: ok(payload) });
+  await expect(Reflect.apply(Reflect.get(client, method), client, ['song'])).rejects.toMatchObject({
+    kind: 'invalid_response',
+  });
+});
+/** Adding status reads never enables scan mutation on the default read-only fake. */
+it('should retain default fake scan denial', async () => {
+  const { client } = await makeSUT();
+  await expect(client.startScan()).rejects.toMatchObject({ kind: 'http_error', httpStatus: 405 });
+});

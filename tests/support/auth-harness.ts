@@ -9,6 +9,8 @@ import {
   syntheticMediaMetadata,
 } from '../../packages/test-support/src/media-fixtures.js';
 import {
+  registrationFixture,
+  type RegistrationFixture,
   subsonicFixture,
   subsonicErrorFixture,
 } from '../../packages/test-support/src/subsonic-fixtures.js';
@@ -70,6 +72,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     redirect: '',
     stall: false,
     scanError: 0,
+    registration: undefined as RegistrationFixture | undefined,
     libraryError: 0,
     emptyLibrary: false,
     libraryStall: false,
@@ -350,29 +353,32 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
               },
             },
           }
-        : operation === 'startScan'
-          ? {
-              'subsonic-response': {
-                status: 'ok',
-                version: '1.15.0',
-                scanStatus: { scanning: true, count: 0 },
-              },
-            }
-          : isCollection
-            ? collectionFixture(operation, {
-                empty:
-                  state.emptyCollections || (operation === 'getPlaylists' && !state.playlistExists),
-                id: state.playlistId,
-                owner: state.playlistOwner,
-                public: state.playlistPublic,
-                name: state.playlistName,
-                changed: state.playlistChanged,
-                entryIds: isFavoriteRead
-                  ? (state.favoriteSongIdsByUsername.get(url.searchParams.get('u') ?? '') ?? [])
-                  : state.playlistEntryIds,
-                coverArt: state.playlistCoverArt,
-              })
-            : subsonicFixture(operation, state.emptyLibrary);
+        : state.registration
+          ? registrationFixture(operation, url, state.registration)
+          : operation === 'startScan'
+            ? {
+                'subsonic-response': {
+                  status: 'ok',
+                  version: '1.15.0',
+                  scanStatus: { scanning: true, count: 0 },
+                },
+              }
+            : isCollection
+              ? collectionFixture(operation, {
+                  empty:
+                    state.emptyCollections ||
+                    (operation === 'getPlaylists' && !state.playlistExists),
+                  id: state.playlistId,
+                  owner: state.playlistOwner,
+                  public: state.playlistPublic,
+                  name: state.playlistName,
+                  changed: state.playlistChanged,
+                  entryIds: isFavoriteRead
+                    ? (state.favoriteSongIdsByUsername.get(url.searchParams.get('u') ?? '') ?? [])
+                    : state.playlistEntryIds,
+                  coverArt: state.playlistCoverArt,
+                })
+              : subsonicFixture(operation, state.emptyLibrary);
     const payload = JSON.stringify(
       (isLibrary && state.malformedLibrary) || (isCollection && state.malformedCollections)
         ? { 'subsonic-response': { status: 'ok', version: '1.15.0' } }

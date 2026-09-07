@@ -27,6 +27,8 @@ export function subsonicFixture(operation: string, empty = false): SubsonicEnvel
   };
   const payloads: Record<string, Record<string, unknown>> = {
     ping: {},
+    getScanStatus: { scanStatus: { scanning: false, count: 1 } },
+    getSong: { song },
     getUser: { user: { username: 'fixture-listener', adminRole: false, folder: [1] } },
     getMusicFolders: {
       musicFolders: { musicFolder: empty ? null : [{ id: 0, name: 'Synthetic Music' }] },
@@ -65,4 +67,45 @@ export function subsonicErrorFixture(
   message = 'synthetic upstream error',
 ): SubsonicEnvelope {
   return { 'subsonic-response': { status: 'failed', version: '1.15.0', error: { code, message } } };
+}
+
+export interface RegistrationFixture {
+  statuses: Array<{ scanning: boolean; count: number }>;
+  directories: Record<string, Array<Record<string, unknown>>>;
+  roots: Array<{ id: string; name: string }>;
+  scanError?: number;
+  directoryReads?: Record<string, number>;
+  visibleAfter?: number;
+}
+/** Stateful source-shaped scan and narrow folder traversal, using synthetic data only. */
+export function registrationFixture(operation: string, url: URL, state: RegistrationFixture) {
+  let payload: Record<string, unknown>;
+  if (operation === 'startScan' && state.scanError) return subsonicErrorFixture(state.scanError);
+  if (operation === 'getScanStatus' || operation === 'startScan') {
+    const status = state.statuses[0] ?? { scanning: false, count: 0 };
+    if (operation === 'getScanStatus' && state.statuses.length > 1) state.statuses.shift();
+    payload = { scanStatus: status };
+  } else if (operation === 'getIndexes') {
+    payload = { indexes: { lastModified: 0, index: [{ name: '#', artist: state.roots }] } };
+  } else if (operation === 'getMusicDirectory') {
+    const id = url.searchParams.get('id') ?? '';
+    const reads = (state.directoryReads ??= {});
+    reads[id] = (reads[id] ?? 0) + 1;
+    payload = {
+      directory: {
+        id,
+        name: id,
+        child: (state.directories[id] ?? []).filter(
+          (child) => child.isDir || reads[id]! > (state.visibleAfter ?? 0),
+        ),
+      },
+    };
+  } else if (operation === 'getSong') {
+    const song = Object.values(state.directories)
+      .flat()
+      .find((child) => child.id === url.searchParams.get('id') && !child.isDir);
+    if (!song) return subsonicErrorFixture(70);
+    payload = { song };
+  } else return subsonicFixture(operation);
+  return { 'subsonic-response': { status: 'ok', version: '1.15.0', ...payload } };
 }

@@ -105,3 +105,10 @@ filesystem/power-loss behavior and actual YouTube/nightly compatibility belong t
 
 CLI references: [yt-dlp options and metadata](https://github.com/yt-dlp/yt-dlp#modifying-metadata),
 [ffprobe structured output](https://ffmpeg.org/ffprobe.html#Main-options).
+
+## Step 04 registration extension
+
+Optional `WorkerOptions.registration` injects a fixed worker scan client and library mappings.
+When no download claim remains, the worker runs one durable registration batch; restart can complete
+previously published files without acquiring an engine. Schema v5 adds registration scheduling to
+v4, preserving publication tables and receipts. See [gonic registration](gonic-registration.md).

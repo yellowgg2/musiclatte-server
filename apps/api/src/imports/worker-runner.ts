@@ -1,3 +1,4 @@
+import { createRegistrationService, type RegistrationOptions } from './registration-service.js';
 import { randomUUID } from 'node:crypto';
 import { lstatSync, mkdirSync, realpathSync, rmSync } from 'node:fs';
 import { join, sep } from 'node:path';
@@ -9,6 +10,7 @@ import { prepareMediaFileKey, publishMediaFile, resolveFileKey } from './file-ke
 
 export interface WorkerOptions {
   database: ManagementDatabase;
+  registration?: Omit<RegistrationOptions, 'database' | 'clock'>;
   clock: () => number;
   musicRoot: string;
   stagingRoot: string;
@@ -59,6 +61,13 @@ export function createWorkerRunner(options: WorkerOptions) {
     options.leaseDurationMs,
   );
   const downloader = createDownloader(options);
+  const registration = options.registration
+    ? createRegistrationService({
+        ...options.registration,
+        database: options.database,
+        clock: options.clock,
+      })
+    : undefined;
   let busy = false;
   let stopping = false;
   let active: AbortController | undefined;
@@ -115,7 +124,11 @@ export function createWorkerRunner(options: WorkerOptions) {
     try {
       cleanupCompleted();
       const claim = ledger.claim();
-      if (!claim) return false;
+      if (!claim) {
+        if (!registration) return false;
+        active = new AbortController();
+        return await registration.runOnce(active.signal);
+      }
       const { job, item, recovering } = claim;
       itemId = item.id;
       jobId = job.id;

@@ -1,4 +1,5 @@
 import type {
+  ScanStatus,
   MusicAlbum,
   MusicArtist,
   MusicDirectory,
@@ -15,6 +16,10 @@ import type {
 } from '@musiclatte/contracts';
 import { SubsonicError } from './errors.js';
 import {
+  decodeScanStatus,
+  decodeSong,
+  decodeRegistrationDirectory,
+  type RegistrationDirectory,
   decodeAlbum,
   decodeArtist,
   decodeDirectory,
@@ -66,6 +71,9 @@ export interface UpdatePlaylistOptions extends RequestOptions {
   songIndexesToRemove?: readonly number[];
 }
 export interface SubsonicClient {
+  getScanStatus(options?: RequestOptions): Promise<ScanStatus>;
+  getSong(id: string, options?: RequestOptions): Promise<MusicEntry>;
+  registrationDirectory(id: string, options?: RequestOptions): Promise<RegistrationDirectory>;
   /** Explicit authenticated admin action only; never used for discovery. */
   startScan(options?: RequestOptions): Promise<void>;
   ping(options?: RequestOptions): Promise<SubsonicPing>;
@@ -95,6 +103,8 @@ export interface SubsonicClientOptions {
   logger?: (event: Readonly<Record<string, unknown>>) => void;
 }
 type Operation =
+  | 'getScanStatus'
+  | 'getSong'
   | 'startScan'
   | 'ping'
   | 'getUser'
@@ -245,6 +255,17 @@ export function createSubsonicClient(options: SubsonicClientOptions): SubsonicCl
     }
   }
   return {
+    async getScanStatus(opts) {
+      return decodeScanStatus((await request('getScanStatus', [], opts)).scanStatus);
+    },
+    async getSong(id, opts) {
+      return decodeSong((await request('getSong', [['id', required(id)]], opts)).song);
+    },
+    async registrationDirectory(id, opts) {
+      return decodeRegistrationDirectory(
+        (await request('getMusicDirectory', [['id', required(id)]], opts)).directory,
+      );
+    },
     async startScan(opts) {
       await request('startScan', [], opts);
     },

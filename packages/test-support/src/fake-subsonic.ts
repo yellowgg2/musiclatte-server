@@ -1,8 +1,13 @@
 import { createServer } from 'node:http';
-import { subsonicFixture } from './subsonic-fixtures.js';
+import {
+  registrationFixture,
+  type RegistrationFixture,
+  subsonicFixture,
+} from './subsonic-fixtures.js';
 import { collectionFixture } from './collection-fixtures.js';
 export interface SubsonicScenario {
   body?: unknown;
+  registration?: RegistrationFixture;
   status?: number;
   contentType?: string;
   stall?: 'headers' | 'body';
@@ -12,6 +17,8 @@ export interface SubsonicScenario {
   collections?: boolean;
 }
 const reads = new Set([
+  'getScanStatus',
+  'getSong',
   'ping',
   'getUser',
   'getMusicFolders',
@@ -45,7 +52,9 @@ export async function createFakeSubsonic(scenario: SubsonicScenario = {}) {
     received();
     const operation = url.pathname.replace(/^\/rest\//, '');
     const allowed =
-      reads.has(operation) || (scenario.collections && collectionOperations.has(operation));
+      reads.has(operation) ||
+      (Boolean(scenario.registration) && operation === 'startScan') ||
+      (scenario.collections && collectionOperations.has(operation));
     if (request.method !== 'GET' || !url.pathname.startsWith('/rest/') || !allowed) {
       response.writeHead(405);
       response.end();
@@ -71,9 +80,11 @@ export async function createFakeSubsonic(scenario: SubsonicScenario = {}) {
     }
     const body =
       scenario.body === undefined
-        ? scenario.collections && collectionOperations.has(operation)
-          ? collectionFixture(operation, scenario.empty)
-          : subsonicFixture(operation, scenario.empty)
+        ? scenario.registration
+          ? registrationFixture(operation, url, scenario.registration)
+          : scenario.collections && collectionOperations.has(operation)
+            ? collectionFixture(operation, scenario.empty)
+            : subsonicFixture(operation, scenario.empty)
         : scenario.body;
     response.end(typeof body === 'string' ? body : JSON.stringify(body));
   });

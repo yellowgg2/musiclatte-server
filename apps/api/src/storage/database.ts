@@ -3,12 +3,13 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
   new URL('./migrations/003-imports.sql', import.meta.url),
   new URL('./migrations/004-import-worker.sql', import.meta.url),
+  new URL('./migrations/005-registration.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -23,6 +24,10 @@ export function validateSchema(db: DatabaseSync): void {
   ) {
     throw new Error('Unsupported storage schema');
   }
+  db.prepare(
+    'SELECT item_id, attempt, next_attempt_at, failure_code FROM registration_attempts LIMIT 0',
+  );
+  db.prepare('SELECT singleton, owner, expires_at, next_scan_at FROM registration_cycle LIMIT 0');
   db.prepare(
     'SELECT item_id, relative_file_key, staging_key, event_id, media_link_id, intended_at, completed_at, pending_device, pending_inode, disposition FROM import_publish_intents LIMIT 0',
   );
