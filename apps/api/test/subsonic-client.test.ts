@@ -369,8 +369,29 @@ it('should decode scan status, current-account song and server-only registration
   });
 });
 
+/** Gonic omits its zero count while preserving the required scanning flag. */
+it.each([false, true])(
+  'should decode gonic omitted zero count when scanning is %s',
+  async (scanning) => {
+    const { client } = await makeSUT({ body: ok({ scanStatus: { scanning } }) });
+    await expect(client.getScanStatus()).resolves.toEqual({ scanning, count: 0 });
+  },
+);
+/** Explicit zero remains valid alongside gonic's omitted-zero representation. */
+it('should preserve an explicit zero scan count', async () => {
+  const { client } = await makeSUT({ body: ok({ scanStatus: { scanning: false, count: 0 } }) });
+  await expect(client.getScanStatus()).resolves.toEqual({ scanning: false, count: 0 });
+});
 /** Scan count/scanning and song shape are strictly decoded, not coerced or accepted as folders. */
 it.each([
+  { method: 'getScanStatus', payload: { scanStatus: { count: 0 } } },
+  { method: 'getScanStatus', payload: { scanStatus: { scanning: false, count: null } } },
+  { method: 'getScanStatus', payload: { scanStatus: { scanning: false, count: '0' } } },
+  { method: 'getScanStatus', payload: { scanStatus: { scanning: false, count: false } } },
+  {
+    method: 'getScanStatus',
+    payload: { scanStatus: { scanning: false, count: Number.MAX_SAFE_INTEGER + 1 } },
+  },
   { method: 'getScanStatus', payload: { scanStatus: { scanning: 'false', count: 0 } } },
   { method: 'getScanStatus', payload: { scanStatus: { scanning: false, count: -1 } } },
   { method: 'getScanStatus', payload: { scanStatus: { scanning: false, count: 1.5 } } },

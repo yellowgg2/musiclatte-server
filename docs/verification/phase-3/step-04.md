@@ -82,3 +82,9 @@ The default 120-second cycle / 1-second poll / 30-second initial backoff is synt
 real library timing, asynchronous upstream scan failure limits and end-to-end Musiclatte behavior
 remain Steps 13–14. No project commit/push was performed. Obsidian edits remain outside repository
 commits; Rulebook data repository was unchanged.
+
+## S14 owner regression — 2026-09-07
+
+S14-B01: omitted zero scan count compatibility; RED3/69, GREEN69+worker46, contract55, fresh empty real gonic ready/event/link1 without manual scan.
+
+See [S14 evidence](step-14/README.md). No commit/push.

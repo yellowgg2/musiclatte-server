@@ -129,7 +129,7 @@ export function createImportClient({
             ? {
                 'X-Musiclatte-Client': 'web',
                 'X-CSRF-Token': mutation.csrfToken,
-                ...(mutation.body ? { 'Content-Type': 'application/json' } : {}),
+                'Content-Type': 'application/json',
               }
             : {}),
         },

@@ -177,6 +177,38 @@ describe('engine settings', () => {
     await waitFor(() => expect((check as HTMLButtonElement).disabled).toBe(false));
     expect(document.activeElement).toBe(check);
   });
+  /** A daily-budget no-op retains the independently read status without inventing an update failure. */
+  it('should settle an acknowledged coalesced check without changing the displayed engine', async () => {
+    const c = makeSUT();
+    await ready();
+    await c.user.click(within(panel()).getByRole('button', { name: 'Check now' }));
+    expect(within(panel()).getByText(/Check requested/)).toBeTruthy();
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 31000);
+    await waitFor(() => expect(within(panel()).queryByText(/Check requested/)).toBeNull(), {
+      timeout: 4500,
+    });
+    expect(within(panel()).queryByRole('alert')).toBeNull();
+    expect(
+      (within(panel()).getByRole('button', { name: 'Check now' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(c.calls.filter((call) => call.init?.method === 'POST')).toHaveLength(1);
+    expect(within(panel()).getByText(c.state.value.activeVersion!)).toBeTruthy();
+  });
+  /** Repeating an already-restored pointer is a server no-op and must not become a false timeout. */
+  it('should settle an already restored pointer without expecting another swap', async () => {
+    const context = createTestContext();
+    context.state.value = engineFixture({ status: 'restored' });
+    const c = makeSUT(context);
+    await ready();
+    await c.user.click(within(panel()).getByRole('button', { name: 'Restore previous version' }));
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 31000);
+    await waitFor(() => expect(within(panel()).queryByText(/Restore requested/)).toBeNull(), {
+      timeout: 4500,
+    });
+    expect(within(panel()).queryByRole('alert')).toBeNull();
+    expect(within(panel()).getByText('Previous version restored')).toBeTruthy();
+    expect(c.calls.filter((call) => call.init?.method === 'POST')).toHaveLength(1);
+  });
   /** Restore acknowledgement remains pending until the active pointer actually changes. */
   it('should explain next-job restore and observe completion', async () => {
     const c = makeSUT();
@@ -249,7 +281,7 @@ describe('engine settings', () => {
   it('should retain an unknown action outcome until explicit recovery', async () => {
     const c = makeSUT();
     await ready();
-    await c.user.click(within(panel()).getByRole('button', { name: 'Check now' }));
+    await c.user.click(within(panel()).getByRole('button', { name: 'Restore previous version' }));
     const now = Date.now();
     vi.spyOn(Date, 'now').mockReturnValue(now + 31000);
     await screen.findByText(

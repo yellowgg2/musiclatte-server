@@ -70,7 +70,7 @@ export function subsonicErrorFixture(
 }
 
 export interface RegistrationFixture {
-  statuses: Array<{ scanning: boolean; count: number }>;
+  statuses: Array<{ scanning: boolean; count?: number }>;
   directories: Record<string, Array<Record<string, unknown>>>;
   roots: Array<{ id: string; name: string }>;
   scanError?: number;

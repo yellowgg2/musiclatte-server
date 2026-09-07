@@ -121,3 +121,11 @@ Final cleanup/result record follows.
 - Project commit/push not run. External vault files remain outside the application Git changes.
 
 Browser screenshot bytes were JPEG; file extensions match the returned format. Raster export dimensions can differ from CSS viewport dimensions at browser zoom; the actual 200% setting and 900 CSS-pixel reflow were verified independently.
+
+## S14 owner regression — 2026-09-07
+
+S14-B03: daily coalesced check uses an independent status read without inventing a fresh update or timeout failure. RED1/23→GREEN33, contract6, typecheck/build. Final Chrome verification in S14.
+
+See [S14 evidence](../step-14/README.md) for completed live/device verification and cleanup. No commit/push during TDD.
+
+Repeated already-restored pointer regression: RED1/24→GREEN; check and restore coalescence preserve the observed active pointer without a false30s failure. Final S14 full unit574/contract131, typecheck/build pass. MICRO sanity; no presentation/copy/Gallery changes.

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
+import { createImportClient } from '../../web/src/imports/client.js';
 import {
   browserHeaders,
   cookieOf,
@@ -66,6 +67,31 @@ describe('imports API', () => {
   }
   afterEach(async () => {
     for (const cleanup of cleanups.splice(0)) await cleanup();
+  });
+
+  /** The production browser client satisfies the API JSON/CSRF boundary on bodyless cancellation. */
+  it('should cancel a queued job through the production browser client', async () => {
+    const c = await makeSUT();
+    const created = (await c.create()).json().job;
+    const client = createImportClient({
+      fetcher: async (input, init) => {
+        const response = await c.app.inject({
+          method: init?.method as 'DELETE',
+          url: String(input),
+          headers: {
+            ...Object.fromEntries(new Headers(init?.headers)),
+            cookie: c.headers.cookie,
+            origin: browserHeaders.origin,
+          },
+        });
+        return new Response(response.body, { status: response.statusCode });
+      },
+    });
+    const options = { csrfToken: c.headers['x-csrf-token'], signal: new AbortController().signal };
+    const first = await client.cancel(created.id, options);
+    expect(first.job.status).toBe('cancelled');
+    expect(first.job.items[0]?.stage).toBe('cancelled');
+    expect((await client.cancel(created.id, options)).job).toEqual(first.job);
   });
 
   /** Canonical replay and duplicate admission preserve order without enqueuing a second download. */

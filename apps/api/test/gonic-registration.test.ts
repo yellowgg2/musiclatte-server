@@ -127,6 +127,27 @@ it('should register a job atomically by exact nested paths and avoid full traver
   ).toBe('0');
   expect(await s.service.runOnce()).toBe(false);
 });
+/** An empty gonic library omits count until the first scan discovers the published track. */
+it('should start the first scan with omitted zero count and register exactly one event', async () => {
+  const s = await makeSUT(
+    {
+      statuses: [{ scanning: false }, { scanning: true }, { scanning: false, count: 1 }],
+    },
+    1,
+  );
+  expect(await s.service.runOnce()).toBe(true);
+  expect(s.items().map((item) => item.stage)).toEqual(['ready']);
+  expect(
+    s.upstream.requests.filter((request) => request.pathname.endsWith('startScan')),
+  ).toHaveLength(1);
+  expect(s.c.mediaLinks.get(s.items()[0]!.mediaLinkId!)!.gonicSongId).toBe('song-a');
+  expect(
+    s.c.db.connection
+      .prepare('SELECT count(*) AS total, count(registered_at) AS registered FROM download_events')
+      .get(),
+  ).toEqual({ total: 1, registered: 1 });
+  expect(await s.service.runOnce()).toBe(false);
+});
 /** Existing scans are joined; delayed folder visibility is retried without another scan. */
 it('should join scanning and retry delayed visibility within a bounded cycle', async () => {
   const s = await makeSUT({

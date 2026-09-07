@@ -211,7 +211,11 @@ export interface RegistrationDirectory {
 }
 export function decodeScanStatus(value: unknown): ScanStatus {
   const source = record(value);
-  return { scanning: boolean(source.scanning), count: integer(source.count) };
+  // Gonic v0.22.0 omits a zero count via json:"count,omitempty".
+  return {
+    scanning: boolean(source.scanning),
+    count: source.count === undefined ? 0 : integer(source.count),
+  };
 }
 export function decodeSong(value: unknown): MusicEntry {
   const song = decodeEntry(value);

@@ -9,7 +9,7 @@ The pinned gonic v0.22.0 sources are:
 
 - [Scan and getSong handlers](https://github.com/sentriz/gonic/blob/v0.22.0/server/ctrlsubsonic/handlers_common.go):
   `ServeStartScan` checks admin, launches `ScanAndClean` asynchronously, and returns scan status.
-  `ServeGetScanStatus` itself has no admin check and returns boolean `scanning` and integer `count`.
+  `ServeGetScanStatus` itself has no admin check and returns boolean `scanning`; zero `count` is omitted by its JSON encoder.
   `getSong` projects the authenticated account's song data.
 - [Folder handlers](https://github.com/sentriz/gonic/blob/v0.22.0/server/ctrlsubsonic/handlers_by_folder.go):
   `getIndexes(musicFolderId)` selects that music root's immediate folders; `getMusicDirectory(id)`
@@ -17,6 +17,8 @@ The pinned gonic v0.22.0 sources are:
 - [Folder constructors](https://github.com/sentriz/gonic/blob/v0.22.0/server/ctrlsubsonic/spec/construct_by_folder.go):
   index `artist.name` and directory child `title` represent folder `RightPath` segments, while leaf
   `TrackChild.path` joins the parent relative path and filename. A track's title can come from tags.
+
+The pinned [ScanStatus definition](https://github.com/sentriz/gonic/blob/v0.22.0/server/ctrlsubsonic/spec/spec.go#L283) uses `omitempty` for count. The adapter maps only an absent count to zero and still rejects malformed present values and missing/invalid scanning flags. Count is not a completion signal. This permits the first automatic scan of an empty library.
 
 The implementation preserves the **full scan** limitation. Narrow traversal is a lookup strategy,
 not a scoped scan. An idle status immediately after start is possible because launch is asynchronous;

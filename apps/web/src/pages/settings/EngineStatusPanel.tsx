@@ -15,7 +15,6 @@ type Pending = {
   action: EngineActionRequest['action'];
   before: EngineStatusResponse;
   started: number;
-  sawChecking: boolean;
 };
 export function EngineStatusPanel({
   locale,
@@ -73,16 +72,16 @@ export function EngineStatusPanel({
       setError(null);
       const action = pending.current;
       if (action) {
-        action.sawChecking ||= result.status === 'checking';
         const complete =
           action.action === 'restore_previous'
-            ? result.activeVersion === action.before.previousVersion
-            : result.status !== 'checking' &&
-              (action.sawChecking ||
-                result.lastCheckedAt !== action.before.lastCheckedAt ||
-                result.status !== action.before.status ||
-                result.activeVersion !== action.before.activeVersion ||
-                result.candidateVersion !== action.before.candidateVersion);
+            ? result.activeVersion === action.before.previousVersion ||
+              (action.before.status === 'restored' &&
+                result.status === 'restored' &&
+                result.activeVersion === action.before.activeVersion &&
+                result.previousVersion === action.before.previousVersion)
+            : // check_now may be coalesced without a state change. This independent
+              // read reports current state; it does not assert a fresh update completed.
+              result.status !== 'checking';
         if (complete) {
           pending.current = null;
           setAccepted(null);
@@ -148,7 +147,7 @@ export function EngineStatusPanel({
     try {
       await client.action(action, { csrfToken, signal: controller.signal });
       if (controller.signal.aborted) return;
-      pending.current = { action, before, started: Date.now(), sawChecking: false };
+      pending.current = { action, before, started: Date.now() };
       setAccepted(action);
       // A 202 projection is only acknowledgement; an independent read owns observed status.
     } catch (reason) {

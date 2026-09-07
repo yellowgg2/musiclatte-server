@@ -64,3 +64,9 @@ BRANCH_SETUP, PROJECT_DOC_CONTEXT, RED, GREEN, UI_DESIGN_REVIEW, UI_TEST, LOCALI
 LESSONS_CONTEXT: one Rulebook project search succeeded; three results dropped as not directly applicable (runtime-image alignment, HTML audio retry, identity-light bulk pairing). `yk-rulebook-reconcile` postflight: `skipped(no_new_lesson)`; small verified fixes did not meet debugging/token cost eligibility. Canonical write/reindex/Rulebook sync not applicable.
 
 Obsidian Step/overview/catalog synchronized separately. Existing gonic/bot/iOS, real media, services and volumes untouched. Preview API/Vite processes stopped, task Chrome tab closed, viewport/zoom/motion restored and temporary control removed. Only review evidence remains.
+
+## S14 owner regression — 2026-09-07
+
+S14-B02: bodyless browser cancellation now sends required JSON Content-Type. Production client→API RED1/12→GREEN27, contract6, typecheck/build. Actual queued cancel: cancelled, attempt0; reload confirmed.
+
+See [S14 evidence](../step-14/README.md) for completed live/device verification and cleanup. No commit/push during TDD.
