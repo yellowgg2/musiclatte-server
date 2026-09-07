@@ -12,9 +12,9 @@ import {
 } from '../../apps/web/src/capabilities/client-features.js';
 
 describe('import wire contract', () => {
-  /** Producer implementation must not enable the unimplemented web consumer. */
-  it('should keep the imports web consumer disabled', () => {
-    expect(clientFeatures['imports.youtube']).toBe(false);
+  /** S10 enables the web consumer after the producer contract is ready. */
+  it('should enable the completed imports web consumer', () => {
+    expect(clientFeatures['imports.youtube']).toBe(true);
     expect(
       availableEntries({
         schemaVersion: 1,
@@ -25,7 +25,7 @@ describe('import wire contract', () => {
           'imports.youtube': { supported: true, permission: 'allowed', availability: 'available' },
         },
       }),
-    ).not.toContain('imports.youtube');
+    ).toContain('imports.youtube');
   });
   /** Import contracts expose exact bodies and bounded query defaults independently of handlers. */
   it('should export strict request and response schemas', async () => {

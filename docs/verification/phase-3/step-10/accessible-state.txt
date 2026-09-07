@@ -1,0 +1,55 @@
+- link "Skip to content":
+  - /url: "#main"
+- banner:
+  - generic: Musiclatte
+- navigation "Main navigation":
+  - link "Music":
+    - /url: /music
+    - text: Music
+  - link "Playlists":
+    - /url: /playlists
+    - text: Playlists
+  - link "Imports":
+    - /url: /imports
+    - text: Imports
+  - link "Settings":
+    - /url: /settings
+    - text: Settings
+- main:
+  - heading "Import music" [level=1]
+  - paragraph: Add YouTube links to your music library.
+  - text: Language
+  - combobox "Language":
+    - option "한국어"
+    - option "English" [selected]
+  - paragraph: Only import music you own or have permission to download.
+  - generic: Library
+  - combobox "Library":
+    - option "music" [selected]
+    - option "archive"
+  - generic: YouTube links
+  - textbox "YouTube links" [active]: https://example.invalid/invalid
+  - paragraph: Paste one individual video link per line. Use Ctrl/⌘ + Enter or the button below to submit.
+  - alert: Enter valid HTTPS YouTube video links. Playlist and channel links are not supported.
+  - button "Import links"
+  - heading "Import history" [level=2]
+  - article "Import · Sep 7, 2026, 5:59 PM":
+    - heading "Import · Sep 7, 2026, 5:59 PM" [level=3]
+    - paragraph: Some items failed
+    - list:
+      - paragraph: Evening café · A quiet song for the long way home — 오래 기억하고 싶은 저녁의 음악
+      - paragraph: Musiclatte Studio · 긴 이름의 테스트 채널
+      - generic: ✓
+      - generic: Ready
+      - paragraph: A second song
+      - generic: "!"
+      - generic: Failed
+      - paragraph: Download failed. You can retry this item.
+      - button "Retry A second song": Retry failed item
+- complementary "Now playing":
+  - 'button "Open player: 가을 & Café + 100%"':
+    - strong: 가을 & Café + 100%
+    - generic: Synthetic Artist
+  - button "Play 가을 & Café + 100%":
+    - generic: ▶
+  - button "Add 가을 & Café + 100% to favorites":

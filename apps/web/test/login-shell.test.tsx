@@ -142,7 +142,8 @@ describe('login shell', () => {
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(await screen.findByRole('heading', { name: 'Music' })).toBeTruthy();
     expect(window.location.pathname).toBe('/music');
-    expect(screen.queryByRole('link', { name: /Playlist|Import/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Playlist/ })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Imports' })).toBeTruthy();
     await user.click(screen.getByRole('link', { name: 'Settings' }));
     await user.selectOptions(screen.getByLabelText('Language'), 'ko');
     expect(await screen.findByRole('heading', { name: '설정' })).toBeTruthy();
@@ -215,7 +216,7 @@ describe('login shell', () => {
   /** Direct unsupported routes show a scoped recovery page, never an unfinished feature. */
   it('should guard direct routes and preserve the SPA mount base', async () => {
     localStorage.setItem('musiclatte.locale', 'en');
-    window.history.replaceState(null, '', '/latte/imports');
+    window.history.replaceState(null, '', '/latte/engine');
     const context = createTestContext();
     context.signIn();
     const { user } = await makeSUT(context, '/latte/');

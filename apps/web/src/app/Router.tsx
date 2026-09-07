@@ -1,3 +1,5 @@
+import { ImportPage } from '../pages/imports/ImportPage';
+import { isImportsPath } from '../imports/routes';
 import { navigateMusic } from '../music/navigation';
 import { MusicPage } from '../pages/music/MusicPage';
 import { PlayerProvider, type PlayerAudio } from '../player/PlayerProvider';
@@ -49,6 +51,9 @@ export function Router({
   const canWritePlaylists = availableEntries(state.capabilities).includes('playlists.write');
   const canFavorites = availableEntries(state.capabilities).includes('favorites.songs');
   const currentPlaylistRoute = playlistRoute(location, base);
+  const currentImportsPath = isImportsPath(location, base);
+  const canImport = availableEntries(state.capabilities).includes('imports.youtube');
+  const importCapability = featureState(state.capabilities?.features['imports.youtube']);
   const currentFavoritesPath = isFavoritesPath(location, base);
   const playlistCapability = featureState(state.capabilities?.features['playlists.read']);
   const favoritesCapability = featureState(state.capabilities?.features['favorites.songs']);
@@ -126,6 +131,10 @@ export function Router({
     canReadPlaylists,
   ]);
   useEffect(() => {
+    if (state.status === 'signed-in' && currentImportsPath) {
+      document.title = `${copy['imports.title']} · Musiclatte`;
+      return;
+    }
     if (state.status === 'signed-in' && currentFavoritesPath && canFavorites) return;
     if (state.status === 'signed-in' && canBrowse && musicRoute(location, base)) return;
     if (state.status === 'signed-in' && canReadPlaylists && currentPlaylistRoute) return;
@@ -139,6 +148,7 @@ export function Router({
     canFavorites,
     canReadPlaylists,
     currentFavoritesPath,
+    currentImportsPath,
     currentPlaylistRoute,
   ]);
   useEffect(() => {
@@ -208,7 +218,48 @@ export function Router({
               </>
             }
           >
-            {currentFavoritesPath && canFavorites ? (
+            {currentImportsPath && canImport ? (
+              <ImportPage
+                key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}`}
+                locale={locale}
+                onLocale={onLocale}
+                fetcher={fetcher}
+                apiOrigin={apiOrigin}
+                csrfToken={state.session.csrfToken}
+                onUnauthenticated={store.expire}
+              />
+            ) : currentImportsPath ? (
+              <div className={styles.settings}>
+                <h1 tabIndex={-1} data-page-heading>
+                  {
+                    copy[
+                      importCapability === 'denied'
+                        ? 'imports.denied'
+                        : importCapability === 'unavailable'
+                          ? 'imports.unavailable'
+                          : 'imports.unsupported'
+                    ]
+                  }
+                </h1>
+                <p>
+                  {
+                    copy[
+                      importCapability === 'denied'
+                        ? 'imports.deniedHelp'
+                        : importCapability === 'unavailable'
+                          ? 'imports.unavailableHelp'
+                          : 'imports.unsupportedHelp'
+                    ]
+                  }
+                </p>
+                {importCapability === 'unavailable' && (
+                  <Action onClick={() => void store.restore()}>{copy['status.retry']}</Action>
+                )}
+                <a href={canBrowse ? `${base}music` : `${base}settings`}>
+                  {copy[canBrowse ? 'favorites.back' : 'status.back']}
+                </a>
+              </div>
+            ) : currentFavoritesPath && canFavorites ? (
               <FavoritesPage
                 base={base}
                 locale={locale}

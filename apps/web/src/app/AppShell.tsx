@@ -84,6 +84,30 @@ export function AppShell({
           </a>
         )}
 
+        {entries.includes('imports.youtube') && (
+          <a
+            href={`${base}imports`}
+            aria-current={
+              window.location.pathname === `${base}imports` ||
+              window.location.pathname === `${base}imports/`
+                ? 'page'
+                : undefined
+            }
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="22"
+              height="22"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              aria-hidden="true"
+            >
+              <path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5" />
+            </svg>
+            {copy['imports.nav']}
+          </a>
+        )}
         <a
           href={`${base}settings`}
           aria-current={window.location.pathname.startsWith(`${base}settings`) ? 'page' : undefined}

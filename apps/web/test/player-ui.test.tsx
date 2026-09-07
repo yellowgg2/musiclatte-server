@@ -72,12 +72,20 @@ function createTestContext() {
         features: {
           'music.browse': { supported: true, permission: 'allowed', availability: 'available' },
           'music.stream': { supported: true, permission: 'allowed', availability: 'available' },
+          'imports.youtube': { supported: true, permission: 'allowed', availability: 'available' },
           'library.randomSongs': {
             supported: true,
             permission: 'allowed',
             availability: 'available',
           },
         },
+      });
+    if (url.pathname.endsWith('/imports'))
+      return Response.json({
+        schemaVersion: 1,
+        jobs: [],
+        libraries: [{ id: 'music' }],
+        nextCursor: null,
       });
     if (url.pathname.endsWith('/folders/fixture'))
       return Response.json({
@@ -136,6 +144,23 @@ afterEach(() => {
 });
 
 describe('persistent player UI', () => {
+  /** Imports route and locale changes preserve the playing resource and queue without reloading audio. */
+  it('should preserve playback while entering imports and changing its locale', async () => {
+    const { audio, user } = await makeSUT();
+    await user.click(await screen.findByRole('button', { name: 'Play First patient song' }));
+    act(() => audio.emit('playing'));
+    const src = audio.src;
+    const loads = audio.load.mock.calls.length;
+    await user.click(screen.getByRole('link', { name: 'Imports' }));
+    await screen.findByRole('heading', { name: 'Import music' });
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'ko');
+    expect(audio.src).toBe(src);
+    expect(audio.play).toHaveBeenCalledOnce();
+    expect(audio.load).toHaveBeenCalledTimes(loads);
+    expect(audio.paused).toBe(false);
+    expect(screen.getAllByRole('button', { name: /First patient song/ }).length).toBeGreaterThan(0);
+  });
+
   /** Activates a folder song through a query-free media URL and waits for the media event. */
   it('should start loading from a song action and report playing only after audio confirms it', async () => {
     const { audio, user } = await makeSUT();
