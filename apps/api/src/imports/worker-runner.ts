@@ -15,7 +15,7 @@ export interface WorkerOptions {
   musicRoot: string;
   stagingRoot: string;
   libraryRoot: (libraryId: string) => string;
-  acquireEngine: (sourceId: string) => Promise<Engine>;
+  acquireEngine: (sourceId: string, signal?: AbortSignal) => Promise<Engine>;
   ffprobe: string;
   leaseDurationMs: number;
   timeoutMs: number;
@@ -100,6 +100,7 @@ export function createWorkerRunner(options: WorkerOptions) {
     if (busy || stopping) return false;
     busy = true;
     let timer: NodeJS.Timeout | undefined;
+    let engineLease: Engine | undefined;
     let crashed = false;
     let itemId: string | undefined;
     let finalized = false;
@@ -177,10 +178,14 @@ export function createWorkerRunner(options: WorkerOptions) {
           const stagingKey = randomUUID();
           ledger.startAttempt(item.id, stagingKey);
           mkdirSync(join(options.stagingRoot, stagingKey), { mode: 0o700 });
+          const acquisitionTimeout = new AbortController();
           const acquired = await new Promise<Engine>((resolve, reject) => {
             let settled = false;
             const finish = (result: { engine: Engine } | { error: unknown }) => {
-              if (settled) return;
+              if (settled) {
+                if ('engine' in result) result.engine.release?.();
+                return;
+              }
               settled = true;
               clearTimeout(timeout);
               signal.removeEventListener('abort', abort);
@@ -188,17 +193,26 @@ export function createWorkerRunner(options: WorkerOptions) {
               else reject(result.error);
             };
             const abort = () => finish({ error: new Error('worker_interrupted') });
-            const timeout = setTimeout(abort, options.timeoutMs);
+            const timeout = setTimeout(() => {
+              acquisitionTimeout.abort();
+              abort();
+            }, options.timeoutMs);
             signal.addEventListener('abort', abort, { once: true });
             if (signal.aborted) abort();
             else
               Promise.resolve()
-                .then(() => options.acquireEngine(item.sourceId))
+                .then(() =>
+                  options.acquireEngine(
+                    item.sourceId,
+                    AbortSignal.any([signal, acquisitionTimeout.signal]),
+                  ),
+                )
                 .then(
                   (engine) => finish({ engine }),
                   (error) => finish({ error }),
                 );
           });
+          engineLease = acquired;
           const engine = Object.freeze({
             version: acquired.version,
             executable: acquired.executable,
@@ -298,9 +312,16 @@ export function createWorkerRunner(options: WorkerOptions) {
     } finally {
       if (timer) clearInterval(timer);
       active = undefined;
-      if (!crashed && finalized && itemId) cleanup(ledger.stagingKeys(itemId));
-      ledger.stop();
-      busy = false;
+      try {
+        if (!crashed && finalized && itemId) cleanup(ledger.stagingKeys(itemId));
+      } finally {
+        try {
+          engineLease?.release?.();
+        } finally {
+          ledger.stop();
+          busy = false;
+        }
+      }
     }
   };
   return {

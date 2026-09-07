@@ -46,7 +46,7 @@ describe('import storage schema', () => {
   /** Fresh storage exposes schema v5 and every import ledger table. */
   it('should create the complete v5 ledger for fresh storage', async () => {
     const c = await makeSUT();
-    expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 6 });
+    expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 7 });
     expect(
       c.db.connection
         .prepare(
@@ -81,7 +81,7 @@ describe('import storage schema', () => {
     legacy.close();
 
     const migrated = c.open(legacyData);
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 6 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 7 });
     expect(migrated.connection.prepare('SELECT id FROM instance').get()).toEqual({
       id: 'legacy-instance',
     });
@@ -388,7 +388,7 @@ describe('import storage repositories', () => {
     ).toThrow('Invalid media link');
     expect(invoke(c.engines, 'initialize', 'nightly-1')).toMatchObject({
       activeVersion: 'nightly-1',
-      status: 'idle',
+      status: 'never_checked',
     });
     c.setNow(10);
     expect(() =>

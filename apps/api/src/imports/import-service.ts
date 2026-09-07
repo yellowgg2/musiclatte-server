@@ -45,9 +45,7 @@ export function importCapability(
     age >= 0 &&
     age < importHeartbeatMaxAgeMs &&
     ['idle', 'working'].includes(worker.status) &&
-    engine.activeVersion !== null &&
-    engine.status !== 'failed' &&
-    engine.status !== 'uninitialized';
+    engine.activeVersion !== null;
   return {
     supported: true,
     permission: 'allowed',

@@ -7,6 +7,7 @@ import { resolveFileKey } from './file-keys.js';
 export interface Engine {
   version: string;
   executable: string;
+  release?: () => void;
 }
 export interface SourceMetadata {
   title: string;

@@ -464,7 +464,7 @@ it('should migrate existing v3 links without changing their gonic mapping', asyn
   });
   expect(c.importsFor(migrated).getJob('legacy-job')!.items[0]!.mediaLinkId).toBe('legacy');
   expect(migrated.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 6 });
+  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 7 });
 });
 
 /** Backup restores pending publication receipts and rejects unsafe recovery paths before activation. */
@@ -561,4 +561,101 @@ it('should resume registration through the worker runtime injection', async () =
   expect(s.acquired()).toBe(1);
   expect(s.files()).toHaveLength(1);
   expect(s.events()).toHaveLength(1);
+});
+
+/** A finished attempt releases its engine only after the subprocess and staging cleanup settle. */
+it.each(['ok', 'exit'])('should release the engine after %s completion', async (mode) => {
+  const s = await workerSUT(mode);
+  const acquire = s.options.acquireEngine;
+  let releases = 0;
+  s.options.acquireEngine = async (source) => ({
+    ...(await acquire(source)),
+    release: () => {
+      expect(readdirSync(s.options.stagingRoot)).toEqual([]);
+      releases++;
+    },
+  });
+  await s.worker.runOnce();
+  expect(releases).toBe(1);
+});
+
+/** A lease delivered after acquisition timeout is released instead of silently leaking. */
+it('should release a late engine acquisition after the item timeout', async () => {
+  const s = await workerSUT();
+  s.options.timeoutMs = 50;
+  const original = await s.options.acquireEngine('abcdefghijk');
+  let deliver!: (engine: typeof original) => void;
+  let released = 0;
+  let acquisitionSignal: AbortSignal | undefined;
+  s.options.acquireEngine = (_source, signal) =>
+    new Promise((resolve) => {
+      acquisitionSignal = signal;
+      deliver = resolve;
+    });
+  await s.worker.runOnce();
+  expect(s.item().stage).toBe('failed');
+  expect(acquisitionSignal?.aborted).toBe(true);
+  deliver({
+    ...original,
+    release: () => {
+      released++;
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(released).toBe(1);
+});
+
+/** Cancellation reaches the acquisition boundary and releases late results after cleanup. */
+it('should release the engine when cancellation races acquisition', async () => {
+  const s = await workerSUT();
+  const original = await s.options.acquireEngine('abcdefghijk');
+  let started!: () => void;
+  const begun = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let released = 0;
+  s.options.acquireEngine = (_source, signal) =>
+    new Promise((resolve) => {
+      started();
+      signal?.addEventListener(
+        'abort',
+        () =>
+          resolve({
+            ...original,
+            release: () => {
+              released++;
+            },
+          }),
+        { once: true },
+      );
+    });
+  const work = s.worker.runOnce();
+  await begun;
+  s.c.imports.requestCancel('job');
+  await work;
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(s.item().stage).toBe('cancelled');
+  expect(released).toBe(1);
+  expect(readdirSync(s.options.stagingRoot)).toEqual([]);
+});
+
+/** Simulated worker crash releases the process lease while leaving durable staging for recovery. */
+it('should release its engine when a checkpoint interrupts the worker', async () => {
+  const s = await workerSUT('ok', (stage) => {
+    if (stage === 'downloading') throw new Error('synthetic crash');
+  });
+  const acquire = s.options.acquireEngine;
+  let released = 0;
+  s.options.acquireEngine = async (source) => ({
+    ...(await acquire(source)),
+    release: () => {
+      released++;
+    },
+  });
+  await expect(s.worker.runOnce()).rejects.toThrow('synthetic crash');
+  expect(released).toBe(1);
+  expect(readdirSync(s.options.stagingRoot)).toHaveLength(1);
+  s.expire();
+  await s.restart().runOnce();
+  expect(readdirSync(s.options.stagingRoot)).toEqual([]);
 });

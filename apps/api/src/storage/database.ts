@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -11,6 +11,7 @@ const MIGRATIONS = [
   new URL('./migrations/004-import-worker.sql', import.meta.url),
   new URL('./migrations/005-registration.sql', import.meta.url),
   new URL('./migrations/006-import-api.sql', import.meta.url),
+  new URL('./migrations/007-engine-lifecycle.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -56,7 +57,7 @@ export function validateSchema(db: DatabaseSync): void {
     'SELECT id, import_item_id, identity_key, library_id, download_completed_at, registered_at FROM download_events LIMIT 0',
   );
   db.prepare(
-    'SELECT singleton, last_checked_at, last_check_succeeded_at, active_version, candidate_version, previous_version, status FROM engine_state LIMIT 0',
+    'SELECT singleton, last_checked_at, last_check_succeeded_at, active_version, candidate_version, previous_version, status, failure_code, candidate_key, candidate_hash, operation_token, operation_expires_at FROM engine_state LIMIT 0',
   );
   db.prepare(
     'SELECT singleton, worker_id, status, heartbeat_at, active_item_id FROM worker_state LIMIT 0',

@@ -302,7 +302,7 @@ describe('imports API', () => {
     expect((await get()).availability).toBe('temporarily_unavailable');
     c.setNow(1000);
     c.storage.engines.recordCheck({ status: 'failed', succeeded: false });
-    expect((await get()).availability).toBe('temporarily_unavailable');
+    expect((await get()).availability).toBe('available');
     c.imports.policy.libraries[0]!.allowedUsers = [];
     expect(await get()).toEqual({
       supported: true,
