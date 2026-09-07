@@ -1,0 +1,124 @@
+services:
+  gonic:
+    environment:
+      GONIC_SCAN_EMBEDDED_COVER: 'true'
+      GONIC_SCAN_INTERVAL: '0'
+      GONIC_SCAN_WATCHER_ENABLED: 'false'
+  api:
+    build:
+      context: .
+      dockerfile: deploy/metadata.Dockerfile
+      target: api
+    user: '${METADATA_UID:-1000}:${METADATA_GID:-1000}'
+    environment:
+      METADATA_ENABLED: 'true'
+      METADATA_POLICY_PATH: /run/configs/metadata-policy.json
+      METADATA_MUSIC_ROOT: /music
+      METADATA_UPLOAD_ROOT: /metadata-uploads
+      METADATA_PYTHON: /opt/metadata-python/bin/python
+      METADATA_HELPER_PATH: /app/apps/api/helpers/metadata.py
+      METADATA_FFMPEG: /usr/bin/ffmpeg
+      METADATA_FFPROBE: /usr/bin/ffprobe
+      METADATA_WRITE_PROFILE: posix-exclusive-mp3-id3v23-v24-v1
+    volumes:
+      - metadata-uploads:/metadata-uploads
+      - type: bind
+        source: ${MUSIC_PATH:?Set MUSIC_PATH}
+        target: /music
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${METADATA_POLICY_FILE:?Set METADATA_POLICY_FILE to a private absolute policy file}
+        target: /run/configs/metadata-policy.json
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      metadata-volume-init:
+        condition: service_completed_successfully
+  metadata-volume-init:
+    image: node:24.20.0-bookworm-slim
+    user: '0:0'
+    restart: 'no'
+    network_mode: none
+    entrypoint: ['sh', '/initialize-metadata-volumes.sh']
+    environment:
+      METADATA_UID: ${METADATA_UID:-1000}
+      METADATA_GID: ${METADATA_GID:-1000}
+    volumes:
+      - ./deploy/initialize-metadata-volumes.sh:/initialize-metadata-volumes.sh:ro
+      - metadata-data:/metadata-data
+      - metadata-uploads:/metadata-uploads
+    read_only: true
+    security_opt: ['no-new-privileges:true']
+    cap_drop: ['ALL']
+    cap_add: ['CHOWN', 'FOWNER', 'DAC_OVERRIDE']
+  metadata-worker:
+    build:
+      context: .
+      dockerfile: deploy/metadata.Dockerfile
+      target: worker
+    user: '${METADATA_UID:-1000}:${METADATA_GID:-1000}'
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      METADATA_ENABLED: 'true'
+      MANAGEMENT_DIRECTORY: /management
+      CREDENTIAL_KEY_PATH: /keys/credential.key
+      GONIC_UPSTREAM: http://gonic:80
+      METADATA_MUSIC_ROOT: /music
+      METADATA_DATA_ROOT: /metadata-data
+      METADATA_UPLOAD_ROOT: /metadata-uploads
+      METADATA_POLICY_PATH: /run/configs/metadata-policy.json
+      METADATA_CREDENTIAL_PATH: /run/secrets/metadata-worker.json
+      METADATA_PYTHON: /opt/metadata-python/bin/python
+      METADATA_HELPER_PATH: /app/apps/api/helpers/metadata.py
+      METADATA_FFMPEG: /usr/bin/ffmpeg
+      METADATA_FFPROBE: /usr/bin/ffprobe
+      METADATA_COVER_PROJECTOR: /opt/metadata/cover-projection
+      METADATA_WRITE_PROFILE: posix-exclusive-mp3-id3v23-v24-v1
+    volumes:
+      - management-data:/management
+      - management-keys:/keys:ro
+      - metadata-data:/metadata-data
+      - metadata-uploads:/metadata-uploads
+      - type: bind
+        source: ${MUSIC_PATH:?Set MUSIC_PATH}
+        target: /music
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${METADATA_POLICY_FILE:?Set METADATA_POLICY_FILE}
+        target: /run/configs/metadata-policy.json
+        read_only: true
+        bind:
+          create_host_path: false
+    secrets:
+      - source: metadata-worker
+        target: metadata-worker.json
+    read_only: true
+    tmpfs: ['/tmp:mode=1777']
+    stop_grace_period: 75s
+    healthcheck:
+      test: ['CMD', 'node', 'apps/api/dist/metadata-worker-entry.js', '--healthcheck']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 90s
+    depends_on:
+      gonic:
+        condition: service_healthy
+      metadata-volume-init:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    security_opt: ['no-new-privileges:true']
+    cap_drop: ['ALL']
+volumes:
+  metadata-data:
+  metadata-uploads:
+secrets:
+  metadata-worker:
+    file: ${METADATA_CREDENTIAL_FILE:?Set METADATA_CREDENTIAL_FILE to a private absolute credential file}

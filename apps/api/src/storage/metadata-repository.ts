@@ -433,6 +433,8 @@ export function createMetadataRepository({
       requestHash: string;
       jobId: string;
       itemIds: string[];
+      actorSessionId?: string;
+      policyRevision?: number;
     }) {
       return database.transaction(() => {
         const job = readJob(input.jobId, input.identityKey);
@@ -466,12 +468,26 @@ export function createMetadataRepository({
         )
           throw new Error('conflict');
         const at = now();
+        if (
+          input.actorSessionId &&
+          (!input.policyRevision ||
+            !db
+              .prepare(
+                'SELECT 1 FROM sessions WHERE id_hash=? AND policy_revision=? AND revoked_at IS NULL',
+              )
+              .get(input.actorSessionId, input.policyRevision))
+        )
+          throw new Error('conflict');
         db.prepare(
           'INSERT INTO metadata_rechecks(identity_key,operation_id_hash,request_hash,job_id,created_at) VALUES(?,?,?,?,?)',
         ).run(input.identityKey, input.operationIdHash, input.requestHash, input.jobId, at);
         for (const id of input.itemIds) {
           // An active reflector owns its lease until it exits; a user recheck never steals it.
           db.prepare('UPDATE metadata_items SET next_reflection_at=0 WHERE id=?').run(id);
+          if (input.actorSessionId)
+            db.prepare(
+              'UPDATE metadata_items SET actor_session_id=?,policy_revision=? WHERE id=?',
+            ).run(input.actorSessionId, input.policyRevision!, id);
         }
         return job;
       });
@@ -804,6 +820,8 @@ export function createMetadataRepository({
       workerId: string;
       leaseDurationMs: number;
       reflectionOnly?: boolean;
+      recoveryOnly?: boolean;
+      fileOnly?: boolean;
     }): MetadataClaim | null {
       if (
         !input.workerId ||
@@ -815,9 +833,15 @@ export function createMetadataRepository({
         const timestamp = now();
         const row = db
           .prepare(
-            `SELECT i.* FROM metadata_items i LEFT JOIN metadata_file_locks l ON l.file_identity=i.file_identity WHERE i.stage IN ('queued','preparing','backed_up','prepared','file_saved','reflecting') AND (?=0 OR i.stage IN ('file_saved','reflecting')) AND (i.stage NOT IN ('file_saved','reflecting') OR i.next_reflection_at<=?) AND NOT EXISTS (SELECT 1 FROM metadata_items blocked WHERE blocked.file_identity=i.file_identity AND blocked.stage='recovery_required') AND (l.file_identity IS NULL OR (l.item_id=i.id AND l.expires_at<=?)) ORDER BY CASE WHEN i.stage='queued' THEN 1 ELSE 0 END,i.stage_changed_at,i.id LIMIT 1`,
+            `SELECT i.* FROM metadata_items i LEFT JOIN metadata_file_locks l ON l.file_identity=i.file_identity WHERE i.stage IN ('queued','preparing','backed_up','prepared','file_saved','reflecting') AND (?=0 OR i.stage IN ('file_saved','reflecting')) AND (i.stage NOT IN ('file_saved','reflecting') OR i.next_reflection_at<=?) AND (?=0 OR i.stage IN ('preparing','backed_up','prepared')) AND (?=0 OR i.stage NOT IN ('file_saved','reflecting')) AND NOT EXISTS (SELECT 1 FROM metadata_items blocked WHERE blocked.file_identity=i.file_identity AND blocked.stage='recovery_required') AND (l.file_identity IS NULL OR (l.item_id=i.id AND l.expires_at<=?)) ORDER BY CASE WHEN i.stage='queued' THEN 1 ELSE 0 END,i.stage_changed_at,i.id LIMIT 1`,
           )
-          .get(input.reflectionOnly ? 1 : 0, timestamp, timestamp);
+          .get(
+            input.reflectionOnly ? 1 : 0,
+            timestamp,
+            input.recoveryOnly ? 1 : 0,
+            input.fileOnly ? 1 : 0,
+            timestamp,
+          );
         if (!row) return null;
         const itemId = text(row.id);
         const generation = integer(row.generation) + 1;

@@ -28,7 +28,12 @@ describe('Subsonic adapter', () => {
   /** Metadata requests use the fixed origin, JSON protocol and BFF token identity. */
   it('should send token proof and return ping through real HTTP', async () => {
     const { client, upstream } = await makeSUT();
-    await expect(client.ping()).resolves.toEqual({ status: 'ok', version: '1.15.0' });
+    await expect(client.ping()).resolves.toEqual({
+      status: 'ok',
+      version: '1.15.0',
+      serverType: 'gonic',
+      serverVersion: '0.22.0',
+    });
     const url = upstream.requests[0]!;
     expect(url.pathname).toBe('/rest/ping');
     expect(Object.fromEntries(url.searchParams)).toEqual({

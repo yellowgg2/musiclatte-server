@@ -81,3 +81,7 @@ docker compose -f compose.yaml -f deploy/compose.imports.yaml exec worker node a
 한 번의 시작 명령이 worker 도구까지 로컬 build한다. config probe는 고정된 valid/disabled/error 상태만 출력하고 healthcheck는 credential·network 없이 기존 DB/heartbeat만 검사한다. 최초 private 파일 누락·권한 불일치는 실패로 처리한다. worker/nightly 장애 중에도 기존 음악 재생과 gateway/API는 유지된다. 웹 imports/recent/engine 진입점은 UI Step 10–12까지 비활성이다.
 
 업데이트 전 worker를 정지하고 [management+key+gonic+engine+host 음악의 matching backup](deploy/backup/README.md)을 만든 뒤 같은 두 파일 명령으로 재빌드한다. staging은 복구 가능한 작업 공간으로 backup에서 제외한다. 현재 Phase 3 DB는 v8(최초 v3 migration)이고 base 시작도 DB를 migration한다. overlay 제거는 음악을 보존하지만 schema를 되돌리지 않는다. v2 rollback에는 matching pre-upgrade snapshot과 구버전 빌드가 필수다. 초기 volume 준비 probe와 update/rollback 순서는 [배포 가이드](docs/architecture/import-deployment.md)를 참고한다.
+
+## 선택적 음악 metadata 편집
+
+private policy와 scan credential을 설정한 뒤 `docker compose -f compose.yaml -f deploy/compose.metadata.yaml up -d --build`로 실행한다. imports와 독립적이며 함께 쓸 때는 imports overlay를 metadata overlay 앞에 추가한다. API는 음악을 읽기만 하고, 전용 worker가 파일 변경과 private 원본 backup을 담당한다. [배포 가이드](docs/architecture/metadata-deployment.md)와 [v11 matching 백업·복원](deploy/backup/README.md)을 따른다. worker가 중지돼도 기존 음악 재생은 유지된다. 파일 저장과 gonic 반영은 별도 결과이며, 이미 사용한 gonic cover cache 때문에 반영 검증이 지연될 수 있다. 웹 metadata 진입점은 Phase 4 S09에서 활성화한다.

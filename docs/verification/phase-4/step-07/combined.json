@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "importsWorkerHealthy": true,
+  "metadataWorkerHealthy": true,
+  "sharedScanLease": true,
+  "deferredThenVerified": true,
+  "combinedRestore": true
+}

@@ -13,6 +13,8 @@ export interface SubsonicIdentity {
 export interface SubsonicPing {
   status: 'ok';
   version: string;
+  serverType?: string;
+  serverVersion?: string;
 }
 export interface MusicFolder {
   id: SubsonicId;

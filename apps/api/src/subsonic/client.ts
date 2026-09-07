@@ -279,7 +279,12 @@ export function createSubsonicClient(options: SubsonicClientOptions): SubsonicCl
     },
     async ping(opts) {
       const body = await request('ping', [], opts);
-      return { status: 'ok', version: String(body.version) };
+      return {
+        status: 'ok',
+        version: String(body.version),
+        ...(typeof body.type === 'string' ? { serverType: body.type } : {}),
+        ...(typeof body.serverVersion === 'string' ? { serverVersion: body.serverVersion } : {}),
+      };
     },
     async currentUser(opts) {
       return decodeIdentity((await request('getUser', [['username', proof.username]], opts)).user);

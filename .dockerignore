@@ -57,6 +57,10 @@ docs
 **/worker-staging
 **/engine-data
 **/metadata-policy.json
+**/metadata-worker.json
+**/metadata-probe.json
+**/metadata-runtime-probe.json
+**/metadata-snapshots
 **/metadata-data
 **/metadata-uploads
 **/.venv

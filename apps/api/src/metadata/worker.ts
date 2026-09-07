@@ -21,11 +21,12 @@ export function createMetadataWorker(options: MetadataWorkerOptions) {
   const repo = options.repository;
   if (options.leaseDurationMs < 1000) throw new Error('invalid_metadata_config');
   let active = false;
-  async function runOnce(signal?: AbortSignal): Promise<boolean> {
+  async function runOnce(signal?: AbortSignal, mode?: 'recovery' | 'file'): Promise<boolean> {
     if (active || signal?.aborted) return false;
     const claim = repo.claimNext({
       workerId: options.workerId,
       leaseDurationMs: options.leaseDurationMs,
+      ...(mode === 'recovery' ? { recoveryOnly: true } : mode === 'file' ? { fileOnly: true } : {}),
     });
     if (!claim) return false;
     active = true;
@@ -158,7 +159,7 @@ export function createMetadataWorker(options: MetadataWorkerOptions) {
   return {
     runOnce,
     async recoverPending(signal?: AbortSignal) {
-      return { processed: (await runOnce(signal)) ? 1 : 0 };
+      return { processed: (await runOnce(signal, 'recovery')) ? 1 : 0 };
     },
   };
 }

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "helperSelfTest": true,
+  "apiWorkerGonic": true,
+  "workerRestart": true,
+  "workerDownReadiness": true,
+  "workerDownRange": true,
+  "restoreJob": true,
+  "matchingSnapshotNewVolumes": true,
+  "interruptedWriteRecovery": true
+}

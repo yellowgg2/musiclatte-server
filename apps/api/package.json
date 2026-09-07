@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.json && node --input-type=module -e \"import { cpSync } from 'node:fs'; cpSync('src/storage/migrations', 'dist/storage/migrations', { recursive: true });\"",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "start:worker": "node dist/worker-entry.js"
+    "start:worker": "node dist/worker-entry.js",
+    "start:metadata-worker": "node dist/metadata-worker-entry.js"
   },
   "dependencies": {
     "fastify": "5.12.3",

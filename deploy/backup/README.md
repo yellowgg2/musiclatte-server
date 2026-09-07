@@ -105,3 +105,46 @@ Apply the recipe above with `engine-data` added to both archival/restore helper 
 Restore matching management+key+gonic+engine and host music into fresh destinations with numeric ownership/modes. Bump policy revision for historical rollback before serving. Start gonic/API first, wait for expired durable worker/registration/engine leases, then start the worker with the same overlay. Run `worker --check-config` (the full command is in the imports guide), inspect health and verify ready MediaLinks and playback before enabling the gateway. Failed engine updates keep the active version; use the authorized engine restore action for a previous version, which does not downgrade the DB. Retain immutable backups and the previous stopped stack. Never use `down -v`, delete existing media, or copy a running SQLite main file alone.
 
 한국어: Phase 3 첫 실행 전 구버전 빌드로 v2 snapshot을 만든다. 현재 DB는 v8이며 base Compose에서도 migration하므로 imports 비활성화와 schema downgrade를 구분한다. imports 설치에서는 모든 명령에 두 Compose 파일을 지정하고 worker부터 정지한 뒤 API·gonic·다른 음악 writer를 정지한다. management-data+matching key, gonic state, engine-data, host 음악을 같은 시점으로 보존하고 새 volume에만 복원한다. staging은 backup 원장에서 제외하고 빈 volume으로 시작한다. 과거 snapshot은 policy revision 증가·lease 만료·owned artifact 복구 후 health와 기존 재생을 확인한다. v2로 돌아가려면 matching v2 snapshot이 필수이며 image만 교체하지 않는다.
+
+## Metadata overlay: matching v11 snapshots
+
+Before first Phase 4 startup, preserve a **v8 management DB + original key + matching music/gonic snapshot using the old build**. Current startup migrates through v9–v11 even if metadata is disabled. Keep the exact image IDs and private policies with the operator's recovery record. Disabling the overlay preserves edits and does not downgrade the schema.
+
+For a current metadata snapshot, stop `metadata-worker` at a clean boundary; when imports are enabled, also stop `worker`. Quiesce other music writers and upload submissions while taking the snapshot. API readiness and existing playback can remain available. After a crash, first let the worker recover and stop cleanly; stale heartbeat alone is not a stopped-worker receipt.
+
+Use the same overlay files and project name on every command. `METADATA_SNAPSHOT_ROOT` below must be an existing absolute private directory, mode 0700, owned by the service UID, outside the repository and music tree:
+
+```sh
+docker compose -f compose.yaml -f deploy/compose.metadata.yaml stop metadata-worker
+docker compose -f compose.yaml -f deploy/compose.metadata.yaml run --rm --no-deps \
+  -v "$METADATA_SNAPSHOT_ROOT:/snapshots" --entrypoint node metadata-worker \
+  apps/api/dist/metadata-backup-entry.js create /snapshots/snapshot-unique-id
+```
+
+The command creates a new destination exclusively. It includes a SQLite online snapshot and matching key, private intents/original backup bytes, cover uploads referenced by the snapshot ledger, and an authenticated manifest of file hashes and current managed music digests. Transient self-test/cover-comparison directories and unreferenced orphan uploads are excluded. It refuses an active worker, inconsistent source bytes, a symbolic link or an existing destination. This is **not** a full host music or gonic/account backup: retain those separately at a matching boundary using the whole-stack procedure above. Snapshot manifests and copied original media are private.
+
+Restore only into empty, separately named volumes. Create a private restore override containing:
+
+```yaml
+services:
+  metadata-worker:
+    volumes:
+      - management-keys:/keys
+```
+
+The override makes only the new restore container's key volume writable. Provision new metadata volumes with `metadata-volume-init`; management/key volumes inherit the image's 0700 UID 1000 directories on their first mount. Use the same recorded UID/GID; never initialize the new API before restoration, since it would create another instance/key.
+
+```sh
+docker compose -p musiclatte-restore-new -f compose.yaml -f deploy/compose.metadata.yaml \
+  run --rm --no-deps metadata-volume-init
+docker compose -p musiclatte-restore-new -f compose.yaml -f deploy/compose.metadata.yaml \
+  -f "$METADATA_RESTORE_OVERRIDE" run --rm --no-deps \
+  -v "$METADATA_SNAPSHOT_ROOT:/snapshots:ro" --entrypoint node metadata-worker \
+  apps/api/dist/metadata-backup-entry.js restore /snapshots/snapshot-unique-id
+```
+
+Restore validates the manifest, matching key/schema, private file hashes and current managed music bytes **before** copying into the empty volumes. Key publication uses exclusive copying with fsync because DB and key volumes may be on different filesystems. On failure it removes only files created in those initially empty targets. A different current music digest is rejected: restore the matching host music snapshot first, or complete appropriate file restore jobs before taking a fresh snapshot; never override that check.
+
+For a historical rollback, invalidate old management sessions as described above before serving. Start the restored gonic/API and metadata worker with the ordinary read-only-key overlay, allow durable recovery to finish, and verify history, current file revisions, reflection, readiness and Range playback. Keep existing volumes and the immutable snapshot until verification is complete. Do not run the old image on v11 storage: complete file restores while the current image understands them, then restore the matching pre-upgrade DB/key/music/gonic snapshot together with its old image into new volumes.
+
+한국어: 현재 schema는 v11이다. worker를 정상 정지한 뒤 DB·원래 key·metadata-data 원본/intent·참조 cover upload를 함께 백업한다. 실제 음악과 gonic 상태는 같은 경계의 별도 snapshot이 필요하다. 복원은 새 빈 volume에서만 실행하며 key volume 쓰기는 복원 컨테이너에만 허용한다. 파일 hash와 현재 음악이 다르면 중단한다. 구버전 image만 교체하거나 운영 volume을 덮어쓰지 않는다.

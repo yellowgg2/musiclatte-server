@@ -308,6 +308,18 @@ describe('metadata API', () => {
     const rechecked = await c.post(url, body);
     expect(rechecked.statusCode).toBe(202);
     expect(repository.readWork(claim).stage).toBe('reflecting');
+    const renewed = await c.login();
+    const renewedHeaders = {
+      ...browserHeaders,
+      cookie: cookieOf(renewed),
+      'x-csrf-token': renewed.json().csrfToken as string,
+    };
+    expect((await c.post(url, body, renewedHeaders)).statusCode).toBe(202);
+    expect(repository.readWork(claim).actorSessionId).toBe(work.actorSessionId);
+    expect(
+      (await c.post(url, { ...body, operationId: operationId(13) }, renewedHeaders)).statusCode,
+    ).toBe(202);
+    expect(repository.readWork(claim).actorSessionId).not.toBe(work.actorSessionId);
     repository.recordReflection(claim, { ...evidence, status: 'verified' });
     const delta = await c.get(
       `/api/v1/metadata-changes?cursor=${encodeURIComponent(feed.json().nextCursor)}`,

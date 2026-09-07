@@ -135,10 +135,14 @@ export function createSessionRepository(options: {
     },
     find(token: string): StoredSession | null {
       if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+      return this.findByIdHash(hash(token));
+    },
+    /** Worker-only lookup of the actor reference; revocation/expiry/vault checks are identical. */
+    findByIdHash(id: string): StoredSession | null {
+      if (!/^[a-f0-9]{64}$/.test(id)) return null;
       try {
         return database.transaction(() => {
           const time = now();
-          const id = hash(token);
           const raw = db.prepare('SELECT * FROM sessions WHERE id_hash=?').get(id);
           if (!raw) return null;
           try {

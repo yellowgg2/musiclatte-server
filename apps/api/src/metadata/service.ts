@@ -254,7 +254,13 @@ export function createMetadataService(service: SessionService) {
       if (!canEditMetadata(options.policy, v.identity.username, parent.libraryId))
         throw new ApiError(403, 'forbidden');
       available();
-      repository.recheck({ ...key, jobId: id, itemIds: body.itemIds });
+      repository.recheck({
+        ...key,
+        jobId: id,
+        itemIds: body.itemIds,
+        actorSessionId: createHash('sha256').update(v.session.raw).digest('hex'),
+        policyRevision: v.session.policyRevision,
+      });
       return { schemaVersion: 1 as const, job: await scopedJob(v, id) };
     },
     async list(v: Verified, query: { cursor?: string; limit?: string }) {
