@@ -25,7 +25,7 @@ describe('session and instance storage', () => {
     c.db.close();
     const reopened = c.open();
     expect(c.createInstanceRepository(reopened, c.vault.keyId).get()).toEqual(instance);
-    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 });
+    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 });
     const tables = reopened.connection
       .prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
       .all()
@@ -33,8 +33,10 @@ describe('session and instance storage', () => {
     expect(tables).toEqual([
       'download_events',
       'engine_state',
+      'import_attempts',
       'import_items',
       'import_jobs',
+      'import_publish_intents',
       'instance',
       'media_links',
       'playlist_operations',
@@ -60,7 +62,7 @@ describe('session and instance storage', () => {
     raw.close();
 
     const migrated = c.open(legacy);
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 });
     expect(
       migrated.connection.prepare('SELECT id,policy_revision,key_id FROM instance').get(),
     ).toEqual({ id: 'legacy-instance', policy_revision: 7, key_id: c.vault.keyId });

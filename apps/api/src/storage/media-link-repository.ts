@@ -6,7 +6,7 @@ export interface MediaLink {
   id: string;
   libraryId: string;
   relativeFileKey: string;
-  gonicSongId: string;
+  gonicSongId: string | null;
   revision: number;
   availability: 'available' | 'missing' | 'unavailable';
   createdAt: number;
@@ -43,7 +43,8 @@ function decode(row: Record<string, unknown> | undefined): MediaLink | null {
     !text(link.libraryId) ||
     typeof link.relativeFileKey !== 'string' ||
     !validKey(link.relativeFileKey) ||
-    !text(link.gonicSongId) ||
+    !(link.gonicSongId === null || text(link.gonicSongId)) ||
+    (link.gonicSongId === null && link.availability !== 'unavailable') ||
     !time(link.revision) ||
     link.revision < 1 ||
     typeof link.availability !== 'string' ||

@@ -1,0 +1,529 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { createTestContext } from '../../../tests/support/session-storage-harness.js';
+
+let context: Awaited<ReturnType<typeof createTestContext>> | undefined;
+afterEach(() => context?.cleanup());
+async function makeSUT() {
+  context = await createTestContext();
+  context.imports.createJob({
+    id: 'job',
+    identityKey: 'a'.repeat(64),
+    libraryId: 'library',
+    operationIdHash: 'b'.repeat(64),
+    requestHash: 'c'.repeat(64),
+    items: [
+      { id: 'item', sourceId: 'abcdefghijk' },
+      { id: 'queued', sourceId: 'lmnopqrstuv' },
+    ],
+  });
+  return context;
+}
+
+describe('durable worker prerequisites', () => {
+  /** Running cancellation retains ownership until process termination and cleanup are acknowledged. */
+  it('should cancel queued items immediately and retain running leases', async () => {
+    const c = await makeSUT();
+    c.imports.claimNext({ workerId: 'worker', leaseDurationMs: 1000, engineVersion: 'seed' });
+    expect(c.imports.requestCancel('job')?.items.map((item) => item.stage)).toEqual([
+      'resolving',
+      'cancelled',
+    ]);
+  });
+  /** Pending media has no fabricated gonic ID and survives database reopening. */
+  it('should support a pending media row without a gonic song ID', async () => {
+    const c = await makeSUT();
+    expect(() =>
+      c.db.connection
+        .prepare(
+          "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at) VALUES('pending','library','Song [abcdefghijk].mp3',NULL,1,'unavailable',1000)",
+        )
+        .run(),
+    ).not.toThrow();
+    expect(c.mediaLinksFor(c.open()).get('pending')).toMatchObject({
+      gonicSongId: null,
+      availability: 'unavailable',
+    });
+  });
+});
+
+import { createWorkerRunner, type WorkerOptions } from '../src/imports/worker-runner.js';
+import { mkdirSync, realpathSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { createImportProcessFixture } from '../../../tests/support/import-process-fixture.js';
+
+async function workerSUT(mode = 'ok', checkpoint?: (stage: string) => void) {
+  const c = await makeSUT();
+  // Single item unless the scenario explicitly adds a second source.
+  c.db.connection.prepare("DELETE FROM import_items WHERE id='queued'").run();
+  const root = realpathSync(c.root);
+  const musicRoot = join(root, 'music');
+  const stagingRoot = join(root, 'staging');
+  mkdirSync(musicRoot);
+  mkdirSync(stagingRoot);
+  const fixture = createImportProcessFixture(root, mode);
+  let now = 1000;
+  let acquired = 0;
+  const logs: Record<string, string>[] = [];
+  const options: WorkerOptions = {
+    database: c.db,
+    clock: () => now,
+    musicRoot,
+    stagingRoot,
+    libraryRoot: () => 'imports',
+    acquireEngine: async () => {
+      acquired++;
+      return { version: 'seed-1', executable: fixture.executable };
+    },
+    ffprobe: fixture.ffprobe,
+    leaseDurationMs: 1000,
+    timeoutMs: 2000,
+    logger: (event) => logs.push(event),
+    ...(checkpoint ? { checkpoint } : {}),
+  };
+  return {
+    c,
+    options,
+    worker: createWorkerRunner(options),
+    restart: () => createWorkerRunner({ ...options, database: c.open(), checkpoint: () => {} }),
+    expire: () => {
+      now += 2000;
+      c.setNow(now);
+    },
+    acquired: () => acquired,
+    logs,
+    files: () =>
+      readdirSync(musicRoot, { recursive: true }).filter((file) => String(file).endsWith('.mp3')),
+    item: () => c.imports.getJob('job')!.items[0]!,
+    events: () => c.db.connection.prepare('SELECT * FROM download_events').all(),
+  };
+}
+
+describe('durable download worker', () => {
+  /** Publication produces one file/event and a pending link; replay does not acquire an engine again. */
+  it('should publish once and stop at registering across replay and restart', async () => {
+    const s = await workerSUT();
+    expect(await s.worker.runOnce()).toBe(true);
+    expect(s.item()).toMatchObject({ stage: 'registering', engineVersion: 'seed-1' });
+    expect(s.events()).toHaveLength(1);
+    expect(s.files()).toHaveLength(1);
+    expect(s.c.mediaLinks.get(s.item().mediaLinkId!)).toMatchObject({
+      gonicSongId: null,
+      availability: 'unavailable',
+    });
+    s.expire();
+    expect(await s.restart().runOnce()).toBe(false);
+    expect(s.acquired()).toBe(1);
+    expect(s.events()).toHaveLength(1);
+    expect(readdirSync(s.options.stagingRoot)).toEqual([]);
+    expect(JSON.stringify(s.logs)).not.toMatch(/Synthetic|youtube|private|audio\.mp3/);
+  });
+  /** Same-source imports reuse verified files without manufacturing a new completion event. */
+  it('should skip duplicate sources while keeping operation replay idempotent', async () => {
+    const s = await workerSUT();
+    await s.worker.runOnce();
+    s.c.imports.createJob({
+      id: 'second',
+      identityKey: 'a'.repeat(64),
+      libraryId: 'library',
+      operationIdHash: 'd'.repeat(64),
+      requestHash: 'c'.repeat(64),
+      items: [{ id: 'second-item', sourceId: 'abcdefghijk' }],
+    });
+    await s.worker.runOnce();
+    expect(s.c.imports.getJob('second')!.items[0]!.stage).toBe('duplicate');
+    expect(s.events()).toHaveLength(1);
+    expect(s.files()).toHaveLength(1);
+    expect(s.acquired()).toBe(1);
+  });
+  /** Invalid output and process failures never publish payloads or events. */
+  it.each([
+    'exit',
+    'wrong-id',
+    'missing',
+    'empty',
+    'invalid-audio',
+    'symlink',
+    'outside',
+    'multiple',
+    'overflow',
+    'hang',
+  ])('should fail safely for %s output', async (mode) => {
+    const s = await workerSUT(mode);
+    if (mode === 'hang') s.options.timeoutMs = 100;
+    await s.worker.runOnce();
+    expect(s.item().stage).toBe('failed');
+    const codes: Record<string, string> = {
+      exit: 'download_failed',
+      'wrong-id': 'invalid_metadata',
+      missing: 'download_failed',
+      empty: 'invalid_media',
+      'invalid-audio': 'invalid_media',
+      symlink: 'invalid_file_key',
+      outside: 'invalid_media',
+      multiple: 'invalid_media',
+      overflow: 'process_output_limit',
+      hang: 'process_aborted',
+    };
+    expect(s.item().failureCode).toBe(codes[mode]);
+    expect(s.events()).toHaveLength(0);
+    expect(s.files()).toHaveLength(0);
+    expect(readdirSync(s.options.stagingRoot)).toEqual([]);
+  });
+  /** Every durable crash boundary resumes registration or fails before publication without redownload. */
+  it.each(['claimed', 'downloading', 'postprocessing', 'intent', 'published', 'recorded'])(
+    'should recover a crash at %s without duplicate output',
+    async (point) => {
+      const s = await workerSUT('ok', (stage) => {
+        if (stage === point) throw new Error('simulated_crash');
+      });
+      await expect(s.worker.runOnce()).rejects.toThrow('simulated_crash');
+      s.expire();
+      await s.restart().runOnce();
+      expect(s.item().stage).toBe(
+        ['intent', 'published', 'recorded'].includes(point) ? 'registering' : 'failed',
+      );
+      expect(s.events()).toHaveLength(['intent', 'published', 'recorded'].includes(point) ? 1 : 0);
+      expect(s.files()).toHaveLength(['intent', 'published', 'recorded'].includes(point) ? 1 : 0);
+      expect(s.acquired()).toBe(point === 'claimed' ? 0 : 1);
+      expect(readdirSync(s.options.stagingRoot)).toEqual([]);
+    },
+  );
+  /** Lease ownership is exclusive while another runner is paused at a durable boundary. */
+  it('should reject a competing claim while a lease is active', async () => {
+    const s = await workerSUT('ok', (stage) => {
+      if (stage === 'claimed') throw new Error('simulated_crash');
+    });
+    await expect(s.worker.runOnce()).rejects.toThrow();
+    expect(await s.restart().runOnce()).toBe(false);
+    expect(s.item().attempt).toBe(1);
+  });
+  /** A job cancellation is acknowledged only after child process and owned staging cleanup. */
+  it('should stop a running process on cancellation', async () => {
+    const s = await workerSUT('hang');
+    const timer = setTimeout(() => s.c.imports.requestCancel('job'), 30);
+    try {
+      await s.worker.runOnce();
+    } finally {
+      clearTimeout(timer);
+    }
+    expect(s.item().stage).toBe('cancelled');
+    expect(readdirSync(s.options.stagingRoot)).toEqual([]);
+  });
+  /** Cancellation at the publication boundary preserves the payload and completes the receipt. */
+  it('should preserve published work when cancellation arrives', async () => {
+    const s = await workerSUT();
+    s.options.checkpoint = (stage) => {
+      if (stage === 'published') s.c.imports.requestCancel('job');
+    };
+    await s.worker.runOnce();
+    expect(s.item().stage).toBe('registering');
+    expect(s.events()).toHaveLength(1);
+    expect(s.files()).toHaveLength(1);
+  });
+});
+
+import { linkSync, writeFileSync, rmSync } from 'node:fs';
+import { prepareMediaFileKey } from '../src/imports/file-keys.js';
+
+describe('publication and recovery boundaries', () => {
+  /** A crash after atomic link leaves two names, which recovery reconciles using its durable token. */
+  it('should recover an owned pending hard link without treating it as a foreign file', async () => {
+    const s = await workerSUT();
+    s.options.checkpoint = (stage) => {
+      if (stage === 'published') {
+        const row = s.c.db.connection.prepare('SELECT * FROM import_publish_intents').get()!;
+        const target = join(s.options.musicRoot, String(row.relative_file_key));
+        const pending = join(
+          target.substring(0, target.lastIndexOf('/')),
+          `.import-${String(row.event_id)}.pending`,
+        );
+        linkSync(target, pending);
+        throw new Error('simulated_crash');
+      }
+    };
+    await expect(s.worker.runOnce()).rejects.toThrow('simulated_crash');
+    s.expire();
+    await s.restart().runOnce();
+    expect(s.item().stage).toBe('registering');
+    expect(s.events()).toHaveLength(1);
+    expect(
+      readdirSync(s.options.musicRoot, { recursive: true }).some((key) =>
+        String(key).endsWith('.pending'),
+      ),
+    ).toBe(false);
+  });
+  /** A missing artifact before final publication is a retryable failure, never an infinite publish loop. */
+  it('should fail an unpublished intent whose staged artifact was lost', async () => {
+    const s = await workerSUT('ok', (stage) => {
+      if (stage === 'intent') throw new Error('simulated_crash');
+    });
+    await expect(s.worker.runOnce()).rejects.toThrow();
+    for (const entry of readdirSync(s.options.stagingRoot))
+      rmSync(join(s.options.stagingRoot, entry), { recursive: true });
+    s.expire();
+    await s.restart().runOnce();
+    expect(s.item().stage).toBe('failed');
+    expect(s.events()).toHaveLength(0);
+    expect(s.files()).toHaveLength(0);
+  });
+  /** Pending links cannot be used to claim that gonic registration succeeded. */
+  it('should reject ready transitions using a pending media link', async () => {
+    const s = await workerSUT();
+    await s.worker.runOnce();
+    s.expire();
+    s.c.imports.claimNext({
+      workerId: 'registration-owner',
+      leaseDurationMs: 1000,
+      engineVersion: 'seed',
+    });
+    expect(() =>
+      s.c.imports.finishRegistration({
+        itemId: 'item',
+        workerId: 'registration-owner',
+        mediaLinkId: s.item().mediaLinkId!,
+      }),
+    ).toThrow();
+  });
+  /** Wrong-source existing payloads are preserved byte-for-byte and produce no receipt. */
+  it('should preserve a conflicting legacy file', async () => {
+    const s = await workerSUT();
+    const key = prepareMediaFileKey(s.options.musicRoot, {
+      relativeRoot: 'imports',
+      channelName: 'Synthetic channel',
+      channelId: 'channel-1',
+      title: 'Synthetic song',
+      videoId: 'abcdefghijk',
+    });
+    const bytes = JSON.stringify({ valid: true, sourceId: 'XXXXXXXXXXX' });
+    writeFileSync(join(s.options.musicRoot, key), bytes);
+    await s.worker.runOnce();
+    expect(s.item().stage).toBe('failed');
+    expect(s.events()).toHaveLength(0);
+    expect(readFileSync(join(s.options.musicRoot, key), 'utf8')).toBe(bytes);
+  });
+  /** A losing lease cannot publish even when it has a validated artifact and durable intent. */
+  it('should fence an expired owner before publication', async () => {
+    const s = await workerSUT();
+    s.options.checkpoint = (stage) => {
+      if (stage === 'intent') s.expire();
+    };
+    await expect(s.worker.runOnce()).rejects.toThrow('worker_lease_lost');
+    expect(s.files()).toHaveLength(0);
+    expect(s.events()).toHaveLength(0);
+    await s.restart().runOnce();
+    expect(s.item().stage).toBe('registering');
+  });
+  /** Successful and failed siblings stay independent and only failed items can create a retry job. */
+  it('should preserve mixed results and retry only failures', async () => {
+    const s = await workerSUT();
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO import_items(id,job_id,item_order,source_id,stage,attempt,stage_changed_at) VALUES('sibling','job',1,'lmnopqrstuv','queued',0,1000)",
+      )
+      .run();
+    const bad = createImportProcessFixture(realpathSync(s.c.root), 'exit');
+    const acquire = s.options.acquireEngine;
+    s.options.acquireEngine = (source) =>
+      source === 'lmnopqrstuv'
+        ? Promise.resolve({ version: 'seed-2', executable: bad.executable })
+        : acquire(source);
+    await s.worker.runOnce();
+    await s.worker.runOnce();
+    expect(s.c.imports.getJob('job')).toMatchObject({
+      status: 'running',
+      items: [{ stage: 'registering' }, { stage: 'failed' }],
+    });
+    const retry = s.c.imports.retryFailed({
+      sourceJobId: 'job',
+      id: 'retry',
+      operationIdHash: 'd'.repeat(64),
+      requestHash: 'e'.repeat(64),
+      itemIds: ['sibling'],
+    });
+    expect(retry.job.items).toHaveLength(1);
+    expect(() =>
+      s.c.imports.retryFailed({
+        sourceJobId: 'job',
+        id: 'invalid-retry',
+        operationIdHash: 'e'.repeat(64),
+        requestHash: 'e'.repeat(64),
+        itemIds: ['item'],
+      }),
+    ).toThrow();
+    expect(s.files()).toHaveLength(1);
+    expect(s.events()).toHaveLength(1);
+  });
+  /** Graceful loop shutdown stops its process and removes only its own signal listener and staging. */
+  it('should stop its loop on SIGTERM without clearing another worker state', async () => {
+    const s = await workerSUT('hang');
+    const before = process.listenerCount('SIGTERM');
+    const signal = new AbortController();
+    const running = s.worker.run(signal.signal);
+    const timer = setTimeout(() => process.emit('SIGTERM', 'SIGTERM'), 30);
+    try {
+      await running;
+    } finally {
+      clearTimeout(timer);
+    }
+    expect(process.listenerCount('SIGTERM')).toBe(before);
+    expect(s.item().stage).toBe('failed');
+    expect(s.files()).toHaveLength(0);
+    expect(readdirSync(s.options.stagingRoot)).toEqual([]);
+  });
+});
+
+import { spawnSync } from 'node:child_process';
+
+/** SIGKILL-equivalent process exit bypasses JS finally, leaving actual fsync/link crash artifacts. */
+it.each(['pending_synced', 'linked', 'directory_synced'])(
+  'should recover a real worker process exit at %s',
+  async (point) => {
+    const s = await workerSUT();
+    const fixture = createImportProcessFixture(realpathSync(s.c.root));
+    const source = `import { openDatabase } from './apps/api/src/storage/database.ts';
+import { createWorkerRunner } from './apps/api/src/imports/worker-runner.ts';
+const database = openDatabase(${JSON.stringify(s.c.data)});
+const worker = createWorkerRunner({ database, clock: () => 1000, musicRoot: ${JSON.stringify(s.options.musicRoot)}, stagingRoot: ${JSON.stringify(s.options.stagingRoot)}, libraryRoot: () => 'imports', acquireEngine: async () => ({ version: 'seed-1', executable: ${JSON.stringify(fixture.executable)} }), ffprobe: ${JSON.stringify(fixture.ffprobe)}, leaseDurationMs: 1000, timeoutMs: 2000, checkpoint: stage => { if (stage === ${JSON.stringify(point)}) process.exit(86); } });
+await worker.runOnce(); database.close();`;
+    const child = spawnSync(
+      process.execPath,
+      ['--import', import.meta.resolve('tsx'), '--input-type=module', '-e', source],
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 5000 },
+    );
+    expect(child.status).toBe(86);
+    s.expire();
+    await s.restart().runOnce();
+    expect(s.item().stage).toBe('registering');
+    expect(s.events()).toHaveLength(1);
+    expect(s.files()).toHaveLength(1);
+    expect(
+      readdirSync(s.options.musicRoot, { recursive: true }).some((key) =>
+        String(key).endsWith('.pending'),
+      ),
+    ).toBe(false);
+    expect(readdirSync(s.options.stagingRoot)).toEqual([]);
+  },
+);
+
+/** An external same-source winner after intent is a duplicate even if the worker dies before observing it. */
+it('should distinguish a foreign same-source winner from its own publish resume', async () => {
+  const s = await workerSUT();
+  s.options.checkpoint = (stage) => {
+    if (stage === 'intent') {
+      const row = s.c.db.connection.prepare('SELECT * FROM import_publish_intents').get()!;
+      writeFileSync(
+        join(s.options.musicRoot, String(row.relative_file_key)),
+        JSON.stringify({ valid: true, sourceId: 'abcdefghijk' }),
+      );
+      throw new Error('simulated_crash');
+    }
+  };
+  await expect(s.worker.runOnce()).rejects.toThrow();
+  s.expire();
+  await s.restart().runOnce();
+  expect(s.item().stage).toBe('duplicate');
+  expect(s.events()).toHaveLength(0);
+  expect(s.files()).toHaveLength(1);
+});
+
+import { DatabaseSync } from 'node:sqlite';
+import { createLegacyV2 } from '../../../tests/support/session-storage-harness.js';
+
+/** Schema v3 media links and foreign-key relationships survive the additive worker migration. */
+it('should migrate existing v3 links without changing their gonic mapping', async () => {
+  const c = await makeSUT();
+  const path = join(c.root, 'legacy-v3');
+  createLegacyV2(path);
+  const raw = new DatabaseSync(join(path, 'management.sqlite'));
+  try {
+    raw.exec(
+      readFileSync(new URL('../src/storage/migrations/003-imports.sql', import.meta.url), 'utf8'),
+    );
+    raw
+      .prepare(
+        "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at,validated_at) VALUES('legacy','library','legacy.mp3','opaque-song',2,'available',1000,1000)",
+      )
+      .run();
+    raw
+      .prepare(
+        "INSERT INTO import_jobs(id,identity_key,library_id,operation_id_hash,request_hash,created_at) VALUES('legacy-job',?,'library',?,?,1000)",
+      )
+      .run('a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64));
+    raw
+      .prepare(
+        "INSERT INTO import_items(id,job_id,item_order,source_id,stage,media_link_id,stage_changed_at,ready_at) VALUES('legacy-item','legacy-job',0,'abcdefghijk','ready','legacy',1000,1000)",
+      )
+      .run();
+  } finally {
+    raw.close();
+  }
+  const migrated = c.open(path);
+  expect(c.mediaLinksFor(migrated).get('legacy')).toMatchObject({
+    gonicSongId: 'opaque-song',
+    revision: 2,
+  });
+  expect(c.importsFor(migrated).getJob('legacy-job')!.items[0]!.mediaLinkId).toBe('legacy');
+  expect(migrated.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 });
+});
+
+/** Backup restores pending publication receipts and rejects unsafe recovery paths before activation. */
+it('should preserve pending worker state in backup and reject a corrupted intent', async () => {
+  const s = await workerSUT();
+  await s.worker.runOnce();
+  const snapshot = join(s.c.root, 'worker-snapshot');
+  await s.c.createBackup(s.c.db, s.c.keyPath, snapshot);
+  const restored = join(s.c.root, 'worker-restored');
+  await s.c.restoreBackup(snapshot, restored);
+  const db = s.c.open(restored);
+  expect(s.c.importsFor(db).getJob('job')!.items[0]!.stage).toBe('registering');
+  expect(db.connection.prepare('SELECT count(*) AS n FROM import_publish_intents').get()?.n).toBe(
+    1,
+  );
+  const raw = new DatabaseSync(join(snapshot, 'management.sqlite'));
+  raw.prepare("UPDATE import_publish_intents SET staging_key='../outside/audio.mp3'").run();
+  raw.close();
+  await expect(s.c.restoreBackup(snapshot, join(s.c.root, 'invalid-restore'))).rejects.toThrow(
+    'Restore failed',
+  );
+});
+
+/** A stalled engine provider must not prevent the worker loop from acknowledging shutdown. */
+it('should abort a stalled engine acquisition during graceful shutdown', async () => {
+  const s = await workerSUT();
+  s.options.acquireEngine = () => new Promise(() => {});
+  const signal = new AbortController();
+  const running = s.worker.run(signal.signal);
+  const timer = setTimeout(() => signal.abort(), 30);
+  try {
+    const result = await Promise.race([
+      running.then(() => 'stopped'),
+      new Promise((resolve) => setTimeout(() => resolve('blocked'), 200)),
+    ]);
+    expect(result).toBe('stopped');
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
+/** An idle loop remains observable as healthy until shutdown, without claiming registration work. */
+it('should heartbeat while idle and remove its state on shutdown', async () => {
+  const s = await workerSUT();
+  await s.worker.runOnce();
+  const controller = new AbortController();
+  const running = s.worker.run(controller.signal);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const state = s.c.workerStates.get();
+  controller.abort();
+  await running;
+  expect(state).toMatchObject({ status: 'idle', heartbeatAt: 1000, activeItemId: null });
+  expect(s.c.workerStates.get().status).toBe('stopped');
+});
+
+/** Completed staging cleanup is durably recorded so idle polling does not rescan historical attempts. */
+it('should record completed staging cleanup without deleting attempt history', async () => {
+  const s = await workerSUT();
+  await s.worker.runOnce();
+  const row = s.c.db.connection.prepare('SELECT * FROM import_attempts').get()!;
+  expect(row).toMatchObject({ engine_version: 'seed-1', cleaned_at: 1000 });
+});

@@ -142,6 +142,12 @@ export interface PublishOptions {
   stagedFileKey: string;
   fileKey: string;
   videoId: string;
+  /** Synchronous lease fence immediately before acquiring the final name. */
+  beforeCommit?: () => void;
+  /** UUID from the durable publish intent; permits cleanup of only this attempt's pending name. */
+  pendingToken?: string;
+  commitIdentity?: (identity: { dev: number; ino: number }) => void;
+  checkpoint?: (stage: 'pending_synced' | 'linked' | 'directory_synced') => void;
   /** Worker-owned audio/source verifier; receives an opened regular file, never untrusted stdout paths. */
   inspectAudio: (file: FileHandle) => Promise<{ valid: boolean; sourceId: string }>;
 }
@@ -221,6 +227,25 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
       const now = lstatSync(parent);
       if (now.ino !== parentStat.ino || now.dev !== parentStat.dev) fail();
     };
+    if (options.pendingToken !== undefined) {
+      if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(options.pendingToken)) fail();
+      const ownedPath = join(parent, `.import-${options.pendingToken}.pending`);
+      const owned = lstatSync(ownedPath, { throwIfNoEntry: false });
+      if (owned) {
+        const final = lstatSync(target, { throwIfNoEntry: false });
+        if (
+          !owned.isFile() ||
+          owned.isSymbolicLink() ||
+          (owned.nlink !== 1 &&
+            !(owned.nlink === 2 && final?.ino === owned.ino && final.dev === owned.dev))
+        )
+          fail('file_conflict');
+        recheck();
+        options.beforeCommit?.();
+        unlinkSync(ownedPath);
+        fsyncSync(directoryFd);
+      }
+    }
     if (lstatSync(target, { throwIfNoEntry: false })) return await isDuplicate(options);
     source = await verifiedFile(stagingRoot, options.stagedFileKey);
     const before = await source.stat();
@@ -228,7 +253,7 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
     if (!media.valid || media.sourceId !== options.videoId || before.size === 0)
       fail('invalid_media');
     recheck();
-    pendingPath = join(parent, `.import-${randomUUID()}.pending`);
+    pendingPath = join(parent, `.import-${options.pendingToken ?? randomUUID()}.pending`);
     pending = await open(
       pendingPath,
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
@@ -266,6 +291,7 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
     )
       fail('invalid_media');
     await pending.sync();
+    options.checkpoint?.('pending_synced');
     const pendingStat = await pending.stat();
     recheck();
     const visible = lstatSync(pendingPath);
@@ -279,13 +305,17 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
       fail();
     try {
       // Node rename replaces existing files. link is the atomic no-replace commit on local POSIX FS.
+      options.commitIdentity?.({ dev: pendingStat.dev, ino: pendingStat.ino });
+      options.beforeCommit?.();
       linkSync(pendingPath, target);
       published = true;
+      options.checkpoint?.('linked');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EEXIST') return await isDuplicate(options);
       throw error;
     }
     fsyncSync(directoryFd);
+    options.checkpoint?.('directory_synced');
     unlinkSync(pendingPath);
     pendingPath = undefined;
     fsyncSync(directoryFd);

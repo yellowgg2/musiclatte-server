@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { validateRelativeKey } from '../imports/policy.js';
 import type { ManagementDatabase } from './database.js';
 
 export type ImportStage =
@@ -153,6 +154,32 @@ function decodeEvent(row: Record<string, unknown> | undefined) {
 
 /** Validate every import item and event in a backup snapshot. */
 export function validateImportStorage(database: DatabaseSync): void {
+  for (const row of database.prepare('SELECT * FROM import_publish_intents').iterate()) {
+    if (
+      !text(row.relative_file_key) ||
+      !text(row.staging_key) ||
+      !text(row.event_id) ||
+      !text(row.media_link_id) ||
+      !time(row.intended_at) ||
+      !nullableTime(row.completed_at) ||
+      !nullableTime(row.pending_device) ||
+      !nullableTime(row.pending_inode) ||
+      (row.pending_device === null) !== (row.pending_inode === null)
+    )
+      throw new Error('Storage unavailable');
+    validateRelativeKey(row.relative_file_key);
+    validateRelativeKey(row.staging_key);
+  }
+  for (const row of database.prepare('SELECT * FROM import_attempts').iterate()) {
+    if (
+      !text(row.staging_key) ||
+      !time(row.started_at) ||
+      !nullableTime(row.cleaned_at) ||
+      !nullableText(row.engine_version)
+    )
+      throw new Error('Storage unavailable');
+    validateRelativeKey(row.staging_key);
+  }
   for (const row of database.prepare('SELECT * FROM import_items').iterate()) decodeItem(row);
   for (const row of database.prepare('SELECT * FROM download_events').iterate()) decodeEvent(row);
   if (
@@ -425,7 +452,7 @@ export function createImportRepository(options: {
         ownedItem(input.itemId, input.workerId, ['registering']);
         const row = db
           .prepare(
-            'SELECT j.library_id AS job_library,m.library_id AS media_library FROM import_items i JOIN import_jobs j ON j.id=i.job_id JOIN media_links m ON m.id=? WHERE i.id=?',
+            "SELECT j.library_id AS job_library,m.library_id AS media_library FROM import_items i JOIN import_jobs j ON j.id=i.job_id JOIN media_links m ON m.id=? WHERE i.id=? AND m.gonic_song_id IS NOT NULL AND m.availability='available'",
           )
           .get(input.mediaLinkId, input.itemId);
         if (!row || row.job_library !== row.media_library)
@@ -481,7 +508,7 @@ export function createImportRepository(options: {
           'UPDATE import_jobs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE id=?',
         ).run(cancelledAt, jobId);
         db.prepare(
-          "UPDATE import_items SET stage='cancelled',stage_changed_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE job_id=? AND stage IN ('queued','resolving','downloading','postprocessing')",
+          "UPDATE import_items SET stage='cancelled',stage_changed_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE job_id=? AND stage='queued'",
         ).run(cancelledAt, jobId);
         return readJob(jobId)!;
       });

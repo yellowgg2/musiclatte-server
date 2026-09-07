@@ -3,11 +3,12 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
   new URL('./migrations/003-imports.sql', import.meta.url),
+  new URL('./migrations/004-import-worker.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -22,6 +23,12 @@ export function validateSchema(db: DatabaseSync): void {
   ) {
     throw new Error('Unsupported storage schema');
   }
+  db.prepare(
+    'SELECT item_id, relative_file_key, staging_key, event_id, media_link_id, intended_at, completed_at, pending_device, pending_inode, disposition FROM import_publish_intents LIMIT 0',
+  );
+  db.prepare(
+    'SELECT item_id, attempt, staging_key, engine_version, started_at, cleaned_at FROM import_attempts LIMIT 0',
+  );
   db.prepare('SELECT singleton, id, policy_revision, key_id FROM instance LIMIT 0');
   db.prepare(
     'SELECT id_hash, instance_id, policy_revision, username, encrypted_proof, created_at, expires_at, revoked_at FROM sessions LIMIT 0',
@@ -79,6 +86,8 @@ export function openDatabase(directory: string): ManagementDatabase {
     if (!fresh && !upgrade && !(version === SCHEMA_VERSION && appId === APPLICATION_ID))
       throw new Error('Unsupported storage schema');
     if (fresh || upgrade) {
+      // Table rebuilds retain references; validate all foreign keys before committing.
+      db.exec('PRAGMA foreign_keys=OFF');
       db.exec('BEGIN IMMEDIATE');
       try {
         // Recheck each version after obtaining the writer lock: another startup may migrate first.
@@ -92,6 +101,8 @@ export function openDatabase(directory: string): ManagementDatabase {
           current = next;
         }
         validateSchema(db);
+        if (db.prepare('PRAGMA foreign_key_check').all().length)
+          throw new Error('Storage unavailable');
         db.exec('COMMIT');
       } catch (error) {
         db.exec('ROLLBACK');

@@ -1,8 +1,8 @@
 # Import input, policy, file and process boundaries
 
 Phase 3 Step 02 provides server-only helpers for the future API and worker. `createConfiguredApp`
-probes import configuration before opening storage. No downloader, worker entry, import HTTP route
-or capability producer is connected yet. P3 capabilities and web client features remain false.
+probes import configuration before opening storage. The reusable downloader/worker is now implemented by Step 03 (see `import-worker.md`); no production
+worker entry, import HTTP route or capability producer is connected yet. P3 capabilities and web client features remain false.
 
 ## URL and policy
 
@@ -74,7 +74,7 @@ device/inode. Roots and target parent identity are rechecked across awaited vali
 
 `publishMediaFile` receives separate canonical music and staging roots, relative staged/final keys,
 video ID and an injected `inspectAudio(FileHandle)` verifier. Staging must be disjoint from the music
-root in both directions. The future worker must implement real audio and embedded source-ID
+root in both directions. The Step 03 downloader implements real audio and embedded source-ID
 verification; Step 02 uses explicit synthetic bytes to test the boundary, not MP3 decoding.
 
 1. Validate roots, key suffix and parent; hold an open parent directory descriptor.

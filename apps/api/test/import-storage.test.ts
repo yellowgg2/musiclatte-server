@@ -43,10 +43,10 @@ function jobInput(overrides: Record<string, unknown> = {}) {
 }
 
 describe('import storage schema', () => {
-  /** Fresh storage exposes schema v3 and every import ledger table. */
-  it('should create the complete v3 ledger for fresh storage', async () => {
+  /** Fresh storage exposes schema v4 and every import ledger table. */
+  it('should create the complete v4 ledger for fresh storage', async () => {
     const c = await makeSUT();
-    expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 });
+    expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 });
     expect(
       c.db.connection
         .prepare(
@@ -65,7 +65,7 @@ describe('import storage schema', () => {
   });
 
   /** A real v2 database migrates without changing its session or playlist receipt rows. */
-  it('should preserve v2 rows while migrating to v3', async () => {
+  it('should preserve v2 rows while migrating to v4', async () => {
     const c = await makeSUT();
     const legacyData = join(c.root, 'legacy-v2');
     createLegacyV2(legacyData);
@@ -81,7 +81,7 @@ describe('import storage schema', () => {
     legacy.close();
 
     const migrated = c.open(legacyData);
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 });
     expect(migrated.connection.prepare('SELECT id FROM instance').get()).toEqual({
       id: 'legacy-instance',
     });

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { realpathSync, statSync } from 'node:fs';
+import { fstatSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 
 export interface ProcessOptions {
@@ -9,6 +9,8 @@ export interface ProcessOptions {
   allowedCwds: readonly string[];
   env?: Readonly<Record<string, string>>;
   signal?: AbortSignal;
+  /** An already opened regular audio file for ffprobe pipe input. */
+  stdinFd?: number;
   limits: { stdoutBytes: number; stderrBytes: number; graceMs: number };
   jobId?: string;
   itemId?: string;
@@ -30,6 +32,11 @@ export async function runProcess(options: ProcessOptions): Promise<ProcessResult
       !isAbsolute(options.executable) ||
       options.executable.includes('\0') ||
       !isAbsolute(options.cwd)
+    )
+      throw new Error();
+    if (
+      options.stdinFd !== undefined &&
+      (!Number.isInteger(options.stdinFd) || !fstatSync(options.stdinFd).isFile())
     )
       throw new Error();
     cwd = realpathSync(options.cwd);
@@ -96,7 +103,7 @@ export async function runProcess(options: ProcessOptions): Promise<ProcessResult
       env: { ...options.env },
       shell: false,
       detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [options.stdinFd ?? 'ignore', 'pipe', 'pipe'],
     });
     const killGroup = (signal: NodeJS.Signals) => {
       if (!child.pid) return;
@@ -137,13 +144,13 @@ export async function runProcess(options: ProcessOptions): Promise<ProcessResult
     const abort = () => stop('process_aborted');
     options.signal?.addEventListener('abort', abort, { once: true });
     if (options.signal?.aborted) abort();
-    child.stdout.on('data', (chunk: Buffer) => {
+    child.stdout!.on('data', (chunk: Buffer) => {
       if (failure) return;
       outBytes += chunk.length;
       if (outBytes > options.limits.stdoutBytes) stop('process_output_limit');
       else stdout.push(chunk);
     });
-    child.stderr.on('data', (chunk: Buffer) => {
+    child.stderr!.on('data', (chunk: Buffer) => {
       if (failure) return;
       errBytes += chunk.length;
       if (errBytes > options.limits.stderrBytes) stop('process_output_limit');
