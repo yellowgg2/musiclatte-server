@@ -25,15 +25,25 @@ describe('session and instance storage', () => {
     c.db.close();
     const reopened = c.open();
     expect(c.createInstanceRepository(reopened, c.vault.keyId).get()).toEqual(instance);
-    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
+    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 });
     const tables = reopened.connection
       .prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
       .all()
       .map((row) => row.name);
-    expect(tables).toEqual(['instance', 'playlist_operations', 'sessions']);
+    expect(tables).toEqual([
+      'download_events',
+      'engine_state',
+      'import_items',
+      'import_jobs',
+      'instance',
+      'media_links',
+      'playlist_operations',
+      'sessions',
+      'worker_state',
+    ]);
   });
-  /** A real v1-shaped database upgrades in one transaction without losing existing records. */
-  it('should migrate v1 storage to v2 atomically and preserve management data', async () => {
+  /** A real v1-shaped database upgrades through v3 in one transaction without losing records. */
+  it('should migrate v1 storage to v3 atomically and preserve management data', async () => {
     const c = await makeSUT();
     const legacy = join(c.root, 'legacy');
     createLegacyV1(legacy);
@@ -50,7 +60,7 @@ describe('session and instance storage', () => {
     raw.close();
 
     const migrated = c.open(legacy);
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 });
     expect(
       migrated.connection.prepare('SELECT id,policy_revision,key_id FROM instance').get(),
     ).toEqual({ id: 'legacy-instance', policy_revision: 7, key_id: c.vault.keyId });

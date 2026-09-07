@@ -3,10 +3,11 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
+  new URL('./migrations/003-imports.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -27,6 +28,24 @@ export function validateSchema(db: DatabaseSync): void {
   );
   db.prepare(
     'SELECT identity_key, operation_id_hash, request_hash, kind, resource_id, before_revision, after_revision, status, created_at, finished_at FROM playlist_operations LIMIT 0',
+  );
+  db.prepare(
+    'SELECT id, identity_key, library_id, operation_id_hash, request_hash, retry_of_job_id, created_at, cancel_requested_at FROM import_jobs LIMIT 0',
+  );
+  db.prepare(
+    'SELECT id, job_id, item_order, source_id, observed_title, observed_channel, observed_channel_id, stage, failure_code, attempt, lease_owner, lease_expires_at, engine_version, media_link_id, stage_changed_at, resolving_at, downloading_at, postprocessing_at, publishing_at, registering_at, ready_at FROM import_items LIMIT 0',
+  );
+  db.prepare(
+    'SELECT id, library_id, relative_file_key, gonic_song_id, revision, availability, created_at, validated_at FROM media_links LIMIT 0',
+  );
+  db.prepare(
+    'SELECT id, import_item_id, identity_key, library_id, download_completed_at, registered_at FROM download_events LIMIT 0',
+  );
+  db.prepare(
+    'SELECT singleton, last_checked_at, last_check_succeeded_at, active_version, candidate_version, previous_version, status FROM engine_state LIMIT 0',
+  );
+  db.prepare(
+    'SELECT singleton, worker_id, status, heartbeat_at, active_item_id FROM worker_state LIMIT 0',
   );
 }
 export function openDatabase(directory: string): ManagementDatabase {
@@ -52,7 +71,11 @@ export function openDatabase(directory: string): ManagementDatabase {
       db.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'").get()
         ?.count === 0;
     const fresh = version === 0 && appId === 0 && empty;
-    const upgrade = version === 1 && appId === APPLICATION_ID;
+    const upgrade =
+      typeof version === 'number' &&
+      version >= 1 &&
+      version < SCHEMA_VERSION &&
+      appId === APPLICATION_ID;
     if (!fresh && !upgrade && !(version === SCHEMA_VERSION && appId === APPLICATION_ID))
       throw new Error('Unsupported storage schema');
     if (fresh || upgrade) {

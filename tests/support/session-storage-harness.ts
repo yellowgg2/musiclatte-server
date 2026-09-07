@@ -18,6 +18,10 @@ import { createPlaylistOperationRepository } from '../../apps/api/src/storage/pl
 import { createSessionRepository } from '../../apps/api/src/storage/session-repository.js';
 import { readSessionPolicy } from '../../apps/api/src/config/session-policy.js';
 import { createBackup, restoreBackup } from '../../apps/api/src/storage/backup.js';
+import { createImportRepository } from '../../apps/api/src/storage/import-repository.js';
+import { createMediaLinkRepository } from '../../apps/api/src/storage/media-link-repository.js';
+import { createEngineRepository } from '../../apps/api/src/storage/engine-repository.js';
+import { createWorkerStateRepository } from '../../apps/api/src/storage/worker-state-repository.js';
 
 const modules = {
   openDatabase,
@@ -30,6 +34,10 @@ const modules = {
   readSessionPolicy,
   createBackup,
   restoreBackup,
+  createImportRepository,
+  createMediaLinkRepository,
+  createEngineRepository,
+  createWorkerStateRepository,
 };
 export function createLegacyV1(directory: string): void {
   mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -41,6 +49,24 @@ export function createLegacyV1(directory: string): void {
     database.exec(
       readFileSync(
         new URL('../../apps/api/src/storage/migrations/001-session.sql', import.meta.url),
+        'utf8',
+      ),
+    );
+  } finally {
+    database.close();
+  }
+}
+
+export function createLegacyV2(directory: string): void {
+  createLegacyV1(directory);
+  const database = new DatabaseSync(join(directory, 'management.sqlite'));
+  try {
+    database.exec(
+      readFileSync(
+        new URL(
+          '../../apps/api/src/storage/migrations/002-playlist-operations.sql',
+          import.meta.url,
+        ),
         'utf8',
       ),
     );
@@ -70,6 +96,14 @@ export async function createTestContext() {
       modules.createSessionRepository({ database, vault, maxAgeMs, clock: () => now });
     const playlistOperationsFor = (database = db) =>
       modules.createPlaylistOperationRepository({ database, clock: () => now });
+    const importsFor = (database = db) =>
+      modules.createImportRepository({ database, clock: () => now });
+    const mediaLinksFor = (database = db) =>
+      modules.createMediaLinkRepository({ database, clock: () => now });
+    const enginesFor = (database = db) =>
+      modules.createEngineRepository({ database, clock: () => now });
+    const workerStatesFor = (database = db) =>
+      modules.createWorkerStateRepository({ database, clock: () => now });
     return {
       ...modules,
       root,
@@ -83,6 +117,14 @@ export async function createTestContext() {
       sessions: sessionsFor(),
       playlistOperationsFor,
       playlistOperations: playlistOperationsFor(),
+      importsFor,
+      imports: importsFor(),
+      mediaLinksFor,
+      mediaLinks: mediaLinksFor(),
+      enginesFor,
+      engines: enginesFor(),
+      workerStatesFor,
+      workerStates: workerStatesFor(),
       setNow: (value: number) => {
         now = value;
       },

@@ -42,6 +42,69 @@ describe('management backup and offline restore', () => {
         .find(live.token),
     ).toBeNull();
   });
+  /** Import rows and replay receipts survive backup while cross-ledger tampering is rejected. */
+  it('should restore import replay state and reject a mismatched download ledger', async () => {
+    const c = await makeSUT();
+    c.setNow(0);
+    const input = {
+      id: 'job-1',
+      identityKey: 'a'.repeat(64),
+      libraryId: 'library-1',
+      operationIdHash: 'b'.repeat(64),
+      requestHash: 'c'.repeat(64),
+      items: [{ id: 'item-1', sourceId: 'video-1' }],
+    };
+    c.imports.createJob(input);
+    c.imports.claimNext({
+      workerId: 'worker-1',
+      leaseDurationMs: 100,
+      engineVersion: 'nightly-1',
+    });
+    c.imports.advanceItem({
+      itemId: 'item-1',
+      workerId: 'worker-1',
+      stage: 'downloading',
+      observed: {
+        title: 'Synthetic title',
+        channel: 'Synthetic channel',
+        channelId: 'channel-1',
+      },
+    });
+    for (const stage of ['postprocessing', 'publishing'] as const)
+      c.imports.advanceItem({ itemId: 'item-1', workerId: 'worker-1', stage });
+    c.imports.recordPublished({
+      itemId: 'item-1',
+      workerId: 'worker-1',
+      eventId: 'event-1',
+    });
+    c.mediaLinks.create({
+      id: 'media-1',
+      libraryId: 'library-1',
+      relativeFileKey: 'Channel [channel-1]/Song [video-1].mp3',
+      gonicSongId: 'song-1',
+    });
+    c.imports.finishRegistration({
+      itemId: 'item-1',
+      workerId: 'worker-1',
+      mediaLinkId: 'media-1',
+    });
+
+    const snapshot = join(c.root, 'import-snapshot');
+    await c.createBackup(c.db, c.keyPath, snapshot);
+    const restored = join(c.root, 'import-restored');
+    await c.restoreBackup(snapshot, restored);
+    expect(c.importsFor(c.open(restored)).createJob({ ...input, id: 'ignored' })).toMatchObject({
+      outcome: 'existing',
+      job: { id: 'job-1', status: 'completed' },
+    });
+
+    const raw = new DatabaseSync(join(snapshot, 'management.sqlite'));
+    raw.prepare("UPDATE download_events SET library_id='other-library'").run();
+    raw.close();
+    await expect(c.restoreBackup(snapshot, join(c.root, 'tampered-restore'))).rejects.toThrow(
+      'Restore failed',
+    );
+  });
   /** Uncommitted records never enter a snapshot. */
   it('should capture committed data while another connection holds uncommitted changes', async () => {
     const c = await makeSUT();

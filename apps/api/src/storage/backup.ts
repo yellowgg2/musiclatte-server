@@ -15,6 +15,10 @@ import { loadKey } from '../security/key-store.js';
 import { validateSchema, type ManagementDatabase } from './database.js';
 import { decodeSessionRow, sessionContext } from './session-repository.js';
 import { validatePlaylistOperationReceipts } from './playlist-operation-repository.js';
+import { validateImportStorage } from './import-repository.js';
+import { validateMediaLinks } from './media-link-repository.js';
+import { validateEngineState } from './engine-repository.js';
+import { validateWorkerState } from './worker-state-repository.js';
 
 /** Read-only verification: never initialize a missing instance or migrate a recovery artifact. */
 function verifySnapshot(path: string, key: Uint8Array): void {
@@ -22,6 +26,10 @@ function verifySnapshot(path: string, key: Uint8Array): void {
   try {
     validateSchema(db);
     validatePlaylistOperationReceipts(db);
+    validateImportStorage(db);
+    validateMediaLinks(db);
+    validateEngineState(db);
+    validateWorkerState(db);
     if (
       db.prepare('PRAGMA quick_check').get()?.quick_check !== 'ok' ||
       db.prepare('PRAGMA foreign_key_check').all().length
