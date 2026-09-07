@@ -25,6 +25,7 @@ function verifySnapshot(path: string, key: Uint8Array): void {
   const db = new DatabaseSync(path, { readOnly: true });
   try {
     validateSchema(db);
+    validateMetadataStorage(db);
     validatePlaylistOperationReceipts(db);
     validateImportStorage(db);
     validateMediaLinks(db);
@@ -137,3 +138,4 @@ export async function restoreBackup(source: string, destination: string): Promis
     throw new Error('Restore failed');
   }
 }
+import { validateMetadataStorage } from './metadata-repository.js';

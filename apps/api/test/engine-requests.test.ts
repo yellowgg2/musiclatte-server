@@ -177,9 +177,21 @@ describe('durable engine requests', () => {
     const proof = { username: 'synthetic-manager', t: 'synthetic-token', s: 'synthetic-salt' };
     const session = s.c.sessions.create(proof);
     const before = s.c.engines.get();
-    s.c.db.connection.exec('DROP TABLE engine_requests; PRAGMA user_version=7');
+    // Remove only the empty newer ledgers to recreate the historical v7 fixture.
+    s.c.db.connection.exec(`
+      DROP TABLE metadata_worker_state;
+      DROP TABLE metadata_changes;
+      DROP TABLE metadata_cover_uploads;
+      DROP TABLE metadata_file_locks;
+      DROP TABLE metadata_attempts;
+      DROP TABLE metadata_backups;
+      DROP TABLE metadata_items;
+      DROP TABLE metadata_jobs;
+      DROP TABLE engine_requests;
+      PRAGMA user_version=7;
+    `);
     const migrated = s.c.open();
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 8 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 9 });
     expect(s.c.enginesFor(migrated).get()).toEqual(before);
     expect(s.c.sessionsFor(migrated).find(session.token)?.proof).toEqual(proof);
     const mailbox = createEngineRequestRepository({ ...s.options, database: migrated });

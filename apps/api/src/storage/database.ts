@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -13,6 +13,7 @@ const MIGRATIONS = [
   new URL('./migrations/006-import-api.sql', import.meta.url),
   new URL('./migrations/007-engine-lifecycle.sql', import.meta.url),
   new URL('./migrations/008-engine-requests.sql', import.meta.url),
+  new URL('./migrations/009-metadata.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -27,6 +28,30 @@ export function validateSchema(db: DatabaseSync): void {
   ) {
     throw new Error('Unsupported storage schema');
   }
+  db.prepare(
+    'SELECT id,identity_key,library_id,operation_id_hash,request_hash,kind,parent_job_id,source_reference,usage_basis,created_at FROM metadata_jobs LIMIT 0',
+  );
+  db.prepare(
+    'SELECT id,job_id,item_order,media_link_id,file_identity,binding_revision,original_track_id,current_track_id,expected_revision,expected_digest,patch_json,actor_session_id,policy_revision,parent_item_id,restore_backup_id,stage,generation,stage_changed_at,file_saved_at,reflected_at,result_revision,result_digest,candidate_key,error_code,changed_fields_json FROM metadata_items LIMIT 0',
+  );
+  db.prepare(
+    'SELECT file_identity,item_id,owner,generation,expires_at FROM metadata_file_locks LIMIT 0',
+  );
+  db.prepare(
+    'SELECT item_id,generation,owner,started_at,finished_at,error_code FROM metadata_attempts LIMIT 0',
+  );
+  db.prepare(
+    'SELECT id,item_id,identity_key,library_id,relative_key,preimage_digest,size,mode,owner_profile_json,parent_backup_id,created_at FROM metadata_backups LIMIT 0',
+  );
+  db.prepare(
+    'SELECT id,identity_key,library_id,operation_id_hash,digest,relative_key,mime_type,size,created_at,expires_at FROM metadata_cover_uploads LIMIT 0',
+  );
+  db.prepare(
+    'SELECT sequence,item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at FROM metadata_changes LIMIT 0',
+  );
+  db.prepare(
+    'SELECT singleton,worker_id,status,heartbeat_at,active_item_id FROM metadata_worker_state LIMIT 0',
+  );
   db.prepare(
     'SELECT singleton, action, active_version, previous_version, requested_at, status, restored_active_version, restored_previous_version, owner, expires_at FROM engine_requests LIMIT 0',
   );
