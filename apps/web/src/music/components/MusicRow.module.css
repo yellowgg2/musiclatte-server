@@ -43,6 +43,8 @@
   flex-shrink: 0;
 }
 .rowActions {
+  display: flex;
+  align-items: center;
   min-width: 0;
 }
 .rowActions:has([data-confirming='true']) {

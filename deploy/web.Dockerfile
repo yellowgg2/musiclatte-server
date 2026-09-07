@@ -9,6 +9,7 @@ RUN test "$(npm --version)" = "11.19.0" && npm ci --ignore-scripts
 COPY packages/contracts/src ./packages/contracts/src
 COPY packages/contracts/tsconfig.json ./packages/contracts/tsconfig.json
 COPY apps/web/index.html apps/web/vite.config.ts apps/web/tsconfig.json ./apps/web/
+COPY apps/web/public ./apps/web/public
 COPY apps/web/src ./apps/web/src
 RUN npm run build -w @musiclatte/contracts && npm run build -w @musiclatte/web
 

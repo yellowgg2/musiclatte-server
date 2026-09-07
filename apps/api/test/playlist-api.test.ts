@@ -137,7 +137,10 @@ describe('authenticated playlist read API', () => {
   /** Session revocation during a delayed collection read prevents a late success response. */
   it('should recheck the session after upstream detail returns', async () => {
     const ctx = await makeSUT();
-    ctx.state.collectionDelayMs = 50;
+    let releaseCollectionResponse = () => {};
+    ctx.state.collectionResponseGate = new Promise<void>((resolve) => {
+      releaseCollectionResponse = resolve;
+    });
     const pending = ctx.app.inject({ url: '/api/v1/playlists/pl-1', headers: ctx.headers });
     await expect
       .poll(() => ctx.requests.some((url) => url.pathname === '/rest/getPlaylist'))
@@ -153,6 +156,7 @@ describe('authenticated playlist read API', () => {
       payload: {},
     });
     expect(logout.statusCode).toBe(204);
+    releaseCollectionResponse();
     expect((await pending).statusCode).toBe(401);
   });
 

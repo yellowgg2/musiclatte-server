@@ -80,6 +80,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     malformedCollections: false,
     collectionStall: false,
     collectionDelayMs: 0,
+    collectionResponseGate: undefined as Promise<void> | undefined,
     closedCollectionRequests: 0,
     accountIdentityFromProof: false,
     favoriteSongIdsByUsername: new Map<string, string[]>(),
@@ -383,6 +384,10 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
         : isCollectionWrite
           ? state.mutationDelayMs
           : state.collectionDelayMs;
+    if (isCollection && state.collectionResponseGate) {
+      void state.collectionResponseGate.then(() => res.end(payload));
+      return;
+    }
     if (isCollection && delayMs > 0) {
       setTimeout(() => res.end(payload), delayMs);
       return;

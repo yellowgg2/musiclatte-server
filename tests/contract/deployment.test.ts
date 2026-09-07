@@ -93,6 +93,13 @@ describe('source-only deployment', () => {
     );
     expect(source).toContain('npm run build -w @musiclatte/contracts');
   });
+
+  /** Production web builds include the public brand assets referenced by the login and app shell. */
+  it('should copy public brand assets into the web build stage', () => {
+    expect(read('apps/web/public/icons/musiclatte-192.png')).not.toHaveLength(0);
+    expect(read('deploy/web.Dockerfile')).toContain('COPY apps/web/public ./apps/web/public');
+  });
+
   /** LAN exposure needs an explicit setup attestation and must leave the admin endpoint on loopback. */
   it('should reject unconfirmed LAN startup and malformed gateway options', () => {
     const entry = read('deploy/gateway-entry.sh');

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { ComponentType } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -145,5 +145,14 @@ describe('design foundation', () => {
     expect(screen.getByRole('button', { name: 'Edit First song' }).closest('li')).toBe(
       view.container.querySelector('li'),
     );
+  });
+
+  /** Multiple feature action groups stay aligned as one rail beside a music row. */
+  it('should align music row action groups on one horizontal rail', () => {
+    const css = readFileSync(resolve('apps/web/src/music/components/MusicRow.module.css'), 'utf8');
+    const actionRail = css.match(/\.rowActions\s*\{([^}]*)\}/)?.[1];
+
+    expect(actionRail).toContain('display: flex');
+    expect(actionRail).toContain('align-items: center');
   });
 });
