@@ -13,3 +13,5 @@ export {
   syntheticMediaMetadata,
 } from './media-fixtures.js';
 export type { SubsonicScenario } from './fake-subsonic.js';
+
+export { recentFixtures, recentErrorFixture } from './recent-fixtures.js';

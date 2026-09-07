@@ -16,6 +16,7 @@ import type { ImportOptions } from '../imports/import-service.js';
 
 export interface AuthOptions {
   imports?: ImportOptions;
+  recent?: { musicRoot: string };
   sessions: ReturnType<typeof createSessionRepository>;
   instances: ReturnType<typeof createInstanceRepository>;
   playlistOperations: ReturnType<typeof createPlaylistOperationRepository>;

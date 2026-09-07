@@ -205,6 +205,17 @@ export function validateImportStorage(database: DatabaseSync): void {
     throw new Error('Storage unavailable');
 }
 
+/** Append-only event ledger; rowid is an insertion fence, independent of completion time. */
+export const recentDownloadQuery = `
+  SELECT e.*, i.media_link_id
+  FROM download_events AS e INDEXED BY download_events_recent
+  JOIN import_items AS i ON i.id=e.import_item_id
+  WHERE e.identity_key=? AND e.library_id=?
+    AND e.download_completed_at>=? AND e.download_completed_at<?
+    AND e.download_completed_at<=? AND e.rowid<=?
+    AND (? IS NULL OR (e.download_completed_at,e.id)<(?,?))
+  ORDER BY e.download_completed_at DESC,e.id DESC LIMIT ?`;
+
 /** Durable import ledger; callers keep network, process, and filesystem work outside transactions. */
 export function createImportRepository(options: {
   database: ManagementDatabase;
@@ -595,6 +606,52 @@ export function createImportRepository(options: {
           })),
         });
       });
+    },
+    recentHighWater(): number {
+      const value = db
+        .prepare('SELECT COALESCE(MAX(rowid),0) AS high_water FROM download_events')
+        .get()?.high_water;
+      if (!time(value)) throw new Error('Storage unavailable');
+      return value;
+    },
+    listRecent(input: {
+      identityKey: string;
+      libraries: readonly string[];
+      from: number;
+      to: number;
+      asOf: number;
+      highWater: number;
+      limit: number;
+      before?: { at: number; id: string };
+    }) {
+      const query = db.prepare(recentDownloadQuery);
+      // A bounded range seek per authorized library avoids a whole-library merge scan.
+      return input.libraries
+        .flatMap((libraryId) =>
+          query
+            .all(
+              input.identityKey,
+              libraryId,
+              input.from,
+              input.to,
+              input.asOf,
+              input.highWater,
+              input.before?.at ?? null,
+              input.before?.at ?? null,
+              input.before?.id ?? null,
+              input.limit,
+            )
+            .map((row) => {
+              if (!nullableText(row.media_link_id)) throw new Error('Storage unavailable');
+              return { ...decodeEvent(row)!, mediaLinkId: row.media_link_id };
+            }),
+        )
+        .sort(
+          (a, b) =>
+            b.downloadCompletedAt - a.downloadCompletedAt ||
+            Buffer.compare(Buffer.from(b.id), Buffer.from(a.id)),
+        )
+        .slice(0, input.limit);
     },
     getDownloadEvent(id: string) {
       if (!text(id)) throw new Error('Invalid download event');

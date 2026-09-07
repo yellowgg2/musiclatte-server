@@ -1,3 +1,4 @@
+import { registerRecentDownloadsRoute } from './routes/recent-downloads.js';
 import { registerImportRoutes } from './routes/imports.js';
 import { registerFoldersRoutes } from './routes/music/folders.js';
 import { registerSearchRoute } from './routes/music/search.js';
@@ -96,6 +97,7 @@ export function createApp(options?: AuthOptions) {
     registerPlaylistMutationRoutes(app, service);
     registerFavoriteSongRoutes(app, service);
     registerImportRoutes(app, service);
+    registerRecentDownloadsRoute(app, service);
   }
   app.get<{ Reply: HealthResponse }>('/health/live', async () => ({ status: 'ok' }));
   return app;

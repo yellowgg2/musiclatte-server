@@ -12,3 +12,5 @@ export * from './music.js';
 export * from './media.js';
 
 export * from './imports.js';
+
+export * from './recent.js';

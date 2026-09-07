@@ -50,7 +50,10 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
     const instances = createInstanceRepository(database, vault.keyId);
     const sessions = createSessionRepository({ database, vault, maxAgeMs, clock: Date.now });
     const playlistOperations = createPlaylistOperationRepository({ database, clock: Date.now });
+    const musicRoot = env.IMPORT_MUSIC_ROOT ?? '/music';
+    if (importConfig.enabled && !isAbsolute(musicRoot)) throw new Error();
     const app = createApp({
+      ...(importConfig.enabled ? { recent: { musicRoot } } : {}),
       imports: { database, policy: importConfig.policy, clock: Date.now },
       sessions,
       instances,

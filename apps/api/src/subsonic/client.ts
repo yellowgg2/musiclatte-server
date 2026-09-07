@@ -18,6 +18,7 @@ import { SubsonicError } from './errors.js';
 import {
   decodeScanStatus,
   decodeSong,
+  decodeRecentSong,
   decodeRegistrationDirectory,
   type RegistrationDirectory,
   decodeAlbum,
@@ -73,6 +74,10 @@ export interface UpdatePlaylistOptions extends RequestOptions {
 export interface SubsonicClient {
   getScanStatus(options?: RequestOptions): Promise<ScanStatus>;
   getSong(id: string, options?: RequestOptions): Promise<MusicEntry>;
+  recentSong(
+    id: string,
+    options?: RequestOptions,
+  ): Promise<{ song: MusicEntry; path: string | null }>;
   registrationDirectory(id: string, options?: RequestOptions): Promise<RegistrationDirectory>;
   /** Explicit authenticated admin action only; never used for discovery. */
   startScan(options?: RequestOptions): Promise<void>;
@@ -260,6 +265,9 @@ export function createSubsonicClient(options: SubsonicClientOptions): SubsonicCl
     },
     async getSong(id, opts) {
       return decodeSong((await request('getSong', [['id', required(id)]], opts)).song);
+    },
+    async recentSong(id, opts) {
+      return decodeRecentSong((await request('getSong', [['id', required(id)]], opts)).song);
     },
     async registrationDirectory(id, opts) {
       return decodeRegistrationDirectory(

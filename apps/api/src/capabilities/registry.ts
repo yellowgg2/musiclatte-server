@@ -1,3 +1,4 @@
+import { recentCapability } from '../imports/recent-service.js';
 import { importCapability } from '../imports/import-service.js';
 import {
   featureKeys,
@@ -44,6 +45,10 @@ export async function capabilities(
       availability: mapped.status === 403 ? 'available' : 'temporarily_unavailable',
     };
   }
+  features['library.recentDownloads'] = recentCapability(
+    service.options.imports,
+    identity.username,
+  );
   features['imports.youtube'] = importCapability(service.options.imports, identity.username);
   service.find(session.token, session.scheme);
   return {

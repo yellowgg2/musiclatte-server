@@ -218,6 +218,11 @@ export function decodeSong(value: unknown): MusicEntry {
   if (song.isDir) return invalid();
   return song;
 }
+/** Server-only current-account path evidence; never extend the public MusicEntry contract. */
+export function decodeRecentSong(value: unknown): { song: MusicEntry; path: string | null } {
+  const source = record(value);
+  return { song: decodeSong(value), path: typeof source.path === 'string' ? source.path : null };
+}
 export function decodeRegistrationDirectory(value: unknown): RegistrationDirectory {
   const source = record(value);
   return {
