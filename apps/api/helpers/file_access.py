@@ -30,7 +30,7 @@ def fingerprint(value):
 
 
 @contextlib.contextmanager
-def open_media(root, key, expected_root):
+def open_media(root, key, expected_root, writable=False):
     if not os.path.isabs(root) or root == "/" or os.path.realpath(root) != root:
         raise FileAccessError("file_unavailable")
     parts = segments(key)
@@ -48,7 +48,7 @@ def open_media(root, key, expected_root):
             opened.append(child)
             chain.append((parent, part, child))
             parent = child
-        fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        fd = os.open(parts[-1], (os.O_RDWR if writable else os.O_RDONLY) | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
         opened.append(fd)
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise FileAccessError("file_unavailable")
