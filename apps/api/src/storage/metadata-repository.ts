@@ -375,6 +375,60 @@ export function createMetadataRepository({
   };
   return {
     getJob: readJob,
+    assertClaim(claim: Pick<MetadataClaim, 'itemId' | 'workerId' | 'generation'>) {
+      owned(claim);
+    },
+    renewClaim(
+      claim: Pick<MetadataClaim, 'itemId' | 'workerId' | 'generation'>,
+      leaseDurationMs: number,
+    ) {
+      if (!Number.isSafeInteger(leaseDurationMs) || leaseDurationMs < 1)
+        throw new Error('conflict');
+      database.transaction(() => {
+        owned(claim);
+        db.prepare('UPDATE metadata_file_locks SET expires_at=? WHERE item_id=?').run(
+          now() + leaseDurationMs,
+          claim.itemId,
+        );
+      });
+    },
+    readWork(claim: Pick<MetadataClaim, 'itemId' | 'workerId' | 'generation'>) {
+      const row = owned(claim);
+      const job = db.prepare('SELECT * FROM metadata_jobs WHERE id=?').get(text(row.job_id))!;
+      const link = db.prepare('SELECT * FROM media_links WHERE id=?').get(text(row.media_link_id))!;
+      const restore =
+        row.restore_backup_id === null
+          ? null
+          : db
+              .prepare(
+                'SELECT * FROM metadata_backups WHERE id=? AND identity_key=? AND library_id=?',
+              )
+              .get(text(row.restore_backup_id), text(job.identity_key), text(job.library_id));
+      if (row.restore_backup_id !== null && !restore) throw new Error('restore_unavailable');
+      return {
+        itemId: text(row.id),
+        jobId: text(row.job_id),
+        identityKey: text(job.identity_key),
+        libraryId: text(job.library_id),
+        mediaLinkId: text(row.media_link_id),
+        bindingRevision: integer(row.binding_revision),
+        currentBindingRevision: integer(link.revision),
+        key: text(link.relative_file_key),
+        trackId: text(row.current_track_id),
+        fileIdentity: text(row.file_identity),
+        expectedRevision: text(row.expected_revision),
+        expectedDigest: text(row.expected_digest),
+        actorSessionId: text(row.actor_session_id),
+        policyRevision: integer(row.policy_revision),
+        patch: JSON.parse(text(row.patch_json)) as MetadataPatch,
+        stage: text(row.stage) as MetadataStage,
+        resultDigest: nullableText(row.result_digest),
+        resultRevision: nullableText(row.result_revision),
+        restore: restore
+          ? { relativeKey: text(restore.relative_key), digest: text(restore.preimage_digest) }
+          : null,
+      };
+    },
     createOrReplay(input: ValidatedMetadataRequest) {
       return database.transaction(() => insert(input));
     },
@@ -514,7 +568,7 @@ export function createMetadataRepository({
             !old ||
             !item ||
             old.job_id !== parent.id ||
-            old.stage !== 'failed' ||
+            !['failed', 'conflict'].includes(String(old.stage)) ||
             old.file_saved_at !== null ||
             old.media_link_id !== item.mediaLinkId ||
             old.file_identity !== item.fileIdentity
@@ -536,7 +590,7 @@ export function createMetadataRepository({
         const timestamp = now();
         const row = db
           .prepare(
-            `SELECT i.* FROM metadata_items i LEFT JOIN metadata_file_locks l ON l.file_identity=i.file_identity WHERE i.stage IN ('queued','preparing','backed_up','prepared','file_saved','reflecting') AND (l.file_identity IS NULL OR (l.item_id=i.id AND l.expires_at<=?)) ORDER BY CASE WHEN i.stage='queued' THEN 1 ELSE 0 END,i.stage_changed_at,i.id LIMIT 1`,
+            `SELECT i.* FROM metadata_items i LEFT JOIN metadata_file_locks l ON l.file_identity=i.file_identity WHERE i.stage IN ('queued','preparing','backed_up','prepared','file_saved','reflecting') AND NOT EXISTS (SELECT 1 FROM metadata_items blocked WHERE blocked.file_identity=i.file_identity AND blocked.stage='recovery_required') AND (l.file_identity IS NULL OR (l.item_id=i.id AND l.expires_at<=?)) ORDER BY CASE WHEN i.stage='queued' THEN 1 ELSE 0 END,i.stage_changed_at,i.id LIMIT 1`,
           )
           .get(timestamp);
         if (!row) return null;
