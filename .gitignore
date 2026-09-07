@@ -42,3 +42,8 @@ backups/
 *.ogg
 *.opus
 *.mp4
+# Optional imports private files and runtime stores
+import-policy.json
+import-worker.json
+worker-staging/
+engine-data/

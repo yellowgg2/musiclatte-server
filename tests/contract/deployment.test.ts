@@ -19,6 +19,8 @@ function makeSUT(extra: string[] = []) {
           MUSIC_PATH: '/tmp/synthetic-music',
           SESSION_MAX_AGE_SECONDS: '3600',
           PUBLIC_ORIGIN: 'https://music.example.test',
+          IMPORT_POLICY_FILE: '/tmp/synthetic-policy.json',
+          IMPORT_CREDENTIAL_FILE: '/tmp/synthetic-credential.json',
         },
       },
     ),
@@ -135,6 +137,8 @@ describe('source-only deployment', () => {
             MUSIC_PATH: '/tmp/synthetic-music',
             SESSION_MAX_AGE_SECONDS: '3600',
             PUBLIC_ORIGIN: 'https://music.example.test',
+            IMPORT_POLICY_FILE: '/tmp/synthetic-policy.json',
+            IMPORT_CREDENTIAL_FILE: '/tmp/synthetic-credential.json',
             LAN_BIND_ADDRESS: '192.168.50.2',
             LAN_PUBLIC_ORIGIN: 'http://192.168.50.2:8081',
             ADMIN_SETUP_COMPLETE: 'true',
@@ -170,4 +174,58 @@ describe('source-only deployment', () => {
     expect(read('deploy/backup/README.md')).toContain('policy revision');
     read('deploy/compose.test.yaml');
   });
+});
+
+/** Imports are opt-in and cannot add a worker dependency to stored music playback. */
+it('should compose an isolated imports worker without changing base service behavior', () => {
+  read('deploy/compose.imports.yaml');
+  const base = makeSUT();
+  const overlay = makeSUT(['-f', 'deploy/compose.imports.yaml']);
+  expect(overlay.services.gonic).toEqual(base.services.gonic);
+  expect(overlay.services.web).toEqual(base.services.web);
+  expect(overlay.services['volume-init']).toEqual(base.services['volume-init']);
+  const worker = overlay.services.worker;
+  expect(worker.user).toBe('1000:1000');
+  expect(worker.ports).toBeUndefined();
+  expect(worker.read_only).toBe(true);
+  expect(worker.tmpfs).toContain('/tmp:exec,mode=1777');
+  expect(worker.cap_drop).toEqual(['ALL']);
+  expect(worker.security_opt).toContain('no-new-privileges:true');
+  expect(worker.healthcheck.test).toContain('--healthcheck');
+  expect(worker.depends_on.gonic.condition).toBe('service_healthy');
+  expect(worker.depends_on['worker-volume-init'].condition).toBe('service_completed_successfully');
+  expect(overlay.services.api.depends_on).toEqual(base.services.api.depends_on);
+  expect(overlay.services.api.environment.IMPORTS_ENABLED).toBe('true');
+  expect(overlay.services.api.secrets).toBeUndefined();
+  expect(worker.secrets).toHaveLength(1);
+  expect(JSON.stringify(worker.environment)).not.toMatch(/PASSWORD|USERNAME/);
+  type Mount = { target: string; read_only?: boolean };
+  expect(worker.volumes.find((v: Mount) => v.target === '/music').read_only ?? false).toBe(false);
+  expect(overlay.services.api.volumes.find((v: Mount) => v.target === '/music').read_only).toBe(
+    true,
+  );
+  expect(overlay.services['worker-volume-init'].network_mode).toBe('none');
+  expect(Object.keys(overlay.volumes).sort()).toEqual(
+    [...Object.keys(base.volumes), 'engine-data', 'worker-staging'].sort(),
+  );
+});
+/** The seed is checked against an exact official digest and the final worker has no source/test tree. */
+it('should package a verified standalone seed and ownership-safe initializer', () => {
+  const source = read('deploy/worker.Dockerfile');
+  for (const value of [
+    'node:24.20.0-bookworm-slim',
+    '11.19.0',
+    '2026.08.19',
+    'sha256sum -c',
+    'ffmpeg',
+    '--omit=dev',
+  ])
+    expect(source).toContain(value);
+  const final = source.slice(source.lastIndexOf('\nFROM '));
+  expect(final).not.toMatch(/COPY.*(?:test-support|tests|src|Gallery)/);
+  expect(final).toContain('USER node');
+  const init = read('deploy/initialize-worker-volumes.sh');
+  expect(init).not.toMatch(/chown\s+-R|chmod\s+777/);
+  expect(init).toContain('stat');
+  expect(read('deploy/backup/README.md')).toContain('engine-data');
 });

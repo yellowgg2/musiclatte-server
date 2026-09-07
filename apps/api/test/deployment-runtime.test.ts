@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -83,4 +91,148 @@ describe('container lifecycle', () => {
       await ctx.cleanup();
     }
   });
+});
+
+/** API startup reads policy without receiving the privileged worker credential. */
+it('should start enabled API with policy alone and preserve readiness when worker is absent', async () => {
+  const ctx = await createTestContext();
+  const policyPath = join(ctx.storage.data, 'policy.json');
+  writeFileSync(
+    policyPath,
+    JSON.stringify({ schemaVersion: 1, libraries: [], engineManagers: [] }),
+  );
+  let app;
+  try {
+    app = createConfiguredApp({
+      PUBLIC_ORIGIN: origin,
+      GONIC_UPSTREAM: ctx.options.upstream,
+      MANAGEMENT_DIRECTORY: ctx.storage.data,
+      CREDENTIAL_KEY_PATH: ctx.storage.keyPath,
+      SESSION_MAX_AGE_SECONDS: '60',
+      IMPORTS_ENABLED: 'true',
+      IMPORT_POLICY_PATH: policyPath,
+    });
+    expect((await app.inject('/health/ready')).statusCode).toBe(200);
+  } finally {
+    await app?.close();
+    await ctx.cleanup();
+  }
+});
+/** CLI health is read-only, reports stale state, and never prints private input. */
+it('should expose separate worker config and heartbeat probes', async () => {
+  const path = resolve('apps/api/src/worker-runtime.ts');
+  expect(existsSync(path), 'worker runtime must exist').toBe(true);
+  const runtime: {
+    workerHealth: (env: Record<string, string | undefined>, now?: number) => boolean;
+    readWorkerConfig: (env: Record<string, string | undefined>) => { enabled: boolean };
+  } = await import(path);
+  expect(runtime.readWorkerConfig({})).toEqual({ enabled: false });
+  expect(runtime.workerHealth({})).toBe(false);
+  expect(() =>
+    runtime.readWorkerConfig({
+      IMPORTS_ENABLED: 'true',
+      IMPORT_CREDENTIAL_PATH: '/missing-private',
+    }),
+  ).toThrow(/^invalid_worker_config$/);
+  const ctx = await createTestContext();
+  try {
+    const env = { IMPORTS_ENABLED: 'true', MANAGEMENT_DIRECTORY: realpathSync(ctx.storage.data) };
+    expect(runtime.workerHealth(env, 1000)).toBe(false);
+    ctx.storage.db.connection
+      .prepare(
+        "UPDATE worker_state SET worker_id='fixture',status='idle',heartbeat_at=1000 WHERE singleton=1",
+      )
+      .run();
+    expect(runtime.workerHealth(env, 1001)).toBe(true);
+    expect(runtime.workerHealth(env, 61_001)).toBe(false);
+    expect(runtime.workerHealth(env, 999)).toBe(false);
+  } finally {
+    await ctx.cleanup();
+  }
+});
+
+/** Private config accepts readable owned mounts, rejects broad credentials, and starts/stops the real loop. */
+it('should probe private mounts and recover the worker engine across process lifetimes', async () => {
+  const { readWorkerConfig, runWorker, workerHealth } = await import('../src/worker-runtime.js');
+  const { chmodSync } = await import('node:fs');
+  const { createEngineProcessFixture } =
+    await import('../../../tests/support/engine-process-fixture.js');
+  const ctx = await createTestContext();
+  const root = realpathSync(ctx.storage.data);
+  const fixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), 'musiclatte-worker-runtime-')));
+  const fixture = createEngineProcessFixture(fixtureRoot, 'no-update');
+  const env: Record<string, string> = {
+    IMPORTS_ENABLED: 'true',
+    MANAGEMENT_DIRECTORY: root,
+    GONIC_UPSTREAM: ctx.options.upstream,
+    IMPORT_POLICY_PATH: join(fixtureRoot, 'policy.json'),
+    IMPORT_CREDENTIAL_PATH: join(fixtureRoot, 'credential.json'),
+    IMPORT_MUSIC_ROOT: join(fixtureRoot, 'music'),
+    IMPORT_STAGING_ROOT: join(fixtureRoot, 'staging'),
+    IMPORT_ENGINE_ROOT: join(fixtureRoot, 'engine'),
+    IMPORT_SEED_PATH: fixture.seed.executable,
+    IMPORT_SEED_VERSION: fixture.seed.version,
+    IMPORT_SEED_SHA256: fixture.seed.hash,
+    IMPORT_FFMPEG_PATH: fixture.ffmpeg,
+    IMPORT_FFPROBE_PATH: fixture.ffmpeg,
+  };
+  for (const name of ['music', 'staging', 'engine'])
+    mkdirSync(join(fixtureRoot, name), { mode: 0o700 });
+  writeFileSync(
+    env.IMPORT_POLICY_PATH!,
+    JSON.stringify({ schemaVersion: 1, libraries: [], engineManagers: [] }),
+  );
+  writeFileSync(
+    env.IMPORT_CREDENTIAL_PATH!,
+    JSON.stringify({ username: 'worker', password: 'synthetic-secret' }),
+    { mode: 0o600 },
+  );
+  try {
+    expect(readWorkerConfig(env).enabled).toBe(true);
+    chmodSync(env.IMPORT_CREDENTIAL_PATH!, 0o644);
+    expect(() => readWorkerConfig(env)).toThrow(/^invalid_worker_config$/);
+    chmodSync(env.IMPORT_CREDENTIAL_PATH!, 0o600);
+    chmodSync(env.IMPORT_ENGINE_ROOT!, 0o755);
+    expect(() => readWorkerConfig(env)).toThrow(/^invalid_worker_config$/);
+    chmodSync(env.IMPORT_ENGINE_ROOT!, 0o700);
+    expect(() => readWorkerConfig({ ...env, IMPORT_STAGING_ROOT: env.IMPORT_MUSIC_ROOT })).toThrow(
+      /^invalid_worker_config$/,
+    );
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const abort = new AbortController();
+      const running = runWorker(env, abort.signal);
+      try {
+        await expect.poll(() => workerHealth(env)).toBe(true);
+        await expect.poll(() => ctx.storage.engines.get().lastCheckedAt).not.toBeNull();
+      } finally {
+        abort.abort();
+        await running;
+      }
+      expect(workerHealth(env)).toBe(false);
+      expect(ctx.storage.engines.get().activeVersion).toBe(fixture.seed.version);
+    }
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+    await ctx.cleanup();
+  }
+});
+
+/** Disabled worker startup does not need files that belong only to the opt-in overlay. */
+it('should run the disabled CLI probe without inspecting a missing seed manifest', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const result = spawnSync(
+    process.execPath,
+    ['--import', 'tsx', 'apps/api/src/worker-entry.ts', '--check-config'],
+    {
+      env: {
+        ...process.env,
+        IMPORTS_ENABLED: 'false',
+        IMPORT_SEED_MANIFEST: '/missing-synthetic-manifest',
+      },
+      encoding: 'utf8',
+    },
+  );
+  expect(result.status).toBe(0);
+  expect(result.stdout).toBe('worker_disabled\n');
+  expect(result.stderr).toBe('');
 });

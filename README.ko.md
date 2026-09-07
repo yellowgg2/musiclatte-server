@@ -66,3 +66,18 @@ npm run dev:api
 프로젝트에 Prettier 3.9.6을 고정했다. `npm run format`으로 정리하고 `npm run format:check`로 검사한다. 공통 설정은 공백 2칸, 줄 너비 기준 100, single quote다. 생성물·lockfile·runtime data와 별도 plugin이 없는 shell/SQL/nginx 파일은 제외한다.
 
 권장 Prettier 확장이 설치된 VS Code에서는 workspace 설정으로 저장 시 포맷한다. Codex의 직접 파일 쓰기는 에디터 저장 hook을 거치지 않으므로 프로젝트 `AGENTS.md`에 검증 전 format·완료 전 format:check 규칙도 추가했다. 별도 formatter MCP나 전역 Codex 변경은 필요 없다.
+
+## 선택 기능: YouTube 가져오기
+
+기본 명령 `docker compose up -d --build`는 유지되며 imports는 기본 비활성이다. gonic 최초 관리자 설정 후 scan 권한이 있는 전용 worker 계정을 만든다. JSON credential과 import policy는 저장소 밖 private 경로에 두고 `.env`에는 절대 파일 경로(`IMPORT_CREDENTIAL_FILE`, `IMPORT_POLICY_FILE`)만 기록한다. 형식은 [private 설정 가이드](docs/architecture/import-deployment.md)를 따른다. API의 private SQLite volume을 공유하므로 UID/GID 1000:1000을 유지하고 host 음악 디렉터리에 해당 worker의 제한된 쓰기 권한을 준비한다. API/gonic은 읽기 전용이다. root 실행, 음악 전체 recursive chown, world-writable 권한으로 문제를 숨기지 않는다.
+
+```sh
+docker compose -f compose.yaml -f deploy/compose.imports.yaml config --quiet
+docker compose -f compose.yaml -f deploy/compose.imports.yaml up -d --build
+docker compose -f compose.yaml -f deploy/compose.imports.yaml exec worker node apps/api/dist/worker-entry.js --check-config
+docker compose -f compose.yaml -f deploy/compose.imports.yaml exec worker node apps/api/dist/worker-entry.js --healthcheck
+```
+
+한 번의 시작 명령이 worker 도구까지 로컬 build한다. config probe는 고정된 valid/disabled/error 상태만 출력하고 healthcheck는 credential·network 없이 기존 DB/heartbeat만 검사한다. 최초 private 파일 누락·권한 불일치는 실패로 처리한다. worker/nightly 장애 중에도 기존 음악 재생과 gateway/API는 유지된다. 웹 imports/recent/engine 진입점은 UI Step 10–12까지 비활성이다.
+
+업데이트 전 worker를 정지하고 [management+key+gonic+engine+host 음악의 matching backup](deploy/backup/README.md)을 만든 뒤 같은 두 파일 명령으로 재빌드한다. staging은 복구 가능한 작업 공간으로 backup에서 제외한다. 현재 Phase 3 DB는 v8(최초 v3 migration)이고 base 시작도 DB를 migration한다. overlay 제거는 음악을 보존하지만 schema를 되돌리지 않는다. v2 rollback에는 matching pre-upgrade snapshot과 구버전 빌드가 필수다. 초기 volume 준비 probe와 update/rollback 순서는 [배포 가이드](docs/architecture/import-deployment.md)를 참고한다.

@@ -152,3 +152,23 @@ describe('development-only UI boundary', () => {
     }
   });
 });
+
+/** Optional import configuration and runtime stores stay out of both Git and image contexts. */
+it('should exclude private import files and runtime stores', () => {
+  const ignored = readFileSync('.dockerignore', 'utf8');
+  for (const name of [
+    'import-policy.json',
+    'import-worker.json',
+    'worker-staging',
+    'engine-data',
+  ]) {
+    expect(ignored).toContain('**/' + name);
+    expect(
+      spawnSync('git', [
+        'check-ignore',
+        '-q',
+        'private/' + name + (name.endsWith('.json') ? '' : '/runtime'),
+      ]).status,
+    ).toBe(0);
+  }
+});

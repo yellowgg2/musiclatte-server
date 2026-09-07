@@ -49,3 +49,9 @@ apps/web/src/**/Gallery*
 apps/web/src/**/__gallery__
 apps/web/src/**/__fixtures__
 docs
+
+# Optional import configuration and runtime stores are never build inputs.
+**/import-policy.json
+**/import-worker.json
+**/worker-staging
+**/engine-data

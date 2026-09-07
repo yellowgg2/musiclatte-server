@@ -42,3 +42,14 @@ API는 환경변수를 shell로 전달한다. `.env`를 자동 로딩하지 않�
 ## 경계
 
 GitHub public repository 생성은 사용자 지시로 수행했다. 소스 commit/push와 운영 배포는 수행하지 않았다. License는 미선택이다. 실제 media·비밀값·local agent state·generated output은 Git/Docker 제외 대상이며 공개 sample에는 개인 서버 경로나 사용자 음악 정보를 적지 않는다.
+
+## Phase 3 worker seed (2026-09-07 확인)
+
+`deploy/worker.Dockerfile`은 공식 [yt-dlp 2026.08.19 release](https://github.com/yt-dlp/yt-dlp/releases/tag/2026.08.19)의 standalone artifact를 사용한다. 공식 [SHA2-256SUMS](https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/SHA2-256SUMS)와 GitHub release asset digest를 확인하고 build 시 `sha256sum -c`로 잠근 값을 검증한다.
+
+| Target      | Artifact             | SHA-256                                                          |
+| ----------- | -------------------- | ---------------------------------------------------------------- |
+| linux/amd64 | yt-dlp_linux         | 58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a |
+| linux/arm64 | yt-dlp_linux_aarch64 | b16e4dab368a816cd05d477d698a605a6ae87ccee1c8ffd38fa21d7254141fcc |
+
+Node 24.20.0/npm 11.19.0와 Debian bookworm FFmpeg/ffprobe를 container에 포함한다. FFmpeg apt patch는 build 당시 배포 security package를 사용하므로 image ID와 실제 `ffmpeg -version`을 설치 evidence에 보존한다. standalone은 host Python이 필요 없고 Node JS runtime을 사용한다. image의 `/opt/seed`는 read-only bootstrap이며 `engine-data`의 nightly candidate/active/previous store와 다르다. 실패한 nightly는 last-known-good engine을 보존한다. 이 작업은 이미지 공개·registry push를 하지 않는다.

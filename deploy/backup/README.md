@@ -77,3 +77,31 @@ docker compose -p "$ML_RESTORE" ps
 ```
 
 Use the same explicit test/LAN override files on every Compose command if that installation uses one. Confirm `/health/ready`, the preserved instance ID, a fresh login, old-token rejection after rollback, native folder/search and stream bytes. Do not expose the restored origin until initial admin setup and these checks are complete. The original snapshot stays immutable for another recovery attempt.
+
+## Imports overlay: pre-upgrade and matching recovery
+
+Before the first Phase 3 startup, take a **v2 pre-upgrade snapshot using the old application build**. Phase 3 migrations started at v3; the current image migrates management storage to **schema v8**. This also happens with base Compose: disabling imports is a capability rollback, not a schema downgrade. Never run a v2 binary against v3–v8 storage. Restore its matching v2 management+key and gonic/music snapshot into new volumes for a binary downgrade.
+
+For an imports installation, use `-f compose.yaml -f deploy/compose.imports.yaml` on **every** stop/start/run command. First stop worker, then web/API/gonic, and quiesce other writers to the host music root:
+
+```sh
+docker compose -f compose.yaml -f deploy/compose.imports.yaml stop worker
+docker compose -f compose.yaml -f deploy/compose.imports.yaml stop web api gonic
+```
+
+Apply the recipe above with `engine-data` added to both archival/restore helper mounts (`<project>_engine-data:/snapshot/engine-data`) and both fresh-volume lists. Do not run the base-only stop recipe while a worker is active. Record this private backup manifest:
+
+| Member                                          | Relationship                                                                               |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| management-data + management-keys               | Matching schema v8 SQLite, WAL if present, instance/key and job/lease/event ledger         |
+| gonic-data + gonic-playlists + gonic-podcasts   | Same stopped scan/account/library boundary                                                 |
+| engine-data                                     | Same stopped active.json, versions and retained candidate files as management engine state |
+| Host music snapshot                             | Matching published media referenced by MediaLink; archive separately from Docker state     |
+| Private policy + worker credential              | Secure operator backup outside archives that could be shared                               |
+| Source commit, image IDs, gonic digest, UID/GID | Exact build and numeric owner/mode required for recovery                                   |
+
+`worker-staging` is **excluded** from the backup manifest: it is neither music, a scan root, nor an authoritative ledger. Create a new empty staging volume on restore. A missing staging artifact is recovered from durable job/publish intent state; never clear final media or assume an expired lease authorizes overwriting a file. On ordinary restart retain staging and let the worker remove only its recorded owned artifacts. Engine versions are retained; do not delete candidates/versions or replace a missing committed manifest with the seed.
+
+Restore matching management+key+gonic+engine and host music into fresh destinations with numeric ownership/modes. Bump policy revision for historical rollback before serving. Start gonic/API first, wait for expired durable worker/registration/engine leases, then start the worker with the same overlay. Run `worker --check-config` (the full command is in the imports guide), inspect health and verify ready MediaLinks and playback before enabling the gateway. Failed engine updates keep the active version; use the authorized engine restore action for a previous version, which does not downgrade the DB. Retain immutable backups and the previous stopped stack. Never use `down -v`, delete existing media, or copy a running SQLite main file alone.
+
+한국어: Phase 3 첫 실행 전 구버전 빌드로 v2 snapshot을 만든다. 현재 DB는 v8이며 base Compose에서도 migration하므로 imports 비활성화와 schema downgrade를 구분한다. imports 설치에서는 모든 명령에 두 Compose 파일을 지정하고 worker부터 정지한 뒤 API·gonic·다른 음악 writer를 정지한다. management-data+matching key, gonic state, engine-data, host 음악을 같은 시점으로 보존하고 새 volume에만 복원한다. staging은 backup 원장에서 제외하고 빈 volume으로 시작한다. 과거 snapshot은 policy revision 증가·lease 만료·owned artifact 복구 후 health와 기존 재생을 확인한다. v2로 돌아가려면 matching v2 snapshot이 필수이며 image만 교체하지 않는다.

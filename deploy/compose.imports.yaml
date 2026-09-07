@@ -1,0 +1,96 @@
+services:
+  api:
+    environment:
+      IMPORTS_ENABLED: 'true'
+      IMPORT_POLICY_PATH: /run/configs/import-policy.json
+      IMPORT_MUSIC_ROOT: /music
+    volumes:
+      - type: bind
+        source: ${MUSIC_PATH:?Set MUSIC_PATH}
+        target: /music
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${IMPORT_POLICY_FILE:?Set IMPORT_POLICY_FILE to a private absolute policy file}
+        target: /run/configs/import-policy.json
+        read_only: true
+        bind:
+          create_host_path: false
+  worker-volume-init:
+    image: node:24.20.0-bookworm-slim
+    user: '0:0'
+    restart: 'no'
+    network_mode: none
+    entrypoint: ['sh', '/initialize-worker-volumes.sh']
+    environment:
+      IMPORT_UID: ${IMPORT_UID:-1000}
+      IMPORT_GID: ${IMPORT_GID:-1000}
+    volumes:
+      - ./deploy/initialize-worker-volumes.sh:/initialize-worker-volumes.sh:ro
+      - worker-staging:/staging
+      - engine-data:/engine
+    read_only: true
+    security_opt: ['no-new-privileges:true']
+    cap_drop: ['ALL']
+    cap_add: ['CHOWN', 'FOWNER', 'DAC_OVERRIDE']
+  worker:
+    build:
+      context: .
+      dockerfile: deploy/worker.Dockerfile
+    user: '${IMPORT_UID:-1000}:${IMPORT_GID:-1000}'
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      IMPORTS_ENABLED: 'true'
+      MANAGEMENT_DIRECTORY: /management
+      GONIC_UPSTREAM: http://gonic:80
+      IMPORT_MUSIC_ROOT: /music
+      IMPORT_STAGING_ROOT: /staging
+      IMPORT_ENGINE_ROOT: /engine
+      IMPORT_POLICY_PATH: /run/configs/import-policy.json
+      IMPORT_CREDENTIAL_PATH: /run/secrets/import-worker.json
+      IMPORT_SEED_MANIFEST: /opt/seed/manifest.json
+    volumes:
+      - management-data:/management
+      - worker-staging:/staging
+      - engine-data:/engine
+      - type: bind
+        source: ${MUSIC_PATH:?Set MUSIC_PATH}
+        target: /music
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${IMPORT_POLICY_FILE:?Set IMPORT_POLICY_FILE}
+        target: /run/configs/import-policy.json
+        read_only: true
+        bind:
+          create_host_path: false
+    secrets:
+      - source: import-worker
+        target: import-worker.json
+    read_only: true
+    # The official standalone seed extracts shared libraries; noexec prevents startup.
+    tmpfs: ['/tmp:exec,mode=1777']
+    stop_grace_period: 30s
+    healthcheck:
+      test: ['CMD', 'node', 'apps/api/dist/worker-entry.js', '--healthcheck']
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      gonic:
+        condition: service_healthy
+      worker-volume-init:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    security_opt: ['no-new-privileges:true']
+    cap_drop: ['ALL']
+volumes:
+  worker-staging:
+  engine-data:
+secrets:
+  import-worker:
+    file: ${IMPORT_CREDENTIAL_FILE:?Set IMPORT_CREDENTIAL_FILE to a private absolute credential file}

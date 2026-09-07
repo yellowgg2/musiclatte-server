@@ -1,5 +1,5 @@
 import { isAbsolute } from 'node:path';
-import { readImportConfig } from '../imports/config.js';
+import { readApiImportConfig } from '../imports/config.js';
 import { registerReadiness } from '../health/readiness.js';
 import { createApp } from '../app.js';
 import { openDatabase } from '../storage/database.js';
@@ -14,7 +14,7 @@ import { readSessionPolicy } from '../config/session-policy.js';
 export function createConfiguredApp(env: Record<string, string | undefined>) {
   let database: ReturnType<typeof openDatabase> | undefined;
   try {
-    const importConfig = readImportConfig(env);
+    const importConfig = readApiImportConfig(env);
     const required = (name: string) => {
       const value = env[name];
       if (!value) throw new Error();

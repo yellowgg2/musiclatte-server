@@ -66,3 +66,18 @@ No credentials, real music, private fixtures or runtime data belong in this repo
 Prettier 3.9.6 is pinned locally: `npm run format` writes readable formatting and `npm run format:check` verifies it. The shared settings use two spaces, a 100-column target and single quotes. Generated output, lockfiles, runtime data and unsupported shell/SQL/nginx files are excluded.
 
 VS Code workspace settings enable format-on-save when the recommended Prettier extension is installed. Codex filesystem writes do not go through editor save hooks, so project `AGENTS.md` requires formatting before validation and a successful format check before completion. No formatter MCP or global Codex change is required.
+
+## Optional YouTube imports
+
+The base command remains `docker compose up -d --build`; imports are disabled by default. After initial gonic admin setup, create a dedicated scan-capable worker account. Keep its JSON credential and the import policy outside the repository; `.env` contains only their absolute file paths (`IMPORT_CREDENTIAL_FILE`, `IMPORT_POLICY_FILE`). Follow the [private setup and policy format](docs/architecture/import-deployment.md). Use UID/GID 1000:1000 to share the API's private SQLite volume, and grant that worker narrowly scoped write access to the host music directory; API/gonic read it only. Never use root, recursive chown or world-writable music to fix permissions.
+
+```sh
+docker compose -f compose.yaml -f deploy/compose.imports.yaml config --quiet
+docker compose -f compose.yaml -f deploy/compose.imports.yaml up -d --build
+docker compose -f compose.yaml -f deploy/compose.imports.yaml exec worker node apps/api/dist/worker-entry.js --check-config
+docker compose -f compose.yaml -f deploy/compose.imports.yaml exec worker node apps/api/dist/worker-entry.js --healthcheck
+```
+
+The same one-command startup builds all required worker tools locally. Check-config prints only a fixed valid/disabled/error status; health checks existing DB/heartbeat without credentials or network calls. First-run missing/mismatched private file permissions fail closed. Worker or nightly failures leave stored music and the existing gateway/API available. Web imports/recent/engine entry points remain disabled until their UI Steps 10–12.
+
+Before updating, stop the worker and make the [matching management+key+gonic+engine+host-music backup](deploy/backup/README.md), then rebuild with the same two-file command. Staging is recoverable workspace, excluded from backup. Phase 3 currently uses schema v8 (initial migration v3); even base startup migrates the DB. Disabling the overlay preserves files but does not downgrade schema. A v2 rollback requires its matching pre-upgrade snapshot and old build. See the [deployment guide](docs/architecture/import-deployment.md) for update/rollback and volume initialization probes.

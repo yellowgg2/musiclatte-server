@@ -59,7 +59,15 @@ describe('real gateway protocol boundary', () => {
     expect(native.status).toBe(403);
     expect(native.headers.get('content-type')).toContain('xml');
     expect(await native.text()).toContain('code="50"');
-    for (const path of ['/api', '/api/v1/missing', '/.well-known/musiclatte-server']) {
+    for (const path of [
+      '/api',
+      '/api/v1/missing',
+      '/api/v1/imports',
+      '/api/v1/imports/opaque',
+      '/api/v1/engine',
+      '/api/v1/recent-downloads',
+      '/.well-known/musiclatte-server',
+    ]) {
       const response = await fetch(ctx.origin + path);
       expect(response.status).toBe(path.startsWith('/.well-known') ? 200 : 404);
       expect(response.headers.get('content-type')).toContain('json');

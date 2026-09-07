@@ -659,3 +659,46 @@ it('should release its engine when a checkpoint interrupts the worker', async ()
   await s.restart().runOnce();
   expect(readdirSync(s.options.stagingRoot)).toEqual([]);
 });
+
+/** A long registration scan remains a live worker even though no download item lease is active. */
+it('should keep a heartbeat while awaiting registration and stop it on shutdown', async () => {
+  const s = await workerSUT();
+  await s.worker.runOnce();
+  let release!: () => void;
+  let entered = false;
+  const waiting = new Promise<void>((done) => {
+    release = done;
+  });
+  let heartbeatNow = 1000;
+  const worker = createWorkerRunner({
+    ...s.options,
+    leaseDurationMs: 60,
+    clock: () => heartbeatNow,
+    registration: {
+      libraries: [{ id: 'library', musicFolderId: '0', relativeRoot: 'imports' }],
+      scanClient: {
+        getScanStatus: async () => {
+          entered = true;
+          await waiting;
+          return { scanning: false, count: 0 };
+        },
+        startScan: async () => {},
+        indexes: async () => ({ index: [] }),
+        registrationDirectory: async () => ({ id: 'empty', child: [] }),
+      },
+    },
+  });
+  const abort = new AbortController();
+  const running = worker.run(abort.signal);
+  try {
+    await expect.poll(() => entered).toBe(true);
+    expect(s.c.workerStates.get()).toMatchObject({ status: 'idle', heartbeatAt: 1000 });
+    heartbeatNow = 2000;
+    await expect.poll(() => s.c.workerStates.get().heartbeatAt).toBe(2000);
+  } finally {
+    abort.abort();
+    release();
+    await running;
+  }
+  expect(s.c.workerStates.get().status).toBe('stopped');
+});

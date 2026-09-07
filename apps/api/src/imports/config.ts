@@ -26,3 +26,17 @@ export function readImportConfig(env: Record<string, string | undefined>) {
     throw new Error('invalid_import_config');
   }
 }
+
+/** The API never receives the fixed scan account credential. */
+export function readApiImportConfig(env: Record<string, string | undefined>) {
+  try {
+    const enabled = env.IMPORTS_ENABLED ?? 'false';
+    if (!['true', 'false'].includes(enabled)) throw new Error();
+    return {
+      enabled: enabled === 'true',
+      policy: loadImportPolicy(env.IMPORT_POLICY_PATH, enabled === 'true'),
+    };
+  } catch {
+    throw new Error('invalid_import_config');
+  }
+}

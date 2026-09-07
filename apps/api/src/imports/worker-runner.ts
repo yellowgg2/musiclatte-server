@@ -128,6 +128,17 @@ export function createWorkerRunner(options: WorkerOptions) {
       if (!claim) {
         if (!registration) return false;
         active = new AbortController();
+        ledger.idle();
+        timer = setInterval(
+          () => {
+            try {
+              ledger.idle();
+            } catch {
+              active?.abort();
+            }
+          },
+          Math.max(10, Math.floor(options.leaseDurationMs / 3)),
+        );
         return await registration.runOnce(active.signal);
       }
       const { job, item, recovering } = claim;
