@@ -1,3 +1,4 @@
+import { engineCapability } from '../engine/engine-service.js';
 import { recentCapability } from '../imports/recent-service.js';
 import { importCapability } from '../imports/import-service.js';
 import {
@@ -50,13 +51,23 @@ export async function capabilities(
     identity.username,
   );
   features['imports.youtube'] = importCapability(service.options.imports, identity.username);
+  const currentIdentity = service.options.imports?.policy.enabled
+    ? (await service.verify(session.token, session.scheme)).identity
+    : identity;
+  features['engine.manage'] = engineCapability(service.options.imports, currentIdentity);
   service.find(session.token, session.scheme);
   return {
     schemaVersion: 1,
     instanceId: session.instanceId,
     revision: service.sign(
       'capability-revision',
-      JSON.stringify([session.token, session.policyRevision, identity, features]),
+      JSON.stringify([
+        session.token,
+        session.policyRevision,
+        currentIdentity,
+        features,
+        service.options.imports?.policy,
+      ]),
     ),
     features,
   };

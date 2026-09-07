@@ -137,12 +137,27 @@ export function createEngineProvider(options: EngineProviderOptions) {
       signal?.throwIfAborted();
       return lease();
     },
-    async restorePrevious() {
+    async restorePrevious(expected?: { activeVersion: string; previousVersion: string | null }) {
       const token = repository.claim('use');
       if (!token) throw new Error('engine_busy');
       const oldCandidate = repository.get().candidateKey;
       try {
         const current = pointer();
+        if (expected) {
+          if (
+            current.active.version === expected.previousVersion &&
+            current.previous?.version === expected.activeVersion &&
+            current.status === 'restored'
+          ) {
+            repository.reconcile(token, current);
+            return repository.get();
+          }
+          if (
+            current.active.version !== expected.activeVersion ||
+            current.previous?.version !== expected.previousVersion
+          )
+            throw new Error('engine_selection_changed');
+        }
         if (!current.previous) throw new Error('no_previous_engine');
         await updater.basic(store.executable(current.previous), current.previous);
         commit(token, { active: current.previous, previous: current.active, status: 'restored' });
