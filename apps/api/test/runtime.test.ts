@@ -51,3 +51,72 @@ describe('API runtime', () => {
     expect(() => readConfig({ NODE_ENV: 'secret-value' })).toThrow('Invalid NODE_ENV');
   });
 });
+
+/** Imports remain opt-in and malformed enabled configuration fails before opening the application. */
+it('should reject enabled imports without policy and worker credentials at startup', async () => {
+  const { createConfiguredApp } = await import('../src/auth/runtime.js');
+  const { createTestContext, origin } = await import('../../../tests/support/auth-harness.js');
+  const ctx = await createTestContext();
+  try {
+    const env = {
+      PUBLIC_ORIGIN: origin,
+      GONIC_UPSTREAM: ctx.options.upstream,
+      MANAGEMENT_DIRECTORY: ctx.storage.data,
+      CREDENTIAL_KEY_PATH: ctx.storage.keyPath,
+      SESSION_MAX_AGE_SECONDS: '60',
+    };
+    for (const IMPORTS_ENABLED of ['true', 'yes', ''])
+      expect(() => createConfiguredApp({ ...env, IMPORTS_ENABLED })).toThrow(
+        'Invalid authentication configuration',
+      );
+    const app = createConfiguredApp({ ...env, IMPORTS_ENABLED: 'false' });
+    await app.close();
+  } finally {
+    await ctx.cleanup();
+  }
+});
+
+/** Config probes validate the enabled policy and credentials without exposing secret values. */
+it('should resolve the false true and invalid import config matrix', async () => {
+  const path = resolve('apps/api/src/imports/config.ts');
+  expect(existsSync(path), 'import configuration boundary must exist').toBe(true);
+  const {
+    readImportConfig,
+  }: {
+    readImportConfig: (env: Record<string, string | undefined>) => {
+      enabled: boolean;
+      policy: { enabled: boolean };
+    };
+  } = await import(path);
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const root = mkdtempSync(resolve(tmpdir(), 'musiclatte-import-config-'));
+  try {
+    const policyPath = resolve(root, 'policy.json');
+    writeFileSync(
+      policyPath,
+      JSON.stringify({ schemaVersion: 1, libraries: [], engineManagers: [] }),
+    );
+    expect(readImportConfig({})).toMatchObject({ enabled: false, policy: { enabled: false } });
+    expect(
+      readImportConfig({ IMPORTS_ENABLED: 'false', IMPORT_POLICY_PATH: '/missing' }).enabled,
+    ).toBe(false);
+    const valid = {
+      IMPORTS_ENABLED: 'true',
+      IMPORT_POLICY_PATH: policyPath,
+      IMPORT_WORKER_USERNAME: 'worker',
+      IMPORT_WORKER_PASSWORD: 'synthetic-worker-secret',
+    };
+    expect(readImportConfig(valid)).toMatchObject({ enabled: true, policy: { enabled: true } });
+    for (const key of ['IMPORT_POLICY_PATH', 'IMPORT_WORKER_USERNAME', 'IMPORT_WORKER_PASSWORD'])
+      expect(() => readImportConfig({ ...valid, [key]: undefined })).toThrow(
+        /^invalid_import_config$/,
+      );
+    for (const IMPORTS_ENABLED of ['1', '', 'TRUE'])
+      expect(() => readImportConfig({ ...valid, IMPORTS_ENABLED })).toThrow(
+        /^invalid_import_config$/,
+      );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
