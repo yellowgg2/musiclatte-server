@@ -67,6 +67,7 @@ export const musicEntrySchema = object(['id', 'title', 'isDir'], {
   coverArt: text,
   album: text,
   artist: text,
+  genre: text,
   contentType: text,
   suffix: text,
   starred: text,

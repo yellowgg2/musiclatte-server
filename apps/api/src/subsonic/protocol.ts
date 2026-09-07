@@ -93,6 +93,7 @@ export function decodeEntry(value: unknown): MusicEntry {
     ...optional(source, 'coverArt', id),
     ...optional(source, 'album', string),
     ...optional(source, 'artist', string),
+    ...optional(source, 'genre', string),
     ...optional(source, 'contentType', string),
     ...optional(source, 'suffix', string),
     ...optional(source, 'starred', string),

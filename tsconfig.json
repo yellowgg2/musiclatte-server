@@ -8,6 +8,13 @@
     "types": ["node", "vite/client"],
     "allowImportingTsExtensions": true
   },
-  "include": ["tests/**/*.ts", "apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "vitest*.ts"],
+  "include": [
+    "tests/**/*.ts",
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "packages/**/*.ts",
+    "tools/**/*.ts",
+    "vitest*.ts"
+  ],
   "exclude": ["**/dist", "**/node_modules"]
 }

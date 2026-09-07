@@ -41,6 +41,7 @@
 
 # Development/test sources cannot enter production build contexts.
 tests
+tools/verification
 **/test
 **/*.test.ts
 packages/test-support/src

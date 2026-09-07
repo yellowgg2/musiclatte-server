@@ -34,7 +34,7 @@ describe('metadata storage', () => {
       raw.close();
     }
     const upgraded = context.open(directory);
-    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 9 });
+    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 10 });
     expect(
       upgraded.connection.prepare('SELECT revision,gonic_song_id FROM media_links').get(),
     ).toEqual({ revision: 7, gonic_song_id: 'song-1' });
@@ -217,7 +217,9 @@ describe('metadata storage', () => {
   /** A fresh database includes the durable metadata ledger without changing import data semantics. */
   it('should create schema v9 with every metadata ledger table', async () => {
     context = await createTestContext();
-    expect(context.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 9 });
+    expect(context.db.connection.prepare('PRAGMA user_version').get()).toEqual({
+      user_version: 10,
+    });
     expect(
       context.db.connection
         .prepare(
@@ -231,6 +233,7 @@ describe('metadata storage', () => {
       'metadata_changes',
       'metadata_cover_uploads',
       'metadata_file_locks',
+      'metadata_item_evidence',
       'metadata_items',
       'metadata_jobs',
       'metadata_worker_state',

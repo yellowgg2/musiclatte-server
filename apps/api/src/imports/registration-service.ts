@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { posix } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { ManagementDatabase } from '../storage/database.js';
 import type { SubsonicClient } from '../subsonic/client.js';
-import type { RegistrationDirectory } from '../subsonic/protocol.js';
+import { createExactPathLookup, ExactPathFailure } from '../subsonic/exact-path-lookup.js';
+import { createScanCoordinator } from '../subsonic/scan-coordinator.js';
 import { validateRelativeKey } from './policy.js';
 
 export interface RegistrationOptions {
@@ -39,21 +39,6 @@ class RegistrationFailure extends Error {
     super(code);
   }
 }
-function normalizePath(path: string): string {
-  if (
-    !path ||
-    posix.isAbsolute(path) ||
-    /[\\:\x00-\x1f\x7f]/.test(path) ||
-    path.split('/').includes('..')
-  )
-    throw new RegistrationFailure('registration_path');
-  try {
-    return validateRelativeKey(posix.normalize(path));
-  } catch {
-    throw new RegistrationFailure('registration_path');
-  }
-}
-
 /** Inert until runOnce; bounded, durable, single-cycle scheduling over published items only. */
 export function createRegistrationService(options: RegistrationOptions) {
   const { database, scanClient } = options;
@@ -79,6 +64,7 @@ export function createRegistrationService(options: RegistrationOptions) {
       throw new Error('invalid_registration_clock');
     return at;
   };
+  const coordinator = createScanCoordinator({ database, clock: now, timeoutMs, retryMs });
   const wait = options.wait ?? ((ms, signal) => delay(ms, undefined, { signal }));
   const registerPending = async (
     external?: AbortSignal,
@@ -87,8 +73,7 @@ export function createRegistrationService(options: RegistrationOptions) {
     const owner = randomUUID();
     const items = database.transaction(() => {
       const at = now();
-      const lock = db.prepare('SELECT * FROM registration_cycle WHERE singleton=1').get()!;
-      if (Number(lock.expires_at) > at || Number(lock.next_scan_at) > at) return [];
+      if (!coordinator.available()) return [];
       const job = db
         .prepare(
           "SELECT i.job_id FROM import_items i JOIN import_jobs j ON j.id=i.job_id LEFT JOIN registration_attempts r ON r.item_id=i.id WHERE i.stage='registering' AND (i.lease_owner IS NULL OR i.lease_expires_at<=?) AND COALESCE(r.next_attempt_at,0)<=? ORDER BY j.created_at,i.item_order LIMIT 1",
@@ -102,9 +87,7 @@ export function createRegistrationService(options: RegistrationOptions) {
         .all(job.job_id!, at, at);
       if (!rows.length) return [];
       const expires = at + timeoutMs + 1000;
-      db.prepare(
-        'UPDATE registration_cycle SET owner=?,expires_at=?,next_scan_at=? WHERE singleton=1',
-      ).run(owner, expires, expires + retryMs);
+      if (!coordinator.acquire(owner)) return [];
       return rows.map((row) => {
         const item = {
           id: String(row.id),
@@ -128,14 +111,7 @@ export function createRegistrationService(options: RegistrationOptions) {
     const deadline = now() + timeoutMs;
     const owned = () => {
       signal.throwIfAborted();
-      if (
-        now() >= deadline ||
-        !db
-          .prepare(
-            'SELECT 1 FROM registration_cycle WHERE singleton=1 AND owner=? AND expires_at>?',
-          )
-          .get(owner, now())
-      )
+      if (now() >= deadline || !coordinator.owns(owner))
         throw new RegistrationFailure('registration_timeout');
     };
     const pending = new Map(items.map((item) => [item.id, item]));
@@ -173,63 +149,20 @@ export function createRegistrationService(options: RegistrationOptions) {
       for (let round = 0; round <= Math.ceil(timeoutMs / pollMs) && pending.size; round++) {
         owned();
         if (!(await scanClient.getScanStatus({ signal })).scanning) {
-          // Cache only a visibility round: delayed entries must be observable on the next round.
-          const roots = new Map<string, Awaited<ReturnType<SubsonicClient['indexes']>>>();
-          const directories = new Map<string, RegistrationDirectory>();
-          const directory = async (id: string) => {
-            owned();
-            let result = directories.get(id);
-            if (!result) {
-              result = await scanClient.registrationDirectory(id, { signal });
-              if (result.id !== id) throw new RegistrationFailure('registration_path');
-              directories.set(id, result);
-            }
-            return result;
-          };
+          const lookup = createExactPathLookup(scanClient, { signal, assertOwned: owned });
           for (const item of pending.values()) {
             try {
               owned();
               const library = libraries.get(item.libraryId);
-              if (!library || !item.fileKey.startsWith(library.relativeRoot + '/'))
-                throw new RegistrationFailure('registration_path');
-              validateRelativeKey(item.fileKey);
-              const parts = item.fileKey.split('/');
-              let index = roots.get(library.musicFolderId);
-              if (!index) {
-                index = await scanClient.indexes(library.musicFolderId, { signal });
-                roots.set(library.musicFolderId, index);
-              }
-              const root = index.index
-                .flatMap((group) => group.artist)
-                .filter((artist) => artist.name === parts[0]);
-              if (root.length !== 1)
-                throw new RegistrationFailure(
-                  root.length ? 'registration_ambiguous' : 'registration_pending',
-                );
-              let branch = root[0]!.id;
-              for (const segment of parts.slice(1, -1)) {
-                const children = (await directory(branch)).child.filter(
-                  (child) => child.isDir && child.name === segment,
-                );
-                if (children.length !== 1)
-                  throw new RegistrationFailure(
-                    children.length ? 'registration_ambiguous' : 'registration_pending',
-                  );
-                branch = children[0]!.id;
-              }
-              const matches = (await directory(branch)).child.filter(
-                (child) => !child.isDir && normalizePath(child.path) === item.fileKey,
-              );
-              if (matches.length !== 1)
-                throw new RegistrationFailure(
-                  matches.length ? 'registration_ambiguous' : 'registration_pending',
-                );
-              complete(item, matches[0]!.id);
+              if (!library) throw new RegistrationFailure('registration_path');
+              complete(item, await lookup(library, item.fileKey));
               pending.delete(item.id);
             } catch (error) {
               failures.set(
                 item.id,
-                error instanceof RegistrationFailure ? error.code : 'registration_upstream',
+                error instanceof RegistrationFailure || error instanceof ExactPathFailure
+                  ? error.code
+                  : 'registration_upstream',
               );
             }
           }
@@ -268,9 +201,7 @@ export function createRegistrationService(options: RegistrationOptions) {
             item.id,
           );
         }
-        db.prepare(
-          'UPDATE registration_cycle SET owner=NULL,expires_at=0,next_scan_at=? WHERE singleton=1 AND owner=?',
-        ).run(pending.size ? at + retryMs : at, owner);
+        coordinator.release(owner, pending.size > 0);
       });
     }
     return items.map((item) => ({

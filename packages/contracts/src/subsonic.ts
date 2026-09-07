@@ -28,6 +28,7 @@ export interface MusicEntry {
   coverArt?: SubsonicId;
   album?: string;
   artist?: string;
+  genre?: string;
   contentType?: string;
   suffix?: string;
   starred?: string;

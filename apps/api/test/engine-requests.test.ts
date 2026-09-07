@@ -179,6 +179,7 @@ describe('durable engine requests', () => {
     const before = s.c.engines.get();
     // Remove only the empty newer ledgers to recreate the historical v7 fixture.
     s.c.db.connection.exec(`
+      DROP TABLE metadata_item_evidence;
       DROP TABLE metadata_worker_state;
       DROP TABLE metadata_changes;
       DROP TABLE metadata_cover_uploads;
@@ -191,7 +192,7 @@ describe('durable engine requests', () => {
       PRAGMA user_version=7;
     `);
     const migrated = s.c.open();
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 9 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 10 });
     expect(s.c.enginesFor(migrated).get()).toEqual(before);
     expect(s.c.sessionsFor(migrated).find(session.token)?.proof).toEqual(proof);
     const mailbox = createEngineRequestRepository({ ...s.options, database: migrated });

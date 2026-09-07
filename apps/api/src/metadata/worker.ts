@@ -13,6 +13,7 @@ export interface MetadataWorkerOptions {
     work: MetadataWork,
   ): Promise<{ preserveOwnership: boolean; cover?: FileTransactionInput['cover'] }>;
   revision(work: MetadataWork, digest: string): string;
+  beforeWrite?(claim: MetadataClaim, work: MetadataWork): Promise<void>;
   /** S05 owns verified upstream reflection; omission leaves file_saved pending. */
   reflect?(claim: MetadataClaim, work: MetadataWork): Promise<void>;
 }
@@ -94,6 +95,7 @@ export function createMetadataWorker(options: MetadataWorkerOptions) {
       if (work.bindingRevision !== work.currentBindingRevision)
         throw new Error('revision_conflict');
       const policy = await options.authorize(work);
+      await options.beforeWrite?.(claim, work);
       Object.assign(input, policy);
       await options.fileStore.execute(input, {
         ...(signal ? { signal } : {}),

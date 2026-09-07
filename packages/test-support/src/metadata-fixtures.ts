@@ -7,7 +7,11 @@ export async function createMetadataFixture(options: {
   python: string;
   ffmpeg: string;
   version: 0 | 3 | 4;
+  durationSeconds?: number;
 }) {
+  const duration = options.durationSeconds ?? 0.3;
+  if (!Number.isFinite(duration) || duration <= 0 || duration > 180)
+    throw new Error('invalid_fixture_duration');
   const run = (args: string[]) =>
     execFileSync(options.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-nostdin', ...args], {
       timeout: 30000,
@@ -19,7 +23,7 @@ export async function createMetadataFixture(options: {
     '-i',
     'sine=frequency=440:sample_rate=44100',
     '-t',
-    '0.3',
+    String(duration),
     '-map_metadata',
     '-1',
     '-c:a',

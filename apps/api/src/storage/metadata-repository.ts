@@ -12,6 +12,7 @@ import {
   type MetadataErrorCode,
 } from '@musiclatte/contracts';
 import type { ManagementDatabase } from './database.js';
+import { decodeMetadataReferences, type MetadataReferences } from '../metadata/reference-check.js';
 
 export interface ValidatedMetadataItem {
   id: string;
@@ -122,6 +123,20 @@ export function validateMetadataStorage(db: DatabaseSync): void {
   const invalid = () => {
     throw new Error('Storage unavailable');
   };
+  for (const row of db
+    .prepare(
+      'SELECT e.*,i.original_track_id FROM metadata_item_evidence e JOIN metadata_items i ON i.id=e.item_id',
+    )
+    .iterate()) {
+    const value = decodeMetadataReferences(JSON.parse(text(row.references_json)));
+    if (
+      value.trackId !== row.original_track_id ||
+      Buffer.byteLength(text(row.references_json)) > 1024 * 1024
+    )
+      invalid();
+    if (row.reflection_json !== null && Buffer.byteLength(text(row.reflection_json)) > 65536)
+      invalid();
+  }
   for (const row of db
     .prepare(
       'SELECT i.*,j.identity_key,j.library_id,j.kind FROM metadata_items i JOIN metadata_jobs j ON j.id=i.job_id',
@@ -375,6 +390,126 @@ export function createMetadataRepository({
   };
   return {
     getJob: readJob,
+    hasSavedSuccessor(claim: MetadataClaim, digest: string): boolean {
+      const row = owned(claim);
+      return !!db
+        .prepare(
+          'SELECT 1 FROM metadata_items WHERE id<>? AND file_identity=? AND result_digest=? AND file_saved_at IS NOT NULL AND file_saved_at>=?',
+        )
+        .get(claim.itemId, text(row.file_identity), digest, integer(row.file_saved_at));
+    },
+    deferReflection(claim: MetadataClaim, delayMs: number) {
+      database.transaction(() => {
+        const row = owned(claim);
+        if (
+          !['file_saved', 'reflecting'].includes(String(row.stage)) ||
+          !Number.isSafeInteger(delayMs) ||
+          delayMs < 1
+        )
+          throw new Error('conflict');
+        const at = now();
+        db.prepare('UPDATE metadata_items SET next_reflection_at=? WHERE id=?').run(
+          at + delayMs,
+          claim.itemId,
+        );
+        db.prepare(
+          'UPDATE metadata_attempts SET finished_at=?,error_code=? WHERE item_id=? AND generation=?',
+        ).run(at, row.error_code ?? null, claim.itemId, claim.generation);
+        db.prepare('DELETE FROM metadata_file_locks WHERE item_id=?').run(claim.itemId);
+      });
+    },
+    requestReflectionRetry(itemId: string, identityKey: string): MetadataItem {
+      return database.transaction(() => {
+        const row = db
+          .prepare(
+            'SELECT i.* FROM metadata_items i JOIN metadata_jobs j ON j.id=i.job_id WHERE i.id=? AND j.identity_key=?',
+          )
+          .get(itemId, identityKey);
+        if (!row || !['file_saved', 'reflecting'].includes(String(row.stage)))
+          throw new Error('conflict');
+        db.prepare('UPDATE metadata_file_locks SET expires_at=? WHERE item_id=?').run(
+          now(),
+          itemId,
+        );
+        db.prepare('UPDATE metadata_items SET next_reflection_at=0 WHERE id=?').run(itemId);
+        return project(row);
+      });
+    },
+    recordReferences(claim: MetadataClaim, references: MetadataReferences) {
+      database.transaction(() => {
+        const item = owned(claim);
+        if (item.stage !== 'preparing' || references.trackId !== item.current_track_id)
+          throw new Error('conflict');
+        const encoded = JSON.stringify(decodeMetadataReferences(references));
+        if (Buffer.byteLength(encoded) > 1024 * 1024) throw new Error('reference_conflict');
+        db.prepare(
+          'INSERT INTO metadata_item_evidence(item_id,references_json,updated_at) VALUES(?,?,?) ON CONFLICT(item_id) DO NOTHING',
+        ).run(claim.itemId, encoded, now());
+      });
+    },
+    readReferences(claim: MetadataClaim): MetadataReferences | null {
+      owned(claim);
+      const row = db
+        .prepare('SELECT references_json FROM metadata_item_evidence WHERE item_id=?')
+        .get(claim.itemId);
+      return row ? decodeMetadataReferences(JSON.parse(text(row.references_json))) : null;
+    },
+    recordReflection(
+      claim: MetadataClaim,
+      input: {
+        status:
+          'verified' | 'reflection_mismatch' | 'reference_conflict' | 'reflection_unavailable';
+        evidence: Record<string, unknown>;
+        relatedIds: {
+          trackIds: string[];
+          albumIds: string[];
+          artistIds: string[];
+          coverIds: string[];
+        };
+      },
+    ) {
+      return database.transaction(() => {
+        const row = owned(claim);
+        if (row.stage !== 'reflecting' || row.file_saved_at === null) throw new Error('conflict');
+        const timestamp = now();
+        db.prepare(
+          'UPDATE metadata_item_evidence SET reflection_json=?,updated_at=? WHERE item_id=?',
+        ).run(JSON.stringify(input.evidence), timestamp, claim.itemId);
+        if (input.status === 'verified') {
+          db.prepare(
+            "UPDATE metadata_items SET stage='succeeded',error_code=NULL,stage_changed_at=?,reflected_at=? WHERE id=?",
+          ).run(timestamp, timestamp, claim.itemId);
+          db.prepare(
+            'UPDATE metadata_attempts SET finished_at=?,error_code=NULL WHERE item_id=? AND generation=?',
+          ).run(timestamp, claim.itemId, claim.generation);
+          db.prepare('DELETE FROM metadata_file_locks WHERE item_id=?').run(claim.itemId);
+        } else
+          db.prepare('UPDATE metadata_items SET error_code=?,stage_changed_at=? WHERE id=?').run(
+            input.status,
+            timestamp,
+            claim.itemId,
+          );
+        if (input.status !== 'reflection_unavailable') {
+          const job = db.prepare('SELECT * FROM metadata_jobs WHERE id=?').get(text(row.job_id))!;
+          db.prepare(
+            'INSERT INTO metadata_changes(item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET reflection_result=excluded.reflection_result,related_ids_json=excluded.related_ids_json',
+          ).run(
+            claim.itemId,
+            text(row.media_link_id),
+            text(job.identity_key),
+            text(job.library_id),
+            text(row.expected_revision),
+            text(row.result_revision),
+            JSON.stringify(input.relatedIds),
+            text(row.result_revision),
+            text(row.changed_fields_json),
+            input.status,
+            timestamp,
+          );
+        }
+        return project(readItem(claim.itemId)!);
+      });
+    },
     assertClaim(claim: Pick<MetadataClaim, 'itemId' | 'workerId' | 'generation'>) {
       owned(claim);
     },
@@ -579,7 +714,11 @@ export function createMetadataRepository({
         return insert(input.request, { kind: 'retry', jobId: parent.id, parents });
       });
     },
-    claimNext(input: { workerId: string; leaseDurationMs: number }): MetadataClaim | null {
+    claimNext(input: {
+      workerId: string;
+      leaseDurationMs: number;
+      reflectionOnly?: boolean;
+    }): MetadataClaim | null {
       if (
         !input.workerId ||
         !Number.isSafeInteger(input.leaseDurationMs) ||
@@ -590,9 +729,9 @@ export function createMetadataRepository({
         const timestamp = now();
         const row = db
           .prepare(
-            `SELECT i.* FROM metadata_items i LEFT JOIN metadata_file_locks l ON l.file_identity=i.file_identity WHERE i.stage IN ('queued','preparing','backed_up','prepared','file_saved','reflecting') AND NOT EXISTS (SELECT 1 FROM metadata_items blocked WHERE blocked.file_identity=i.file_identity AND blocked.stage='recovery_required') AND (l.file_identity IS NULL OR (l.item_id=i.id AND l.expires_at<=?)) ORDER BY CASE WHEN i.stage='queued' THEN 1 ELSE 0 END,i.stage_changed_at,i.id LIMIT 1`,
+            `SELECT i.* FROM metadata_items i LEFT JOIN metadata_file_locks l ON l.file_identity=i.file_identity WHERE i.stage IN ('queued','preparing','backed_up','prepared','file_saved','reflecting') AND (?=0 OR i.stage IN ('file_saved','reflecting')) AND (i.stage NOT IN ('file_saved','reflecting') OR i.next_reflection_at<=?) AND NOT EXISTS (SELECT 1 FROM metadata_items blocked WHERE blocked.file_identity=i.file_identity AND blocked.stage='recovery_required') AND (l.file_identity IS NULL OR (l.item_id=i.id AND l.expires_at<=?)) ORDER BY CASE WHEN i.stage='queued' THEN 1 ELSE 0 END,i.stage_changed_at,i.id LIMIT 1`,
           )
-          .get(timestamp);
+          .get(input.reflectionOnly ? 1 : 0, timestamp, timestamp);
         if (!row) return null;
         const itemId = text(row.id);
         const generation = integer(row.generation) + 1;
