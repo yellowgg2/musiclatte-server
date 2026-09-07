@@ -26,3 +26,27 @@ export const metadataRoutes = {
     return `${root}/media/cover/${segment(id)}/revisions/${segment(generation)}`;
   },
 };
+
+export function metadataPageRoute(
+  location: string,
+  base = '/',
+): { kind: 'list' } | { kind: 'detail'; id: string } | undefined {
+  if (location === `${base}metadata-jobs`) return { kind: 'list' };
+  const prefix = `${base}metadata-jobs/`;
+  if (!location.startsWith(prefix)) return;
+  const value = location.slice(prefix.length);
+  if (!value || /[/?#]/.test(value)) return;
+  try {
+    const id = decodeURIComponent(value);
+    if (
+      id === '.' ||
+      id === '..' ||
+      !/^[A-Za-z0-9_.:-]{1,1024}$/.test(id) ||
+      encodeURIComponent(id) !== value
+    )
+      return;
+    return { kind: 'detail', id };
+  } catch {
+    return;
+  }
+}

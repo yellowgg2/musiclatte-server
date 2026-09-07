@@ -1,3 +1,4 @@
+import { useMetadataUI } from '../metadata/MetadataUIProvider';
 import type { ReactNode } from 'react';
 import type { CapabilitiesResponse } from '@musiclatte/contracts';
 import { availableEntries } from '../capabilities/client-features';
@@ -17,6 +18,7 @@ export function AppShell({
   player?: ReactNode;
 }) {
   const copy = messages[locale];
+  const metadata = useMetadataUI();
   // Both direct route guards and the navigation registry stay closed until a consumer exists.
   const entries = availableEntries(capabilities);
   return (
@@ -129,6 +131,11 @@ export function AppShell({
         </a>
       </nav>
       <main id="main" tabIndex={-1} className={styles.content}>
+        {metadata.canHistory && window.location.pathname.startsWith(`${base}music`) && (
+          <div className={styles.metadataHistory}>
+            <a href={`${base}metadata-jobs`}>{copy['metadata.history']}</a>
+          </div>
+        )}
         {children}
       </main>
       {player}

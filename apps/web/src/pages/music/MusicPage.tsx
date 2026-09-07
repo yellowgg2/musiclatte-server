@@ -1,3 +1,4 @@
+import { MetadataAction } from '../../metadata/components/MetadataAction';
 import { navigateMusic } from '../../music/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
@@ -226,7 +227,12 @@ export function MusicPage({
             onSelect: () => selection.dispatch({ type: 'toggle', item: { id: song.id, order } }),
           }
         : {})}
-      actions={canFavorites ? <FavoriteAction song={song} locale={locale} /> : undefined}
+      actions={
+        <>
+          <MetadataAction song={song} />
+          {canFavorites && <FavoriteAction song={song} locale={locale} />}
+        </>
+      }
     />
   );
   return (

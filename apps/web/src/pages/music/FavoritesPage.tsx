@@ -1,3 +1,4 @@
+import { MetadataAction } from '../../metadata/components/MetadataAction';
 import { useEffect } from 'react';
 import { Action } from '../../design/components/Action';
 import { StatusSurface } from '../../design/components/StatusSurface';
@@ -165,7 +166,12 @@ export function FavoritesPage({
                         }),
                     }
                   : {})}
-                actions={<FavoriteAction song={song} locale={locale} />}
+                actions={
+                  <>
+                    <MetadataAction song={song} />
+                    <FavoriteAction song={song} locale={locale} />
+                  </>
+                }
               />
             ))}
           </ul>

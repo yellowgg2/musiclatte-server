@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useSyncExternalStore,
@@ -55,8 +56,13 @@ export function MetadataSyncProvider({
     [client, onUnauthenticated],
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
-  useEffect(() => {
+  useLayoutEffect(() => {
     current.current.active = true;
+    return () => {
+      current.current.active = false;
+    };
+  }, [client]);
+  useEffect(() => {
     const visibility = () => store.setVisible(document.visibilityState === 'visible');
     const connectivity = () => store.setOnline(navigator.onLine);
     visibility();
@@ -66,7 +72,6 @@ export function MetadataSyncProvider({
     window.addEventListener('online', connectivity);
     window.addEventListener('offline', connectivity);
     return () => {
-      current.current.active = false;
       store.stop();
       document.removeEventListener('visibilitychange', visibility);
       window.removeEventListener('online', connectivity);

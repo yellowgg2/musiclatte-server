@@ -1,3 +1,4 @@
+import { MetadataAction } from '../../metadata/components/MetadataAction';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ApiErrorCode, PlaylistDetail } from '@musiclatte/contracts';
 import { ApiError } from '../../auth/client';
@@ -430,30 +431,29 @@ export function PlaylistDetailPage({
                         }
                       : {})}
                     actions={
-                      canFavorites || canManage ? (
-                        <>
-                          {canFavorites && <FavoriteAction song={entry.song} locale={locale} />}
-                          {canManage && (
-                            <PlaylistOccurrenceActions
-                              key={`${entry.position}:${entry.song.id}:${editError ?? 'ready'}`}
-                              entry={entry}
-                              count={playlist.entries.length}
-                              locale={locale}
-                              pending={Boolean(mutation || editError)}
-                              groupRef={(node) => {
-                                if (node) occurrenceRefs.current.set(entry.position, node);
-                                else occurrenceRefs.current.delete(entry.position);
-                              }}
-                              onMove={(direction) => {
-                                void editOccurrence(entry, 'move', direction);
-                              }}
-                              onRemove={() => {
-                                void editOccurrence(entry, 'remove');
-                              }}
-                            />
-                          )}
-                        </>
-                      ) : undefined
+                      <>
+                        <MetadataAction song={entry.song} />
+                        {canFavorites && <FavoriteAction song={entry.song} locale={locale} />}
+                        {canManage && (
+                          <PlaylistOccurrenceActions
+                            key={`${entry.position}:${entry.song.id}:${editError ?? 'ready'}`}
+                            entry={entry}
+                            count={playlist.entries.length}
+                            locale={locale}
+                            pending={Boolean(mutation || editError)}
+                            groupRef={(node) => {
+                              if (node) occurrenceRefs.current.set(entry.position, node);
+                              else occurrenceRefs.current.delete(entry.position);
+                            }}
+                            onMove={(direction) => {
+                              void editOccurrence(entry, 'move', direction);
+                            }}
+                            onRemove={() => {
+                              void editOccurrence(entry, 'remove');
+                            }}
+                          />
+                        )}
+                      </>
                     }
                   />
                 ))}

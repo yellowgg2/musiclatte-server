@@ -1,3 +1,4 @@
+import { MetadataAction } from '../../metadata/components/MetadataAction';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ApiErrorCode,
@@ -383,9 +384,12 @@ export function RecentDownloadsPage({
                       }
                     : {})}
                   actions={
-                    <time className={styles.date} dateTime={item.downloadCompletedAt}>
-                      {date(item.downloadCompletedAt)}
-                    </time>
+                    <>
+                      <MetadataAction song={song} />
+                      <time className={styles.date} dateTime={item.downloadCompletedAt}>
+                        {date(item.downloadCompletedAt)}
+                      </time>
+                    </>
                   }
                 />
               );

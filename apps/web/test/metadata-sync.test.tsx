@@ -2,7 +2,8 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlayerProvider, usePlayer } from '../src/player/PlayerProvider';
-import { MetadataSyncProvider } from '../src/metadata/MetadataSyncProvider';
+import { useEffect, useState } from 'react';
+import { MetadataSyncProvider, useMetadataSync } from '../src/metadata/MetadataSyncProvider';
 import type { MetadataChangesPage, MusicEntry } from '@musiclatte/contracts';
 import { SelectionProvider } from '../src/selection/SelectionProvider';
 import { MusicPage } from '../src/pages/music/MusicPage';
@@ -357,4 +358,45 @@ describe('metadata player integration', () => {
     expect(audio.load).toHaveBeenCalledTimes(1);
     expect(audio.play).toHaveBeenCalledTimes(1);
   });
+});
+
+/** New scoped consumers can read during their effect before the parent passive effect resumes. */
+it('should read history after capability discovery replaces the metadata scope', async () => {
+  function HistoryProbe() {
+    const { client } = useMetadataSync();
+    const [status, setStatus] = useState('loading');
+    useEffect(() => {
+      const controller = new AbortController();
+      void client!.list(controller.signal).then(
+        () => {
+          if (!controller.signal.aborted) setStatus('ready');
+        },
+        () => {
+          if (!controller.signal.aborted) setStatus('failed');
+        },
+      );
+      return () => controller.abort();
+    }, [client]);
+    return <output data-testid="history-state">{status}</output>;
+  }
+  const fetcher: typeof fetch = async () =>
+    Response.json({ schemaVersion: 1, jobs: [], nextCursor: null });
+  const expire = vi.fn();
+  const tree = (scope: string) => (
+    <MetadataSyncProvider
+      scope={scope}
+      enabled={false}
+      fetcher={fetcher}
+      apiOrigin=""
+      onUnauthenticated={expire}
+    >
+      <HistoryProbe />
+    </MetadataSyncProvider>
+  );
+  const view = render(tree('unknown:user'));
+  await tick();
+  expect(screen.getByTestId('history-state').textContent).toBe('ready');
+  view.rerender(tree('known-instance:user:policy'));
+  await tick();
+  expect(screen.getByTestId('history-state').textContent).toBe('ready');
 });

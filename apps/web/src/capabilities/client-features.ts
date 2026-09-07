@@ -11,8 +11,8 @@ export const clientFeatures = {
   'library.recentDownloads': true,
   'imports.youtube': true,
   'engine.manage': true,
-  'metadata.write': false,
-  'metadata.lyrics.write': false,
+  'metadata.write': true,
+  'metadata.lyrics.write': true,
   'metadata.curation': false,
   'automation.tokens': false,
 } satisfies Record<FeatureKey, boolean>;
