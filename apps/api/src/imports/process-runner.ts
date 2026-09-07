@@ -11,6 +11,8 @@ export interface ProcessOptions {
   signal?: AbortSignal;
   /** An already opened regular audio file for ffprobe pipe input. */
   stdinFd?: number;
+  /** Bounded private JSON/text IPC; never combined with a descriptor. */
+  stdinText?: string;
   limits: { stdoutBytes: number; stderrBytes: number; graceMs: number };
   jobId?: string;
   itemId?: string;
@@ -37,6 +39,13 @@ export async function runProcess(options: ProcessOptions): Promise<ProcessResult
     if (
       options.stdinFd !== undefined &&
       (!Number.isInteger(options.stdinFd) || !fstatSync(options.stdinFd).isFile())
+    )
+      throw new Error();
+    if (
+      options.stdinText !== undefined &&
+      (typeof options.stdinText !== 'string' ||
+        Buffer.byteLength(options.stdinText) > 1024 * 1024 ||
+        options.stdinFd !== undefined)
     )
       throw new Error();
     cwd = realpathSync(options.cwd);
@@ -103,7 +112,11 @@ export async function runProcess(options: ProcessOptions): Promise<ProcessResult
       env: { ...options.env },
       shell: false,
       detached: true,
-      stdio: [options.stdinFd ?? 'ignore', 'pipe', 'pipe'],
+      stdio: [
+        options.stdinFd ?? (options.stdinText !== undefined ? 'pipe' : 'ignore'),
+        'pipe',
+        'pipe',
+      ],
     });
     const killGroup = (signal: NodeJS.Signals) => {
       if (!child.pid) return;
@@ -142,6 +155,10 @@ export async function runProcess(options: ProcessOptions): Promise<ProcessResult
       }, options.limits.graceMs);
     };
     const abort = () => stop('process_aborted');
+    if (options.stdinText !== undefined) {
+      child.stdin!.on('error', () => stop('process_input_failed'));
+      child.stdin!.end(options.stdinText);
+    }
     options.signal?.addEventListener('abort', abort, { once: true });
     if (options.signal?.aborted) abort();
     child.stdout!.on('data', (chunk: Buffer) => {

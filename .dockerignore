@@ -55,3 +55,9 @@ docs
 **/import-worker.json
 **/worker-staging
 **/engine-data
+**/metadata-policy.json
+**/metadata-data
+**/metadata-uploads
+**/.venv
+**/__pycache__
+**/*.pyc

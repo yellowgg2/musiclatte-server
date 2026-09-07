@@ -99,6 +99,65 @@ export function createMediaLinkRepository(options: {
       return get(input.id)!;
     },
     get,
+    findBySongId(libraryId: string, gonicSongId: string) {
+      if (!text(libraryId) || !text(gonicSongId)) throw new Error('Invalid media link');
+      return decode(
+        db
+          .prepare('SELECT * FROM media_links WHERE library_id=? AND gonic_song_id=?')
+          .get(libraryId, gonicSongId),
+      );
+    },
+    /** Called only after current-account exact path and regular-file verification. */
+    bindVerified(input: {
+      id: string;
+      libraryId: string;
+      relativeFileKey: string;
+      gonicSongId: string;
+    }) {
+      if (
+        !text(input.id) ||
+        !text(input.libraryId) ||
+        !validKey(input.relativeFileKey) ||
+        !text(input.gonicSongId)
+      )
+        throw new Error('Invalid media link');
+      return database.transaction(() => {
+        const byFile = decode(
+          db
+            .prepare('SELECT * FROM media_links WHERE library_id=? AND relative_file_key=?')
+            .get(input.libraryId, input.relativeFileKey),
+        );
+        const bySong = decode(
+          db
+            .prepare('SELECT * FROM media_links WHERE library_id=? AND gonic_song_id=?')
+            .get(input.libraryId, input.gonicSongId),
+        );
+        if (
+          (bySong && bySong.relativeFileKey !== input.relativeFileKey) ||
+          (byFile && byFile.gonicSongId !== null && byFile.gonicSongId !== input.gonicSongId)
+        )
+          throw new Error('Media link conflict');
+        const timestamp = now();
+        if (byFile) {
+          if (byFile.gonicSongId !== input.gonicSongId || byFile.availability !== 'available')
+            db.prepare(
+              "UPDATE media_links SET gonic_song_id=?,availability='available',revision=revision+1,validated_at=? WHERE id=? AND revision=?",
+            ).run(input.gonicSongId, timestamp, byFile.id, byFile.revision);
+          return get(byFile.id)!;
+        }
+        db.prepare(
+          "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at,validated_at) VALUES(?,?,?,?,1,'available',?,?)",
+        ).run(
+          input.id,
+          input.libraryId,
+          input.relativeFileKey,
+          input.gonicSongId,
+          timestamp,
+          timestamp,
+        );
+        return get(input.id)!;
+      });
+    },
     findByFileKey(libraryId: string, relativeFileKey: string) {
       if (!text(libraryId) || !validKey(relativeFileKey)) throw new Error('Invalid media link');
       return decode(
