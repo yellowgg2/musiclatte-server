@@ -3,11 +3,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
 import { createFavoritesClient } from './client';
+import { useMetadataSync } from '../metadata/MetadataSyncProvider';
 import { createFavoritesStore, type FavoritesStore } from './state';
 
 interface FavoritesContextValue {
@@ -37,6 +39,20 @@ export function FavoritesProvider({
   const client = useMemo(() => createFavoritesClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
   const [store] = useState(() => createFavoritesStore({ client, onUnauthenticated }));
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const metadata = useMetadataSync();
+  const previousClient = useRef(metadata.client);
+  const metadataKey = JSON.stringify(
+    state.songs.flatMap((song) =>
+      metadata.state.trackVersions.has(song.id)
+        ? [[song.id, metadata.state.trackVersions.get(song.id)]]
+        : [],
+    ),
+  );
+  useEffect(() => {
+    const changedScope = previousClient.current !== metadata.client;
+    previousClient.current = metadata.client;
+    if (metadataKey !== '[]' || changedScope) void store.refresh();
+  }, [metadataKey, metadata.client, store]);
 
   useEffect(() => {
     void store.setScope({ accountId, csrfToken, enabled });

@@ -18,10 +18,11 @@ import { appendRecent, localDateRange } from '../../recent/model';
 import { SelectionBar } from '../../selection/components/SelectionBar';
 import { useSelection } from '../../selection/SelectionProvider';
 import { selectionScopeKey } from '../../selection/model';
+import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
 import fields from '../../design/components/TextField.module.css';
 import styles from './RecentDownloads.module.css';
 
-type RequestKind = 'initial' | 'refresh' | 'period' | 'more';
+type RequestKind = 'initial' | 'refresh' | 'period' | 'more' | 'metadata';
 export function RecentDownloadsPage({
   base,
   locale,
@@ -49,6 +50,8 @@ export function RecentDownloadsPage({
 }) {
   const copy = messages[locale];
   const player = usePlayer();
+  const metadata = useMetadataSync();
+  const metadataRequested = useRef('');
   const selection = useSelection();
   const client = useMemo(() => createRecentClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
   const [data, setData] = useState<RecentDownloadResponse>();
@@ -88,7 +91,20 @@ export function RecentDownloadsPage({
           : ((kind === 'period' ? filter : range.current) ?? {});
       const page = await client.list(controller.signal, query);
       if (!live.current || controller.signal.aborted) return;
-      const next = kind === 'more' && previous ? appendRecent(previous, page) : page;
+      let next = kind === 'more' && previous ? appendRecent(previous, page) : page;
+      if (kind === 'metadata' && previous) {
+        for (
+          let pages = 0;
+          next.nextCursor &&
+          next.items.length < previous.items.length &&
+          pages < Math.ceil(previous.items.length / 50) + 1;
+          pages++
+        ) {
+          const more = await client.list(controller.signal, { cursor: next.nextCursor });
+          if (!live.current || controller.signal.aborted) return;
+          next = appendRecent(next, more);
+        }
+      }
       const key = selectionScopeKey({ kind: 'recent', ...next.filter, asOf: next.asOf });
       if (kind === 'period' || !scope.current) selection.dispatch({ type: 'scope', key });
       else
@@ -109,6 +125,17 @@ export function RecentDownloadsPage({
         ) ?? [];
       if (unavailableIds.length)
         selection.dispatch({ type: 'remove-applied', ids: unavailableIds });
+      if (kind === 'metadata' && previous) {
+        const ids = new Set(
+          next.items.flatMap((item) => (item.state === 'ready' ? [item.song.id] : [])),
+        );
+        selection.dispatch({
+          type: 'remove-applied',
+          ids: previous.items.flatMap((item) =>
+            item.state === 'ready' && !ids.has(item.song.id) ? [item.song.id] : [],
+          ),
+        });
+      }
       scope.current = key;
       if (kind === 'period') range.current = filter;
       dataRef.current = next;
@@ -171,7 +198,7 @@ export function RecentDownloadsPage({
       window.removeEventListener('focus', check);
       if (scope.current) selection.dispatch({ type: 'leave', key: scope.current });
     };
-  }, [client, selection.dispatch, onUnauthenticated]);
+  }, [client, selection.dispatch, onUnauthenticated, metadata.client]);
   useEffect(() => {
     if (!unavailable && !dataRef.current) void requestRef.current('initial');
   }, [unavailable]);
@@ -183,6 +210,25 @@ export function RecentDownloadsPage({
     document.title = `${copy['recent.title']} · Musiclatte`;
   }, [copy]);
   const songs = data?.items.flatMap((item) => (item.state === 'ready' ? [item.song] : [])) ?? [];
+  const metadataKey = JSON.stringify(
+    songs.flatMap((song) =>
+      metadata.state.trackVersions.has(song.id)
+        ? [[song.id, metadata.state.trackVersions.get(song.id)]]
+        : [],
+    ),
+  );
+  useEffect(() => {
+    if (
+      loading ||
+      unavailable ||
+      !data ||
+      metadataKey === '[]' ||
+      metadataRequested.current === metadataKey
+    )
+      return;
+    metadataRequested.current = metadataKey;
+    void requestRef.current('metadata');
+  }, [metadataKey, loading, unavailable, data]);
   const source = `recent:${data?.asOf ?? ''}`;
   const date = (value: string) =>
     new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(

@@ -27,6 +27,9 @@ import {
 } from './state';
 import { fetchRandomSongs, RandomSongsError } from './random';
 import type { SongActivation } from '../music/activation';
+import { createMusicClient } from '../music/client';
+import { useMetadataSync } from '../metadata/MetadataSyncProvider';
+import { ApiError } from '../auth/client';
 
 export interface PlayerAudio extends EventTarget {
   src: string;
@@ -81,6 +84,16 @@ export function PlayerProvider({
   const stateRef = useRef(state);
   const playGeneration = useRef(0);
   const randomRequest = useRef<AbortController | null>(null);
+  const metadata = useMetadataSync();
+  const musicClient = useMemo(
+    () => createMusicClient({ fetcher, apiOrigin }),
+    [fetcher, apiOrigin],
+  );
+  const refreshKey = JSON.stringify(
+    [...new Set(state.queue?.items.map((song) => song.id) ?? [])].flatMap((id) =>
+      metadata.state.trackVersions.has(id) ? [[id, metadata.state.trackVersions.get(id)]] : [],
+    ),
+  );
 
   const commit = useCallback((action: PlayerAction) => {
     setState((previous) => {
@@ -89,6 +102,32 @@ export function PlayerProvider({
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    const ids = (JSON.parse(refreshKey) as [string, number][]).map(([id]) => id);
+    if (!ids.length) return;
+    const controller = new AbortController();
+    let next = 0;
+    const refresh = async () => {
+      while (next < ids.length && !controller.signal.aborted) {
+        const id = ids[next++]!;
+        try {
+          const song = await musicClient.song(id, controller.signal);
+          if (!controller.signal.aborted) commit({ type: 'refreshMetadata', songs: [song] });
+        } catch (error) {
+          if (
+            !controller.signal.aborted &&
+            error instanceof ApiError &&
+            error.code === 'unauthenticated'
+          )
+            onUnauthenticated();
+          // A missing/conflicting song never replaces the active queue occurrence.
+        }
+      }
+    };
+    void Promise.all(Array.from({ length: Math.min(4, ids.length) }, refresh));
+    return () => controller.abort();
+  }, [refreshKey, musicClient, commit, onUnauthenticated, metadata.client]);
 
   const startSong = useCallback(
     (songId: string) => {
@@ -249,17 +288,28 @@ export function PlayerProvider({
     };
   }, [audio, commit, move]);
 
+  const coverUrl = useCallback(
+    (id: string) => {
+      if (metadata.client) return metadata.coverUrl(id);
+      return `${apiOrigin}${mediaRoutes.cover(id)}`;
+    },
+    [apiOrigin, metadata.client, metadata.coverUrl],
+  );
   useEffect(
     () =>
-      connectMediaSession(state.current, {
-        play: resume,
-        pause,
-        previous,
-        next,
-        seek,
-        currentTime: () => stateRef.current.currentTime,
-      }),
-    [state.current, resume, pause, previous, next, seek],
+      connectMediaSession(
+        state.current,
+        {
+          play: resume,
+          pause,
+          previous,
+          next,
+          seek,
+          currentTime: () => stateRef.current.currentTime,
+        },
+        coverUrl,
+      ),
+    [state.current, resume, pause, previous, next, seek, coverUrl],
   );
 
   useEffect(
@@ -288,10 +338,7 @@ export function PlayerProvider({
       cycleRepeat,
       selectQueueSong,
       playRandom,
-      coverUrl: (id) => {
-        const route = mediaRoutes.cover(id);
-        return apiOrigin ? `${apiOrigin}${route}` : route;
-      },
+      coverUrl,
     }),
     [
       state,
@@ -307,6 +354,9 @@ export function PlayerProvider({
       selectQueueSong,
       playRandom,
       apiOrigin,
+      metadata.coverUrl,
+      metadata.client,
+      coverUrl,
     ],
   );
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;

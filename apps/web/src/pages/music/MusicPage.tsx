@@ -1,5 +1,7 @@
 import { navigateMusic } from '../../music/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
+import { useMetadataSelectionRebase } from '../../metadata/selection';
 import { Action } from '../../design/components/Action';
 import { TextField } from '../../design/components/TextField';
 import { StatusSurface } from '../../design/components/StatusSurface';
@@ -48,8 +50,26 @@ export function MusicPage({
   csrfToken: string;
 }) {
   const player = usePlayer();
+  const metadata = useMetadataSync();
   const selection = useSelection();
   const route = useMemo(() => musicRoute(location, base)!, [location, base]);
+  const metadataVersion =
+    route.kind === 'album' || route.kind === 'artist'
+      ? Math.max(
+          0,
+          ...[...metadata.state.latest.values()]
+            .filter(
+              (change) =>
+                change.reflection === 'verified' &&
+                change.oldTrackId === change.newTrackId &&
+                (route.kind === 'album'
+                  ? change.relatedIds.albumIds
+                  : change.relatedIds.artistIds
+                ).includes(route.id!),
+            )
+            .map((change) => change.sequence),
+        )
+      : metadata.state.version;
   const client = useMemo(() => createMusicClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
   const [state, setState] = useState<{
     key: string;
@@ -75,7 +95,7 @@ export function MusicPage({
     setState((previous) => ({
       key: location,
       ...(previous.key === location && previous.data ? { data: previous.data } : {}),
-      loading: true,
+      loading: previous.key !== location || !previous.data,
     }));
     void client.read(route, controller.signal).then(
       (data) => {
@@ -95,7 +115,7 @@ export function MusicPage({
       current = false;
       controller.abort();
     };
-  }, [route, client, location, attempt, onUnauthenticated, q]);
+  }, [route, client, location, attempt, onUnauthenticated, q, metadataVersion, metadata.client]);
   useEffect(() => {
     if (state.key !== location || state.loading) return;
     const top = window.history.state?.musicScroll;
@@ -170,6 +190,13 @@ export function MusicPage({
     id: song.id,
     order: selectionOffset + index,
   }));
+  useMetadataSelectionRebase({
+    key: location,
+    ...(selectionKey ? { scope: selectionKey } : {}),
+    data,
+    items: pageSelectionItems,
+    ready: !loading && !error,
+  });
   useEffect(() => {
     selection.dispatch({
       type: 'scope',
@@ -290,7 +317,7 @@ export function MusicPage({
         />
         <Action type="submit">{copy['music.searchAction']}</Action>
       </form>
-      {selectionKey && selectableSongs.length > 0 && (
+      {selectionKey && (selectableSongs.length > 0 || selection.state.active) && (
         <SelectionBar
           locale={locale}
           scopeLabel={

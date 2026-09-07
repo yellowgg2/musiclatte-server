@@ -19,6 +19,8 @@ import { useSelection } from '../../selection/SelectionProvider';
 import { SelectionBar } from '../../selection/components/SelectionBar';
 import { selectionScopeKey } from '../../selection/model';
 import { FavoriteAction } from '../../favorites/components/FavoriteAction';
+import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
+import { useMetadataSelectionRebase } from '../../metadata/selection';
 import styles from './Playlist.module.css';
 
 function songCountLabel(count: number, locale: Locale) {
@@ -52,6 +54,7 @@ export function PlaylistDetailPage({
   csrfToken: string;
 }) {
   const player = usePlayer();
+  const metadata = useMetadataSync();
   const selection = useSelection();
   const client = useMemo(() => createPlaylistClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
   const [attempt, retry] = useState(0);
@@ -72,22 +75,36 @@ export function PlaylistDetailPage({
     loading: boolean;
   }>({ key: id, loading: true });
   const copy = messages[locale];
+  const metadataKey = JSON.stringify(
+    state.playlist?.entries.flatMap(({ song }) =>
+      metadata.state.trackVersions.has(song.id)
+        ? [[song.id, metadata.state.trackVersions.get(song.id)]]
+        : [],
+    ) ?? [],
+  );
+  const completedRead = useRef<readonly unknown[] | undefined>(undefined);
 
   useEffect(() => {
+    if (mutation) return;
+    const requestKey = [attempt, client, id, onUnauthenticated, metadataKey, metadata.client];
+    if (completedRead.current?.every((value, index) => value === requestKey[index])) return;
     let current = true;
     const controller = new AbortController();
     setState((previous) => ({
       key: id,
       ...(previous.key === id && previous.playlist ? { playlist: previous.playlist } : {}),
-      loading: true,
+      loading: previous.key !== id || !previous.playlist,
     }));
     void client.read({ kind: 'detail', id }, controller.signal).then(
       (data) => {
-        if (current && data.kind === 'detail')
+        if (current && data.kind === 'detail') {
+          completedRead.current = requestKey;
           setState({ key: id, playlist: data.playlist, loading: false });
+        }
       },
       (error) => {
         if (!current) return;
+        completedRead.current = requestKey;
         const code = error instanceof ApiError ? error.code : 'internal_error';
         if (code === 'unauthenticated') {
           onUnauthenticated();
@@ -100,7 +117,7 @@ export function PlaylistDetailPage({
       current = false;
       controller.abort();
     };
-  }, [attempt, client, id, onUnauthenticated]);
+  }, [attempt, client, id, onUnauthenticated, metadataKey, metadata.client, mutation]);
 
   const playlist = state.key === id ? state.playlist : undefined;
   const error = state.key === id ? state.error : undefined;
@@ -111,16 +128,29 @@ export function PlaylistDetailPage({
   const selectionKey = playlist
     ? selectionScopeKey({ kind: 'playlist', id: playlist.id, revision: playlist.revision })
     : undefined;
+  useMetadataSelectionRebase({
+    key: `playlist:${id}`,
+    ...(selectionKey ? { scope: selectionKey } : {}),
+    data: playlist,
+    items: songs.map((song, order) => ({ id: song.id, order })),
+    ready: !loading && !error,
+  });
+  const lastSelectionScope = useRef(selectionKey);
+  if (selectionKey) lastSelectionScope.current = selectionKey;
 
   useEffect(() => {
     selection.dispatch({
       type: 'scope',
       ...(selectionKey ? { key: selectionKey } : {}),
     });
-    return () => {
-      if (selectionKey) selection.dispatch({ type: 'leave', key: selectionKey });
-    };
   }, [selection.dispatch, selectionKey]);
+  useEffect(
+    () => () => {
+      if (lastSelectionScope.current)
+        selection.dispatch({ type: 'leave', key: lastSelectionScope.current });
+    },
+    [selection.dispatch],
+  );
 
   useEffect(() => {
     document.title = `${playlist?.name ?? copy['playlists.title']} · Musiclatte`;

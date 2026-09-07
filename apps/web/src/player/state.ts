@@ -37,6 +37,7 @@ export type PlayerAction =
       position?: number;
     }
   | { type: 'queue'; queue: PlayerQueue; status?: PlaybackStatus }
+  | { type: 'refreshMetadata'; songs: readonly MusicEntry[] }
   | { type: 'loading' }
   | { type: 'playing' }
   | { type: 'pause' }
@@ -56,6 +57,38 @@ function finite(value: number, fallback = 0): number {
 
 export function reducePlayerState(state: PlayerState, action: PlayerAction): PlayerState {
   switch (action.type) {
+    case 'refreshMetadata': {
+      if (!state.queue) return state;
+      const updated = new Map(
+        action.songs.filter((song) => !song.isDir).map((song) => [song.id, song]),
+      );
+      let changed = false;
+      const items = state.queue.items.map((song) => {
+        const fresh = updated.get(song.id);
+        if (!fresh) return song;
+        const next = { ...song };
+        for (const key of [
+          'title',
+          'artist',
+          'album',
+          'artistId',
+          'albumId',
+          'coverArt',
+          'genre',
+          'track',
+          'year',
+        ] as const) {
+          if (fresh[key] === undefined) delete next[key];
+          else Object.assign(next, { [key]: fresh[key] });
+        }
+        if (JSON.stringify(next) === JSON.stringify(song)) return song;
+        changed = true;
+        return next;
+      });
+      if (!changed) return state;
+      const queue = { ...state.queue, items };
+      return { ...state, queue, current: currentSong(queue) };
+    }
     case 'activate': {
       const queue = createQueue(action.songs, action.song.id, action.source, action.position);
       return {

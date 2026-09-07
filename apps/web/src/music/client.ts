@@ -116,7 +116,82 @@ export function createMusicClient({
   fetcher = fetch,
   apiOrigin = '',
 }: { fetcher?: typeof fetch; apiOrigin?: string } = {}) {
+  async function readJson(path: string, signal: AbortSignal): Promise<unknown> {
+    let response: Response;
+    try {
+      response = await fetcher(`${apiOrigin}/api/v1/music/${path}`, {
+        credentials: 'include',
+        cache: 'no-store',
+        redirect: 'error',
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+      });
+    } catch {
+      throw new ApiError('upstream_unavailable');
+    }
+    if (!response.ok) {
+      let code: ApiErrorCode =
+        response.status === 401
+          ? 'unauthenticated'
+          : response.status === 403
+            ? 'forbidden'
+            : response.status === 404
+              ? 'not_found'
+              : 'upstream_unavailable';
+      try {
+        const value = await response.json();
+        if (apiErrorCodes.includes(value?.error?.code)) code = value.error.code;
+      } catch {
+        /* Raw upstream responses never become UI copy. */
+      }
+      throw new ApiError(code);
+    }
+    try {
+      return await response.json();
+    } catch {
+      throw new ApiError('internal_error');
+    }
+  }
   return {
+    async song(id: string, signal: AbortSignal): Promise<MusicEntry> {
+      const value = await readJson(`songs/${encodeURIComponent(id)}`, signal);
+      if (
+        !record(value) ||
+        Object.keys(value).sort().join(',') !== 'schemaVersion,song' ||
+        value.schemaVersion !== 1 ||
+        !entry(value.song) ||
+        value.song.id !== id ||
+        value.song.isDir
+      )
+        throw new ApiError('internal_error');
+      const song = value.song;
+      const strings = [
+        'id',
+        'title',
+        'parent',
+        'albumId',
+        'artistId',
+        'coverArt',
+        'album',
+        'artist',
+        'genre',
+        'contentType',
+        'suffix',
+        'starred',
+      ];
+      const numbers = ['duration', 'bitRate', 'size', 'track', 'year'];
+      const raw = song as unknown as Record<string, unknown>;
+      if (
+        Object.keys(raw).some((key) => ![...strings, ...numbers, 'isDir'].includes(key)) ||
+        strings.some((key) => raw[key] !== undefined && typeof raw[key] !== 'string') ||
+        numbers.some(
+          (key) =>
+            raw[key] !== undefined && (typeof raw[key] !== 'number' || !Number.isFinite(raw[key])),
+        )
+      )
+        throw new ApiError('internal_error');
+      return song;
+    },
     async read(route: MusicRoute, signal: AbortSignal): Promise<LibraryData> {
       const params = new URLSearchParams();
       let path = 'folders';
@@ -134,43 +209,10 @@ export function createMusicClient({
         }
       } else
         path = `${{ folder: 'folders', artist: 'artists', album: 'albums' }[route.kind]}/${encodeURIComponent(route.id!)}`;
-      let response: Response;
-      try {
-        response = await fetcher(
-          `${apiOrigin}/api/v1/music/${path}${params.size ? `?${params}` : ''}`,
-          {
-            credentials: 'include',
-            cache: 'no-store',
-            redirect: 'error',
-            headers: { Accept: 'application/json' },
-            signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
-          },
-        );
-      } catch {
-        throw new ApiError('upstream_unavailable');
-      }
-      if (!response.ok) {
-        let code: ApiErrorCode =
-          response.status === 401
-            ? 'unauthenticated'
-            : response.status === 403
-              ? 'forbidden'
-              : response.status === 404
-                ? 'not_found'
-                : 'upstream_unavailable';
-        try {
-          const value = await response.json();
-          if (apiErrorCodes.includes(value?.error?.code)) code = value.error.code;
-        } catch {
-          /* Raw upstream responses never become UI copy. */
-        }
-        throw new ApiError(code);
-      }
-      try {
-        return decode(await response.json(), route.kind);
-      } catch {
-        throw new ApiError('internal_error');
-      }
+      return decode(
+        await readJson(`${path}${params.size ? `?${params}` : ''}`, signal),
+        route.kind,
+      );
     },
   };
 }

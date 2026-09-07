@@ -7,6 +7,7 @@ import { formatCount, messages, type Locale } from '../../i18n';
 import { MusicRow } from '../../music/components/MusicRow';
 import { usePlayer } from '../../player/PlayerProvider';
 import { useSelection } from '../../selection/SelectionProvider';
+import { useMetadataSelectionRebase } from '../../metadata/selection';
 import { SelectionBar } from '../../selection/components/SelectionBar';
 import { selectionScopeKey } from '../../selection/model';
 import { LanguagePicker } from '../../app/LanguagePicker';
@@ -39,6 +40,13 @@ export function FavoritesPage({
   const copy = messages[locale];
   const selectionKey = selectionScopeKey({ kind: 'favorites' });
   const source = 'favorites:songs';
+  useMetadataSelectionRebase({
+    key: source,
+    scope: selectionKey,
+    data: state.songs,
+    items: state.songs.map((song, order) => ({ id: song.id, order })),
+    ready: state.loaded && !state.loading && !state.error,
+  });
 
   useEffect(() => {
     document.title = `${copy['favorites.title']} · Musiclatte`;
@@ -77,7 +85,7 @@ export function FavoritesPage({
           {copy['favorites.refresh']}
         </Action>
       </div>
-      {state.songs.length > 0 && (
+      {(state.songs.length > 0 || selection.state.active) && (
         <SelectionBar
           locale={locale}
           scopeLabel={copy['selection.scope.favorites']}

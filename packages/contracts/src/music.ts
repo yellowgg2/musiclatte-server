@@ -26,6 +26,10 @@ export interface MusicAlbumResponse {
   schemaVersion: 1;
   album: MusicAlbum;
 }
+export interface MusicSongResponse {
+  schemaVersion: 1;
+  song: MusicEntry;
+}
 export interface MusicRandomResponse {
   schemaVersion: 1;
   songs: MusicEntry[];
@@ -103,6 +107,7 @@ const indexes = object(['index'], {
 const response = (key: string, value: object) =>
   object(['schemaVersion', key], { schemaVersion: { const: 1 }, [key]: value });
 export const musicResponseSchemas = {
+  song: object(['schemaVersion', 'song'], { schemaVersion: { const: 1 }, song: musicEntrySchema }),
   folders: {
     anyOf: [
       response('folders', array(object(['id', 'name'], { id: text, name: text }))),

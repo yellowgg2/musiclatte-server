@@ -12,6 +12,7 @@ export interface MediaSessionControls {
 export function connectMediaSession(
   song: MusicEntry | null,
   controls: MediaSessionControls,
+  coverUrl: (id: string) => string = mediaRoutes.cover,
 ): () => void {
   if (
     typeof navigator === 'undefined' ||
@@ -25,9 +26,7 @@ export function connectMediaSession(
       title: song.title,
       ...(song.artist ? { artist: song.artist } : {}),
       ...(song.album ? { album: song.album } : {}),
-      artwork: song.coverArt
-        ? [{ src: mediaRoutes.cover(song.coverArt), sizes: '512x512', type: 'image/jpeg' }]
-        : [],
+      artwork: song.coverArt ? [{ src: coverUrl(song.coverArt) }] : [],
     });
   } else session.metadata = null;
   const actions: [MediaSessionAction, MediaSessionActionHandler | null][] = [
