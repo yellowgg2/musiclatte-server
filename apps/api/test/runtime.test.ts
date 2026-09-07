@@ -120,3 +120,84 @@ it('should resolve the false true and invalid import config matrix', async () =>
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+/** The configured runtime wires private policy and persisted health into the producer without worker probes. */
+it('should serve imports from configured policy and the existing durable database', async () => {
+  const { writeFileSync } = await import('node:fs');
+  const { createConfiguredApp } = await import('../src/auth/runtime.js');
+  const { createTestContext, origin, password, browserHeaders, cookieOf } =
+    await import('../../../tests/support/auth-harness.js');
+  const { createWorkerStateRepository } = await import('../src/storage/worker-state-repository.js');
+  const ctx = await createTestContext();
+  let app: FastifyInstance | undefined;
+  try {
+    const policyPath = resolve(ctx.storage.root, 'import-policy.json');
+    writeFileSync(
+      policyPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        libraries: [
+          {
+            id: 'music',
+            musicFolderId: '1',
+            relativeRoot: 'imports',
+            allowedUsers: [password.username],
+          },
+        ],
+        engineManagers: [],
+      }),
+    );
+    ctx.storage.engines.initialize('fixture-engine');
+    createWorkerStateRepository({ database: ctx.storage.db, clock: Date.now }).heartbeat({
+      workerId: 'worker',
+      status: 'idle',
+    });
+    app = createConfiguredApp({
+      PUBLIC_ORIGIN: origin,
+      GONIC_UPSTREAM: ctx.options.upstream,
+      MANAGEMENT_DIRECTORY: ctx.storage.data,
+      CREDENTIAL_KEY_PATH: ctx.storage.keyPath,
+      IMPORTS_ENABLED: 'true',
+      IMPORT_POLICY_PATH: policyPath,
+      IMPORT_WORKER_USERNAME: 'worker',
+      IMPORT_WORKER_PASSWORD: 'synthetic-only',
+      SESSION_MAX_AGE_SECONDS: '60',
+    });
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/v1/session',
+      headers: browserHeaders,
+      payload: password,
+    });
+    expect(login.statusCode).toBe(201);
+    const headers = {
+      ...browserHeaders,
+      cookie: cookieOf(login),
+      'x-csrf-token': login.json().csrfToken,
+    };
+    const capabilities = await app.inject({ url: '/api/v1/capabilities', headers });
+    expect(capabilities.json().features['imports.youtube']).toEqual({
+      supported: true,
+      permission: 'allowed',
+      availability: 'available',
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/imports',
+      headers,
+      payload: {
+        operationId: 'A'.repeat(22),
+        libraryId: 'music',
+        urls: ['https://youtu.be/abcdefghijk'],
+      },
+    });
+    expect(response.statusCode).toBe(202);
+    expect(
+      ctx.storage.db.connection.prepare('SELECT count(*) AS n FROM import_jobs').get()?.n,
+    ).toBe(1);
+    expect(response.body).not.toMatch(/synthetic-only|relativeRoot|credential/);
+  } finally {
+    await app?.close();
+    await ctx.cleanup();
+  }
+});

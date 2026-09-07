@@ -12,7 +12,10 @@ import type { createSessionRepository } from '../storage/session-repository.js';
 import type { createInstanceRepository } from '../storage/instance-repository.js';
 import type { createPlaylistOperationRepository } from '../storage/playlist-operation-repository.js';
 
+import type { ImportOptions } from '../imports/import-service.js';
+
 export interface AuthOptions {
+  imports?: ImportOptions;
   sessions: ReturnType<typeof createSessionRepository>;
   instances: ReturnType<typeof createInstanceRepository>;
   playlistOperations: ReturnType<typeof createPlaylistOperationRepository>;

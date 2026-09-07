@@ -1,3 +1,4 @@
+import { importCapability } from '../imports/import-service.js';
 import {
   featureKeys,
   type CapabilitiesResponse,
@@ -43,6 +44,7 @@ export async function capabilities(
       availability: mapped.status === 403 ? 'available' : 'temporarily_unavailable',
     };
   }
+  features['imports.youtube'] = importCapability(service.options.imports, identity.username);
   service.find(session.token, session.scheme);
   return {
     schemaVersion: 1,

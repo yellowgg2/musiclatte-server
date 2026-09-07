@@ -86,6 +86,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     collectionResponseGate: undefined as Promise<void> | undefined,
     closedCollectionRequests: 0,
     accountIdentityFromProof: false,
+    identityResponseGate: undefined as (() => Promise<void>) | undefined,
     favoriteSongIdsByUsername: new Map<string, string[]>(),
     favoriteReadError: 0,
     favoriteWriteError: 0,
@@ -390,6 +391,10 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
         : isCollectionWrite
           ? state.mutationDelayMs
           : state.collectionDelayMs;
+    if (operation === 'getUser' && state.identityResponseGate) {
+      void state.identityResponseGate().then(() => res.end(payload));
+      return;
+    }
     if (isCollection && state.collectionResponseGate) {
       void state.collectionResponseGate.then(() => res.end(payload));
       return;

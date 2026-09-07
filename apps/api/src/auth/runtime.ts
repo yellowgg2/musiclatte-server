@@ -14,7 +14,7 @@ import { readSessionPolicy } from '../config/session-policy.js';
 export function createConfiguredApp(env: Record<string, string | undefined>) {
   let database: ReturnType<typeof openDatabase> | undefined;
   try {
-    readImportConfig(env);
+    const importConfig = readImportConfig(env);
     const required = (name: string) => {
       const value = env[name];
       if (!value) throw new Error();
@@ -51,6 +51,7 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
     const sessions = createSessionRepository({ database, vault, maxAgeMs, clock: Date.now });
     const playlistOperations = createPlaylistOperationRepository({ database, clock: Date.now });
     const app = createApp({
+      imports: { database, policy: importConfig.policy, clock: Date.now },
       sessions,
       instances,
       playlistOperations,

@@ -27,6 +27,7 @@ export interface ImportItem {
   leaseExpiresAt: number | null;
   engineVersion: string | null;
   mediaLinkId: string | null;
+  duplicateOfItemId: string | null;
 }
 
 export interface ImportJob {
@@ -92,6 +93,7 @@ function decodeItem(row: Record<string, unknown>): ImportItem {
     leaseExpiresAt: row.lease_expires_at,
     engineVersion: row.engine_version,
     mediaLinkId: row.media_link_id,
+    duplicateOfItemId: row.duplicate_of_item_id,
   };
   if (
     !text(item.id) ||
@@ -106,6 +108,7 @@ function decodeItem(row: Record<string, unknown>): ImportItem {
     !nullableText(item.leaseOwner) ||
     !nullableTime(item.leaseExpiresAt) ||
     !nullableText(item.engineVersion) ||
+    !nullableText(item.duplicateOfItemId) ||
     !nullableText(item.mediaLinkId)
   )
     throw new Error('Storage unavailable');
@@ -260,6 +263,7 @@ export function createImportRepository(options: {
     operationIdHash: string;
     requestHash: string;
     retryOfJobId?: string;
+    deduplicate?: boolean;
     items: { id: string; sourceId: string }[];
   };
 
@@ -306,6 +310,26 @@ export function createImportRepository(options: {
     input.items.forEach((item, index) =>
       statement.run(item.id, input.id, index, item.sourceId, createdAt),
     );
+    if (input.deduplicate) {
+      for (const item of input.items) {
+        const media = db
+          .prepare(
+            "SELECT m.id FROM import_items i JOIN import_jobs j ON j.id=i.job_id JOIN media_links m ON m.id=i.media_link_id WHERE i.source_id=? AND j.library_id=? AND m.availability='available' AND m.gonic_song_id IS NOT NULL ORDER BY i.id LIMIT 1",
+          )
+          .get(item.sourceId, input.libraryId);
+        const active = media
+          ? undefined
+          : db
+              .prepare(
+                "SELECT i.id FROM import_items i JOIN import_jobs j ON j.id=i.job_id WHERE i.source_id=? AND j.library_id=? AND i.id<>? AND i.stage IN ('queued','resolving','downloading','postprocessing','publishing','registering') AND (j.id<>? OR i.item_order<(SELECT item_order FROM import_items WHERE id=?)) ORDER BY j.created_at,j.id,i.item_order LIMIT 1",
+              )
+              .get(item.sourceId, input.libraryId, item.id, input.id, item.id);
+        if (media || active)
+          db.prepare(
+            "UPDATE import_items SET stage='duplicate',media_link_id=?,duplicate_of_item_id=? WHERE id=?",
+          ).run(media ? String(media.id) : null, active ? String(active.id) : null, item.id);
+      }
+    }
     return { outcome: 'created', job: readJob(input.id)! };
   }
 
@@ -321,6 +345,32 @@ export function createImportRepository(options: {
   return {
     createJob(input: JobInput) {
       return database.transaction(() => insertJob(input));
+    },
+    listJobs(
+      identityKey: string,
+      libraryIds: string[],
+      limit: number,
+      before?: { createdAt: number; id: string },
+    ) {
+      if (!libraryIds.length) return [];
+      const placeholders = libraryIds.map(() => '?').join(',');
+      const rows = db
+        .prepare(
+          `SELECT id FROM import_jobs WHERE identity_key=? AND library_id IN (${placeholders}) ${before ? 'AND (created_at<? OR (created_at=? AND id<?))' : ''} ORDER BY created_at DESC,id DESC LIMIT ?`,
+        )
+        .all(
+          identityKey,
+          ...libraryIds,
+          ...(before ? [before.createdAt, before.createdAt, before.id] : []),
+          limit,
+        );
+      return rows.map((row) => readJob(String(row.id))!);
+    },
+    findOperation(identityKey: string, operationIdHash: string) {
+      const row = db
+        .prepare('SELECT id FROM import_jobs WHERE identity_key=? AND operation_id_hash=?')
+        .get(identityKey, operationIdHash);
+      return row ? readJob(String(row.id)) : null;
     },
     getJob(id: string) {
       if (!text(id)) throw new Error('Invalid import job');
@@ -502,7 +552,9 @@ export function createImportRepository(options: {
     requestCancel(jobId: string) {
       if (!text(jobId)) throw new Error('Invalid import job');
       return database.transaction(() => {
-        if (!readJob(jobId)) throw new Error('Import job not found');
+        const job = readJob(jobId);
+        if (!job) throw new Error('Import job not found');
+        if (job.items.every((item) => terminal.has(item.stage))) return job;
         const cancelledAt = now();
         db.prepare(
           'UPDATE import_jobs SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE id=?',
@@ -514,6 +566,7 @@ export function createImportRepository(options: {
       });
     },
     retryFailed(input: {
+      deduplicate?: boolean;
       sourceJobId: string;
       id: string;
       operationIdHash: string;
@@ -535,6 +588,7 @@ export function createImportRepository(options: {
           operationIdHash: input.operationIdHash,
           requestHash: input.requestHash,
           retryOfJobId: source.id,
+          deduplicate: input.deduplicate ?? false,
           items: selected.map((item, index) => ({
             id: `${input.id}:${index}`,
             sourceId: item!.sourceId,

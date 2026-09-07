@@ -1,3 +1,4 @@
+import { registerImportRoutes } from './routes/imports.js';
 import { registerFoldersRoutes } from './routes/music/folders.js';
 import { registerSearchRoute } from './routes/music/search.js';
 import { registerArtistRoute } from './routes/music/artists.js';
@@ -94,6 +95,7 @@ export function createApp(options?: AuthOptions) {
     registerPlaylistReadRoutes(app, service);
     registerPlaylistMutationRoutes(app, service);
     registerFavoriteSongRoutes(app, service);
+    registerImportRoutes(app, service);
   }
   app.get<{ Reply: HealthResponse }>('/health/live', async () => ({ status: 'ok' }));
   return app;
