@@ -1,3 +1,4 @@
+import { isRecentPath } from '../recent/routes';
 import { isImportsPath } from '../imports/routes';
 import { musicRoute } from '../music/queries';
 import { playlistRoute } from '../playlists/routes';
@@ -12,6 +13,7 @@ export function safeReturnPath(
   if (!value || !value.startsWith(base) || value.startsWith('//') || /[\\#\x00-\x1f]/.test(value))
     return fallback;
   if (value === `${base}settings` || isImportsPath(value, base)) return value;
+  if (isRecentPath(value, base)) return value;
   if (isFavoritesPath(value, base)) return value;
   const playlist = playlistRoute(value, base);
   if (playlist) return value;

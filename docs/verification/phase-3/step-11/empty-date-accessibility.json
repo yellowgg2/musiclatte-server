@@ -1,0 +1,6 @@
+{
+  "description": "recent-from-error",
+  "error": "유효한 시작 날짜와 같거나 이후인 마지막 날짜를 입력하세요.",
+  "focus": "recent-from",
+  "invalid": "true"
+}

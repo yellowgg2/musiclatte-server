@@ -1,3 +1,5 @@
+import { isRecentPath } from '../recent/routes';
+import { RecentDownloadsPage } from '../pages/music/RecentDownloadsPage';
 import { ImportPage } from '../pages/imports/ImportPage';
 import { isImportsPath } from '../imports/routes';
 import { navigateMusic } from '../music/navigation';
@@ -57,6 +59,9 @@ export function Router({
   const currentFavoritesPath = isFavoritesPath(location, base);
   const playlistCapability = featureState(state.capabilities?.features['playlists.read']);
   const favoritesCapability = featureState(state.capabilities?.features['favorites.songs']);
+  const currentRecentPath = isRecentPath(location, base);
+  const recentCapability = featureState(state.capabilities?.features['library.recentDownloads']);
+  const canRecent = availableEntries(state.capabilities).includes('library.recentDownloads');
   const copy = messages[locale];
   useEffect(() => {
     void store.restore();
@@ -131,6 +136,10 @@ export function Router({
     canReadPlaylists,
   ]);
   useEffect(() => {
+    if (state.status === 'signed-in' && currentRecentPath) {
+      document.title = `${copy['recent.title']} · Musiclatte`;
+      return;
+    }
     if (state.status === 'signed-in' && currentImportsPath) {
       document.title = `${copy['imports.title']} · Musiclatte`;
       return;
@@ -149,6 +158,7 @@ export function Router({
     canReadPlaylists,
     currentFavoritesPath,
     currentImportsPath,
+    currentRecentPath,
     currentPlaylistRoute,
   ]);
   useEffect(() => {
@@ -218,7 +228,43 @@ export function Router({
               </>
             }
           >
-            {currentImportsPath && canImport ? (
+            {currentRecentPath && recentCapability === 'unknown' && !state.capabilityUnavailable ? (
+              <div className={styles.settings}>
+                <h1 tabIndex={-1} data-page-heading>
+                  {copy['recent.title']}
+                </h1>
+                <StatusSurface
+                  state="loading"
+                  title={copy['recent.loading']}
+                  description={copy['status.loadingHelp']}
+                />
+              </div>
+            ) : currentRecentPath && (canRecent || recentCapability === 'unavailable') ? (
+              <RecentDownloadsPage
+                key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}`}
+                base={base}
+                locale={locale}
+                onLocale={onLocale}
+                fetcher={fetcher}
+                apiOrigin={apiOrigin}
+                onUnauthenticated={store.expire}
+                canStream={canStream}
+                canWritePlaylists={canWritePlaylists}
+                csrfToken={state.session.csrfToken}
+                unavailable={recentCapability === 'unavailable'}
+                onCapabilityRetry={() => void store.restore()}
+              />
+            ) : currentRecentPath ? (
+              <div className={styles.settings}>
+                <h1 tabIndex={-1} data-page-heading>
+                  {copy[recentCapability === 'denied' ? 'recent.denied' : 'recent.unsupported']}
+                </h1>
+                <p>{copy['recent.deniedHelp']}</p>
+                <a href={canBrowse ? `${base}music` : `${base}settings`}>
+                  {copy[canBrowse ? 'recent.back' : 'status.back']}
+                </a>
+              </div>
+            ) : currentImportsPath && canImport ? (
               <ImportPage
                 key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}`}
                 locale={locale}
@@ -345,6 +391,7 @@ export function Router({
                 onUnauthenticated={store.expire}
                 canStream={canStream}
                 canRandom={canRandom}
+                canRecent={canRecent}
                 canWritePlaylists={canWritePlaylists}
                 canFavorites={canFavorites}
                 csrfToken={state.session.csrfToken}

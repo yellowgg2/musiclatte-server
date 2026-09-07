@@ -30,6 +30,7 @@ export function MusicPage({
   canRandom,
   canWritePlaylists,
   canFavorites,
+  canRecent = false,
   csrfToken,
 }: {
   location: string;
@@ -43,6 +44,7 @@ export function MusicPage({
   canRandom: boolean;
   canWritePlaylists: boolean;
   canFavorites: boolean;
+  canRecent?: boolean;
   csrfToken: string;
 }) {
   const player = usePlayer();
@@ -229,6 +231,11 @@ export function MusicPage({
           {route.kind === 'search' ? `${copy['music.query']}: ${q}` : copy['music.description']}
         </p>
       </header>
+      {canRecent && (
+        <a className={styles.favoriteLink} href={`${base}music/recent`}>
+          {copy['recent.title']}
+        </a>
+      )}
       {canFavorites && (
         <a className={styles.favoriteLink} href={`${base}music/favorites`}>
           <span aria-hidden="true">★</span> {copy['favorites.title']}

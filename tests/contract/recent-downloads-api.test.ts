@@ -5,9 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { clientFeatures } from '../../apps/web/src/capabilities/client-features.js';
 
 describe('recent downloads wire contract', () => {
-  /** Recent production support cannot enable the future web consumer. */
-  it('should keep the recent web consumer disabled', () => {
-    expect(clientFeatures['library.recentDownloads']).toBe(false);
+  /** Step 11 pairs the recent producer with its implemented web consumer. */
+  it('should enable the implemented recent web consumer', () => {
+    expect(clientFeatures['library.recentDownloads']).toBe(true);
   });
   /** Native consumers validate all states and reject selection-bearing unavailable items. */
   it('should export strict recent schemas and native decoder fixtures', async () => {

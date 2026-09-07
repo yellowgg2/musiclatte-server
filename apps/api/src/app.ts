@@ -34,6 +34,7 @@ export function readConfig(env: Record<string, string | undefined>) {
 export function createApp(options?: AuthOptions) {
   const app = Fastify({
     logger: false,
+    routerOptions: { maxParamLength: 2048 },
     bodyLimit: 16_384,
     ajv: { customOptions: { removeAdditional: false, coerceTypes: false, useDefaults: false } },
   });

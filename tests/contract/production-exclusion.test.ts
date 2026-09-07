@@ -92,6 +92,7 @@ describe('development-only UI boundary', () => {
         expect(content.includes('Music shell fixture')).toBe(false);
         expect(content.includes('MUSICLATTE_AUDIO_PROBE')).toBe(false);
         expect(content.includes('MUSICLATTE_IMPORT_PREVIEW')).toBe(false);
+        expect(content.includes('MUSICLATTE_RECENT_PREVIEW')).toBe(false);
         expect(content.includes('PREVIEW_CONTROL')).toBe(false);
         if (!file.endsWith('.map')) expect(content.includes('__dev/gallery')).toBe(false);
         if (file.endsWith('.map')) {

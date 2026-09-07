@@ -1,0 +1,218 @@
+- link "Skip to content":
+  - /url: "#main"
+- banner:
+  - generic: Musiclatte
+- navigation "Main navigation":
+  - link "Music":
+    - /url: /music
+    - text: Music
+  - link "Playlists":
+    - /url: /playlists
+    - text: Playlists
+  - link "Settings":
+    - /url: /settings
+    - text: Settings
+- main:
+  - link "← Back to music":
+    - /url: /music
+  - text: Language
+  - combobox "Language":
+    - option "한국어"
+    - option "English" [selected]
+  - heading "Recent downloads" [level=1]
+  - paragraph: Listen to recent imports and collect them in a playlist.
+  - generic: Period
+  - combobox "Period":
+    - option "Last 7 days" [selected]
+    - option "Custom dates"
+  - paragraph:
+    - text: From Aug 31, 2026, 6:35 PM to before Sep 7, 2026, 6:36 PM
+    - text: As of Sep 7, 2026, 6:36 PM
+  - button "Refresh"
+  - button "Play loaded songs"
+  - alert:
+    - generic: "!"
+    - paragraph: Could not update recent downloads
+    - paragraph: Loaded results, selections and playback are kept. Try again.
+  - button "Try again"
+  - heading "Download order 20" [level=2]:
+    - text: Download order
+    - generic: "20"
+  - list:
+    - checkbox "Select New arrival · 새 다운로드"
+    - generic: Select New arrival · 새 다운로드
+    - 'generic "Details: New arrival · 새 다운로드"':
+      - generic: New arrival · 새 다운로드
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play New arrival · 새 다운로드":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:36 PM
+    - checkbox "Select Evening café · A quiet song for the long way home — 오래 기억하고 싶은 저녁의 음악"
+    - generic: Select Evening café · A quiet song for the long way home — 오래 기억하고 싶은 저녁의 음악
+    - 'generic "Details: Evening café · A quiet song for the long way home — 오래 기억하고 싶은 저녁의 음악"':
+      - generic: Evening café · A quiet song for the long way home — 오래 기억하고 싶은 저녁의 음악
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Evening café · A quiet song for the long way home — 오래 기억하고 싶은 저녁의 음악":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:34 PM
+    - checkbox "Deselect Café session 02" [checked]
+    - generic: Deselect Café session 02
+    - 'generic "Details: Café session 02"':
+      - generic: Café session 02
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 02":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:33 PM
+    - checkbox "Select Café session 03"
+    - generic: Select Café session 03
+    - 'generic "Details: Café session 03"':
+      - generic: Café session 03
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 03":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:32 PM
+    - checkbox "Select Café session 04"
+    - generic: Select Café session 04
+    - 'generic "Details: Café session 04"':
+      - generic: Café session 04
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 04":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:31 PM
+    - checkbox "Select Café session 05"
+    - generic: Select Café session 05
+    - 'generic "Details: Café session 05"':
+      - generic: Café session 05
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 05":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:30 PM
+    - checkbox "Select Café session 06"
+    - generic: Select Café session 06
+    - 'generic "Details: Café session 06"':
+      - generic: Café session 06
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 06":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:29 PM
+    - checkbox "Select Café session 07"
+    - generic: Select Café session 07
+    - 'generic "Details: Café session 07"':
+      - generic: Café session 07
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 07":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:28 PM
+    - checkbox "Select Café session 08"
+    - generic: Select Café session 08
+    - 'generic "Details: Café session 08"':
+      - generic: Café session 08
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 08":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:27 PM
+    - checkbox "Select Café session 09"
+    - generic: Select Café session 09
+    - 'generic "Details: Café session 09"':
+      - generic: Café session 09
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 09":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:26 PM
+    - checkbox "Select Café session 10"
+    - generic: Select Café session 10
+    - 'generic "Details: Café session 10"':
+      - generic: Café session 10
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 10":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:25 PM
+    - checkbox "Select Café session 11"
+    - generic: Select Café session 11
+    - 'generic "Details: Café session 11"':
+      - generic: Café session 11
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 11":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:24 PM
+    - checkbox "Select Café session 12"
+    - generic: Select Café session 12
+    - 'generic "Details: Café session 12"':
+      - generic: Café session 12
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 12":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:23 PM
+    - checkbox "Select Café session 13"
+    - generic: Select Café session 13
+    - 'generic "Details: Café session 13"':
+      - generic: Café session 13
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 13":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:22 PM
+    - checkbox "Select Café session 14"
+    - generic: Select Café session 14
+    - 'generic "Details: Café session 14"':
+      - generic: Café session 14
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 14":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:21 PM
+    - checkbox "Select Café session 15"
+    - generic: Select Café session 15
+    - 'generic "Details: Café session 15"':
+      - generic: Café session 15
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 15":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:20 PM
+    - checkbox "Select Café session 16"
+    - generic: Select Café session 16
+    - 'generic "Details: Café session 16"':
+      - generic: Café session 16
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 16":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:19 PM
+    - checkbox "Select Café session 17"
+    - generic: Select Café session 17
+    - 'generic "Details: Café session 17"':
+      - generic: Café session 17
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 17":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:18 PM
+    - checkbox "Select Café session 18"
+    - generic: Select Café session 18
+    - 'generic "Details: Café session 18"':
+      - generic: Café session 18
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 18":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:17 PM
+    - checkbox "Select Café session 19"
+    - generic: Select Café session 19
+    - 'generic "Details: Café session 19"':
+      - generic: Café session 19
+      - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+    - button "Play Café session 19":
+      - generic: ▶
+    - time: Sep 7, 2026, 6:16 PM
+  - button "Load more"
+  - region "Song selection":
+    - status:
+      - strong: 1 song selected
+      - generic: Loaded ready songs only · not all results
+    - button "Select this page"
+    - button "Add to playlist"
+    - button "Cancel selection"
+- complementary "Now playing":
+  - 'button "Open player: Café session 09"':
+    - strong: Café session 09
+    - generic: Musiclatte Studio · 오래 기억하고 싶은 음악
+  - button "Play Café session 09":
+    - generic: ▶
+  - button "Add Café session 09 to favorites":
+  - button "Next track":
+    - generic: "|▶"

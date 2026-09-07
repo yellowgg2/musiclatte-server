@@ -1,0 +1,30 @@
+- link "Skip to content":
+  - /url: "#main"
+- banner:
+  - generic: Musiclatte
+- navigation "Main navigation":
+  - link "Music":
+    - /url: /music
+    - text: Music
+  - link "Playlists":
+    - /url: /playlists
+    - text: Playlists
+  - link "Settings":
+    - /url: /settings
+    - text: Settings
+- main:
+  - paragraph: Your listening collections
+  - text: Language
+  - combobox "Language":
+    - option "한국어"
+    - option "English" [selected]
+  - heading "Playlists" [active] [level=1]
+  - paragraph: Choose a playlist to see its songs or start listening in order.
+  - paragraph: 1 playlist
+  - button "Create playlist"
+  - list "Playlists":
+    - link "Synthetic List 42 songs":
+      - /url: /playlists/pl-1
+      - generic: Synthetic List
+      - generic: 42 songs
+      - generic: ›

@@ -2,14 +2,15 @@ export type SelectionScope =
   | { kind: 'folder'; id: string }
   | { kind: 'search'; query: string; musicFolderId?: string }
   | { kind: 'playlist'; id: string; revision: string }
-  | { kind: 'favorites' };
+  | { kind: 'favorites' }
+  | { kind: 'recent'; from: string; to: string; asOf: string };
 
 export type SelectionItem = { id: string; order: number };
 export type SelectionState = { scopeKey?: string; active: boolean; items: SelectionItem[] };
 export type SelectionAction =
   | { type: 'scope'; key?: string }
   | { type: 'leave'; key: string }
-  | { type: 'rebase'; key: string }
+  | { type: 'rebase'; key: string; order?: readonly SelectionItem[] }
   | { type: 'enter' }
   | { type: 'toggle'; item: SelectionItem }
   | { type: 'select-page'; items: SelectionItem[] }
@@ -21,6 +22,7 @@ export const initialSelectionState: SelectionState = { active: false, items: [] 
 export function selectionScopeKey(scope: SelectionScope): string {
   if (scope.kind === 'folder') return `folder:${scope.id}`;
   if (scope.kind === 'playlist') return `playlist:${scope.id}@${scope.revision}`;
+  if (scope.kind === 'recent') return `recent:${scope.from}:${scope.to}:${scope.asOf}`;
   if (scope.kind === 'favorites') return 'favorites:songs';
   return `search:${scope.musicFolderId ?? ''}:${scope.query.trim()}`;
 }
@@ -42,8 +44,21 @@ export function selectionReducer(state: SelectionState, action: SelectionAction)
         : { ...initialSelectionState, ...(action.key ? { scopeKey: action.key } : {}) };
     case 'leave':
       return state.scopeKey === action.key ? initialSelectionState : state;
-    case 'rebase':
-      return { ...state, scopeKey: action.key };
+    case 'rebase': {
+      if (!action.order) return { ...state, scopeKey: action.key };
+      const positions = new Map(action.order.map((item) => [item.id, item.order]));
+      const end = action.order.reduce((end, item) => Math.max(end, item.order + 1), 0);
+      return {
+        ...state,
+        scopeKey: action.key,
+        items: normalized(
+          state.items.map((item, index) => ({
+            id: item.id,
+            order: positions.get(item.id) ?? end + index,
+          })),
+        ),
+      };
+    }
     case 'enter':
       return { ...state, active: true };
     case 'toggle':

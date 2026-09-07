@@ -209,3 +209,21 @@ describe('authenticated media proxy', () => {
     await expect.poll(() => context.state.closedMediaRequests).toBe(1);
   });
 });
+
+/** Recent pages reuse media URLs for every song ID allowed by the public contract. */
+it('should stream a long opaque recent song ID within the 2048 character contract', async () => {
+  const context = await createTestContext();
+  try {
+    const headers = { cookie: cookieOf(await context.login()) };
+    const id = `recent-${'x'.repeat(480)}`;
+    const response = await context.app.inject({
+      method: 'GET',
+      url: `/api/v1/media/songs/${encodeURIComponent(id)}/stream`,
+      headers,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(context.mediaRequests[0]?.url.searchParams.get('id')).toBe(id);
+  } finally {
+    await context.cleanup();
+  }
+});

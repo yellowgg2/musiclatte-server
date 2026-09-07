@@ -1,0 +1,15 @@
+- banner:
+  - generic: Musiclatte
+  - text: Language
+  - combobox "Language":
+    - option "한국어"
+    - option "English" [selected]
+- main:
+  - heading "Welcome back" [level=1]
+  - paragraph: Sign in to your music space.
+  - status: Your session has expired. Please sign in again.
+  - generic: Username
+  - textbox "Username" [active]
+  - generic: Password
+  - textbox "Password"
+  - button "Sign in"

@@ -1,0 +1,19 @@
+- link "Skip to content":
+  - /url: "#main"
+- banner:
+  - generic: Musiclatte
+- navigation "Main navigation":
+  - link "Music":
+    - /url: /music
+    - text: Music
+  - link "Playlists":
+    - /url: /playlists
+    - text: Playlists
+  - link "Settings":
+    - /url: /settings
+    - text: Settings
+- main:
+  - heading "Recent downloads are not supported" [active] [level=1]
+  - paragraph: Return to music or settings to see available features.
+  - link "Back to music":
+    - /url: /music
