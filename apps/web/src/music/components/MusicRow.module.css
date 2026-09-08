@@ -43,6 +43,7 @@
   flex-shrink: 0;
 }
 .rowActions {
+  position: relative;
   display: flex;
   align-items: center;
   min-width: 0;
@@ -159,6 +160,11 @@
 @media (max-width: 30rem) {
   .rowActions {
     grid-column: 1 / -1;
+    justify-content: flex-end;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: 0 0 var(--space-3) var(--space-3);
   }
   .summary {
     padding: var(--space-3);

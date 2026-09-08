@@ -848,3 +848,79 @@ export function decodeMetadataIntent(value: unknown): MetadataPreviewRequest {
   }
   return { targets, patch };
 }
+
+/** Safe tag-only comparison. Backup bytes and locations never cross this boundary. */
+export interface MetadataRestoreState {
+  values: MetadataSnapshot['values'];
+  lyricsFrames: MetadataSnapshot['lyricsFrames'];
+  covers: { description: string; pictureType: number; mimeType: string; digest: string }[];
+}
+export interface MetadataRestorePreview {
+  schemaVersion: 1;
+  jobId: string;
+  itemId: string;
+  backupCreatedAt: number;
+  current: MetadataSnapshot;
+  currentCovers: MetadataRestoreState['covers'];
+  original: MetadataRestoreState;
+}
+export function decodeMetadataRestoreState(value: unknown): MetadataRestoreState {
+  const v = record(value, ['values', 'lyricsFrames', 'covers']);
+  const snapshot = decodeMetadataSnapshot({
+    schemaVersion: 1,
+    trackId: 'projection',
+    editable: false,
+    reason: 'read_only',
+    format: 'mp3',
+    supportedFields: [],
+    fileRevision: 'projection',
+    values: v.values,
+    lyricsFrames: v.lyricsFrames,
+    coverFrames: [],
+    lastVerifiedAt: 0,
+  });
+  const covers = list(
+    v.covers,
+    (entry) => {
+      const f = record(entry, ['description', 'pictureType', 'mimeType', 'digest']);
+      const pictureType = timestamp(f.pictureType);
+      const digest = boundedText(f.digest, 64);
+      if (pictureType > 20 || !/^[a-f0-9]{64}$/.test(digest))
+        throw new Error('Invalid metadata response');
+      return {
+        description: boundedText(f.description, 256, true),
+        pictureType,
+        mimeType: boundedText(f.mimeType, 128),
+        digest,
+      };
+    },
+    128,
+  );
+  return { values: snapshot.values, lyricsFrames: snapshot.lyricsFrames, covers };
+}
+export function decodeMetadataRestorePreview(value: unknown): MetadataRestorePreview {
+  const v = record(value, [
+    'schemaVersion',
+    'jobId',
+    'itemId',
+    'backupCreatedAt',
+    'current',
+    'currentCovers',
+    'original',
+  ]);
+  if (v.schemaVersion !== 1) throw new Error('Invalid metadata response');
+  const current = decodeMetadataSnapshot(v.current);
+  return {
+    schemaVersion: 1,
+    jobId: identifier(v.jobId),
+    itemId: identifier(v.itemId),
+    backupCreatedAt: timestamp(v.backupCreatedAt),
+    current,
+    currentCovers: decodeMetadataRestoreState({
+      values: current.values,
+      lyricsFrames: current.lyricsFrames,
+      covers: v.currentCovers,
+    }).covers,
+    original: decodeMetadataRestoreState(v.original),
+  };
+}

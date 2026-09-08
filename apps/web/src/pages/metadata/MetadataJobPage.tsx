@@ -1,3 +1,4 @@
+import { MetadataRecovery } from '../../metadata/components/MetadataRecovery';
 import { MetadataRetry } from '../../metadata/components/MetadataRetry';
 import { useEffect, useState } from 'react';
 import type { MetadataJob } from '@musiclatte/contracts';
@@ -87,7 +88,22 @@ export function MetadataJobPage({ jobId }: { jobId: string }) {
               onUnauthenticated={ui.onUnauthenticated}
             />
           )}
-          {job && <MetadataJobStatus job={job} locale={ui.locale} />}
+          {job &&
+            (sync.client ? (
+              <MetadataRecovery
+                job={job}
+                locale={ui.locale}
+                client={sync.client}
+                csrfToken={ui.csrfToken}
+                onSubmitted={ui.accept}
+                onUnauthenticated={ui.onUnauthenticated}
+                onRefresh={() => setAttempt((n) => n + 1)}
+                onEdit={ui.open}
+                canEdit={ui.canEdit}
+              />
+            ) : (
+              <MetadataJobStatus job={job} locale={ui.locale} />
+            ))}
         </>
       )}
     </div>

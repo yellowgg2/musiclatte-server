@@ -2,6 +2,7 @@ import {
   apiErrorCodes,
   decodeMetadataChanges,
   decodeMetadataIntent,
+  decodeMetadataRestorePreview,
   decodeMetadataCoverUpload,
   decodeMetadataJob,
   decodeMetadataPreview,
@@ -176,6 +177,17 @@ export function createMetadataClient({
       return request(
         `${routes.job(id)}/items/${encodeURIComponent(itemId)}/intent`,
         decodeMetadataIntent,
+        signal,
+      );
+    },
+    restorePreview(id: string, itemId: string, signal?: AbortSignal) {
+      return request(
+        `${routes.job(id)}/items/${encodeURIComponent(itemId)}/restore-preview`,
+        (value) => {
+          const preview = decodeMetadataRestorePreview(value);
+          if (preview.jobId !== id || preview.itemId !== itemId) throw new Error();
+          return preview;
+        },
         signal,
       );
     },

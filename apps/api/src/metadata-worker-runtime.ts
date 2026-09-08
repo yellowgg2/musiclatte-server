@@ -1,3 +1,4 @@
+import { createBackupPreviewIndexer } from './metadata/backup-preview.js';
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { lstatSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -273,10 +274,23 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
       file: (abort) => worker.runOnce(abort, 'file'),
       reflect: (abort) => reflector.runOnce(abort),
     });
+    const backupHelper = createMetadataHelper({
+      ...config,
+      musicRoot: config.privateRoot,
+      helperPath: join(dirname(config.helperPath), 'metadata.py'),
+      maxFileBytes: config.policy.limits.maxFileBytes,
+      timeoutMs: config.policy.limits.timeoutMs,
+    });
+    const indexBackup = createBackupPreviewIndexer({
+      database,
+      clock: Date.now,
+      read: (key) => backupHelper.read({ key, signal }),
+    });
     healthy = true;
     heartbeat();
     while (!signal.aborted) {
       await scheduler.cycle(signal);
+      if (!signal.aborted) await indexBackup();
       await delay(500, undefined, { signal }).catch(() => {});
     }
   } finally {

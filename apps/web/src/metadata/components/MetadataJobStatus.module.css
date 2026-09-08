@@ -1,4 +1,5 @@
 .action {
+  display: flex;
   position: relative;
   min-width: 0;
 }
@@ -43,4 +44,10 @@
 }
 .secondary {
   color: var(--color-secondary);
+}
+
+@media (max-width: 30rem) {
+  .action {
+    position: static;
+  }
 }

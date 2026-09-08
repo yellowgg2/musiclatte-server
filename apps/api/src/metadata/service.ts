@@ -1,6 +1,9 @@
+import { restoreState } from './backup-preview.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   metadataFields,
+  decodeMetadataRestoreState,
+  decodeMetadataRestorePreview,
   decodeMetadataSnapshot,
   type MetadataJob,
   type MetadataJobRequest,
@@ -357,6 +360,44 @@ export function createMetadataService(service: SessionService) {
         itemIds: body.items.map((entry) => entry.itemId),
       });
       return { schemaVersion: 1 as const, job: await scopedJob(v, job.id) };
+    },
+    async restorePreview(v: Verified, id: string, itemId: string) {
+      const job = await scopedJob(v, id);
+      const item = job.items.find((item) => item.itemId === itemId);
+      if (!item) throw new ApiError(404, 'not_found');
+      if (!item.restoreAvailable) throw new ApiError(403, 'forbidden');
+      const row = db
+        .prepare(
+          'SELECT b.created_at,p.summary_json FROM metadata_backups b LEFT JOIN metadata_backup_previews p ON p.backup_id=b.id WHERE b.item_id=? AND b.identity_key=? AND b.library_id=?',
+        )
+        .get(itemId, identity(v), job.libraryId);
+      if (!row?.summary_json) throw new ApiError(503, 'upstream_unavailable');
+      const file = await p.resolver.resolve(v, item.currentTrackId, 'restore');
+      const actual = await p.helper.read({ key: file.relativeFileKey });
+      if (actual.fullDigest !== file.inspection.digest) throw new ApiError(409, 'conflict');
+      await service.verify(v.session.token, v.session.scheme);
+      const state = restoreState(actual);
+      return decodeMetadataRestorePreview({
+        schemaVersion: 1,
+        jobId: id,
+        itemId,
+        backupCreatedAt: Number(row.created_at),
+        original: decodeMetadataRestoreState(JSON.parse(String(row.summary_json))),
+        currentCovers: state.covers,
+        current: {
+          schemaVersion: 1,
+          trackId: item.currentTrackId,
+          editable: false,
+          reason: 'read_only',
+          format: 'mp3',
+          supportedFields: [],
+          fileRevision: file.fileRevision,
+          values: actual.values,
+          coverFrames: [],
+          lyricsFrames: actual.lyricsFrames,
+          lastVerifiedAt: options.clock(),
+        },
+      });
     },
     async restore(
       v: Verified,

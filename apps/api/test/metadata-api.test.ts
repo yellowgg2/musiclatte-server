@@ -226,6 +226,62 @@ describe('metadata API', () => {
     expect(next.nextCursor).toBeNull();
     expect((await c.post('metadata-jobs', body)).statusCode).toBe(202);
   });
+  /** Restore preview returns original metadata only to the scoped restore actor, without backup locations. */
+  it('should expose a revision-fenced restore comparison without private backup access', async () => {
+    const c = await makeSUT();
+    c.state.adminRole = true;
+    const snapshot = (await c.get()).json();
+    const response = await c.post('metadata-jobs', {
+      operationId: operationId(61),
+      targets: [{ trackId: 'track-1', expectedRevision: snapshot.fileRevision }],
+      patch: { title: { op: 'clear' } },
+    });
+    const job = response.json().job;
+    const repo = createMetadataRepository(c.metadata);
+    const claim = repo.claimNext({ workerId: 'preview-worker', leaseDurationMs: 10000 })!;
+    const work = repo.readWork(claim);
+    repo.recordBackup({
+      ...claim,
+      backup: {
+        id: 'preview-backup',
+        relativeKey: 'private-original.backup',
+        preimageDigest: work.expectedDigest,
+        size: 1,
+        mode: 0o644,
+        ownerProfile: { uid: 1000, gid: 1000 },
+      },
+    });
+    repo.transition({ ...claim, stage: 'backed_up' });
+    repo.transition({ ...claim, stage: 'prepared' });
+    repo.transition({
+      ...claim,
+      stage: 'file_saved',
+      resultDigest: work.expectedDigest,
+      resultRevision: snapshot.fileRevision,
+    });
+    const url = `/api/v1/metadata-jobs/${job.id}/items/${claim.itemId}/restore-preview`;
+    expect((await c.get(url)).statusCode, 'pending projection must be explicit').toBe(503);
+    const original = {
+      values: { ...snapshot.values, title: 'Original before editing' },
+      lyricsFrames: snapshot.lyricsFrames,
+      covers: [],
+    };
+    c.storage.db.connection
+      .prepare('INSERT INTO metadata_backup_previews(backup_id,summary_json) VALUES(?,?)')
+      .run('preview-backup', JSON.stringify(original));
+    const preview = await c.get(url);
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json()).toMatchObject({
+      jobId: job.id,
+      itemId: claim.itemId,
+      original,
+      current: { fileRevision: snapshot.fileRevision },
+    });
+    expect(preview.body).not.toContain('private-original.backup');
+    expect((await c.get(url.replace(claim.itemId, 'foreign-item'))).statusCode).toBe(404);
+    c.metadata.policy.restoreManagers = [];
+    expect((await c.get(url)).statusCode).toBe(403);
+  });
   /** Two current, writable libraries still require separate edits rather than an implicit cross-root job. */
   it('should reject cross-library bulk before any job is created', async () => {
     const c = await makeSUT();

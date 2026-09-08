@@ -59,7 +59,9 @@ export function MetadataUIProvider({
       {children}
       {accepted && (
         <aside className={styles.notice} role="status">
-          <span>{copy['metadata.saving']}</span>
+          <span>
+            {copy[accepted.kind === 'restore' ? 'metadata.restorePending' : 'metadata.saving']}
+          </span>
           <a
             onClick={() => setAccepted(undefined)}
             href={`${options.base}metadata-jobs/${encodeURIComponent(accepted.id)}`}

@@ -100,3 +100,100 @@ it('should serve three independent bulk songs through normal authenticated route
     await server.close();
   }
 });
+
+/** Restore comparisons remain tag-only and reject private locations or mismatched identities. */
+it('should strictly decode tag-only restore comparisons', async () => {
+  const { decodeMetadataRestorePreview } = await import('@musiclatte/contracts');
+  const values = {
+    title: 'Original',
+    artist: [],
+    album: null,
+    albumArtist: [],
+    trackNumber: null,
+    year: null,
+    genre: [],
+  };
+  const value = {
+    schemaVersion: 1,
+    jobId: 'job',
+    itemId: 'item',
+    backupCreatedAt: 1,
+    current: {
+      schemaVersion: 1,
+      trackId: 'A',
+      editable: false,
+      reason: 'read_only',
+      format: 'mp3',
+      supportedFields: [],
+      fileRevision: 'rev',
+      values,
+      coverFrames: [],
+      lyricsFrames: [],
+      lastVerifiedAt: 1,
+    },
+    currentCovers: [],
+    original: { values, lyricsFrames: [], covers: [] },
+  };
+  expect(decodeMetadataRestorePreview(value)).toEqual(value);
+  expect(() => decodeMetadataRestorePreview({ ...value, backupPath: '/private/file' })).toThrow();
+  expect(() =>
+    decodeMetadataRestorePreview({ ...value, original: { ...value.original, bytes: 'private' } }),
+  ).toThrow();
+  expect(() =>
+    decodeMetadataRestorePreview({
+      ...value,
+      original: {
+        ...value.original,
+        covers: [{ description: '', pictureType: 3, mimeType: 'image/png', digest: 'invalid' }],
+      },
+    }),
+  ).toThrow();
+});
+
+/** Every recovery fixture enters through authenticated history and matches the production decoder. */
+it('should expose all recovery states through strict normal history routes', async () => {
+  const { startMetadataUIHarness } = await import('../../tools/verification/metadata-ui-harness');
+  const { createMetadataClient } = await import('../../apps/web/src/metadata/client');
+  for (const mode of [
+    'staleRevision',
+    'diskFull',
+    'partial',
+    'long',
+    'workerRestart',
+    'reflectingDelay',
+    'coverStale',
+    'idConflict',
+    'restoreConflict',
+    'restoreSucceeded',
+    'denied',
+  ]) {
+    const server = await startMetadataUIHarness({ port: 0, scenario: `recovery:${mode}` });
+    try {
+      const origin = server.resolvedUrls!.local[0]!.replace(/\/$/, '');
+      const login = await fetch(`${origin}/api/v1/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'fixture', password: 'fixture' }),
+      });
+      const cookie = login.headers.get('set-cookie')!.split(';')[0]!;
+      const client = createMetadataClient({
+        apiOrigin: origin,
+        fetcher: (url, init) =>
+          fetch(url, {
+            ...init,
+            headers: { ...Object.fromEntries(new Headers(init?.headers)), cookie },
+          }),
+      });
+      const history = await client.list();
+      expect(history.jobs).toHaveLength(1);
+      expect(history.jobs[0]!.id).toBe(`recovery-${mode}`);
+      const job = await client.detail(history.jobs[0]!.id);
+      if (job.items[0]!.restoreAvailable)
+        expect(
+          (await client.restorePreview(job.id, job.items[0]!.itemId)).original.values.title,
+        ).toBe('Original evening in the studio');
+    } finally {
+      await server.close();
+    }
+  }
+});

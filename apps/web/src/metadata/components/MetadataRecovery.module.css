@@ -1,0 +1,26 @@
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.comparison {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+  overflow-wrap: anywhere;
+}
+.comparison section {
+  display: grid;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.comparison p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 22rem) {
+  .actions > * {
+    flex: 1 1 100%;
+  }
+}

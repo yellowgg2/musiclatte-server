@@ -109,11 +109,12 @@ export async function startMetadataUIHarness({
             'music.stream',
             'metadata.write',
             'metadata.lyrics.write',
-            ...(mode.startsWith('bulk') ? ['playlists.read'] : []),
+            ...(mode.startsWith('bulk') || mode.startsWith('recovery') ? ['playlists.read'] : []),
           ].map((key) => [
             key,
             {
-              ...(key === 'metadata.write' && mode.startsWith('bulk')
+              ...(key === 'metadata.write' &&
+              (mode.startsWith('bulk') || mode.startsWith('recovery'))
                 ? {
                     bulkFields: [
                       'title',
@@ -133,7 +134,11 @@ export async function startMetadataUIHarness({
           ]),
         ),
       });
-    if (mode.startsWith('bulk') && (await bulkFixture(req, res, mode))) return;
+    if (
+      (mode.startsWith('bulk') || mode.startsWith('recovery')) &&
+      (await bulkFixture(req, res, mode))
+    )
+      return;
     if (path === '/api/v1/music/folders' && !url.searchParams.has('musicFolderId'))
       return json(res, { schemaVersion: 1, folders: [{ id: 'music', name: 'Studio collection' }] });
     if (path === '/api/v1/music/folders')

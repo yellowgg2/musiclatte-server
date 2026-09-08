@@ -1,11 +1,24 @@
+import type { ReactNode } from 'react';
 import type { MetadataJob } from '@musiclatte/contracts';
 import { messages, type Locale } from '../../i18n';
 import styles from './MetadataJobStatus.module.css';
-export function MetadataJobStatus({ job, locale }: { job: MetadataJob; locale: Locale }) {
+export function MetadataJobStatus({
+  job,
+  locale,
+  actions,
+}: {
+  job: MetadataJob;
+  locale: Locale;
+  actions?: (item: MetadataJob['items'][number]) => ReactNode;
+}) {
   const copy = messages[locale];
   return (
     <div>
-      <p role="status">{copy[`metadata.stage.${job.status}`]}</p>
+      <p role="status">
+        {job.kind === 'restore' && job.status === 'succeeded'
+          ? copy['metadata.restored']
+          : copy[`metadata.stage.${job.status}`]}
+      </p>
       <p className={styles.secondary}>{copy['metadata.pendingHelp']}</p>
       {job.items.map((item, index) => (
         <section className={styles.status} key={item.itemId}>
@@ -20,6 +33,7 @@ export function MetadataJobStatus({ job, locale }: { job: MetadataJob; locale: L
               <p className={styles.secondary}>{copy['metadata.recoveryHelp']}</p>
             </>
           )}
+          {actions?.(item)}
         </section>
       ))}
     </div>

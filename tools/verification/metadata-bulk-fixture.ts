@@ -45,6 +45,8 @@ export function createBulkMetadataFixture() {
     ]),
   );
   const jobs: MetadataJob[] = [];
+  const originals = new Map<string, MetadataSnapshot>();
+  const seeded = new Set<string>();
   const operations = new Map<string, MetadataJob>();
   const intents = new Map<string, MetadataPatch>();
   const changes: MetadataChange[] = [];
@@ -71,7 +73,12 @@ export function createBulkMetadataFixture() {
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     return JSON.parse(Buffer.concat(chunks).toString());
   };
-  const create = (input: MetadataJobRequest, parent: MetadataJob | undefined, mode: string) => {
+  const create = (
+    input: MetadataJobRequest,
+    parent: MetadataJob | undefined,
+    mode: string,
+    original?: MetadataSnapshot,
+  ) => {
     const previous = operations.get(input.operationId);
     if (previous) return previous;
     const job: MetadataJob = {
@@ -79,7 +86,7 @@ export function createBulkMetadataFixture() {
       libraryId: 'music',
       createdAt: Date.now(),
       status: 'queued',
-      kind: parent ? 'retry' : 'edit',
+      kind: original ? 'restore' : parent ? 'retry' : 'edit',
       parentJobId: parent?.id ?? null,
       items: input.targets.map((target, index) => ({
         itemId: `bulk-item-${jobs.length + 1}-${index}`,
@@ -96,7 +103,10 @@ export function createBulkMetadataFixture() {
         restoreAvailable: false,
       })),
     };
-    job.items.forEach((item) => intents.set(item.itemId, structuredClone(input.patch)));
+    job.items.forEach((item) => {
+      intents.set(item.itemId, structuredClone(input.patch));
+      originals.set(item.itemId, structuredClone(snapshots.get(item.currentTrackId)!));
+    });
     jobs.unshift(job);
     operations.set(input.operationId, job);
     setTimeout(() => {
@@ -113,6 +123,11 @@ export function createBulkMetadataFixture() {
         }
         const snapshot = snapshots.get(item.currentTrackId)!;
         const old = snapshot.fileRevision;
+        if (original) {
+          snapshot.values = structuredClone(original.values);
+          snapshot.lyricsFrames = structuredClone(original.lyricsFrames);
+          snapshot.coverFrames = structuredClone(original.coverFrames);
+        }
         for (const [field, change] of Object.entries(input.patch)) {
           if (field in snapshot.values) {
             const key = field as keyof typeof snapshot.values;
@@ -130,6 +145,8 @@ export function createBulkMetadataFixture() {
         }
         snapshot.fileRevision = `revision-${item.currentTrackId}-${changes.length + 2}`;
         item.stage = 'succeeded';
+        item.restoreAvailable = true;
+        item.recoveryActions = ['restore'];
         item.fileSavedAt = Date.now();
         item.reflectedAt = Date.now();
         item.resultRevision = snapshot.fileRevision;
@@ -155,6 +172,104 @@ export function createBulkMetadataFixture() {
     return job;
   };
   return async (req: IncomingMessage, res: ServerResponse, mode: string) => {
+    if (mode.startsWith('recovery') && !seeded.has(mode)) {
+      seeded.add(mode);
+      const scenario = mode.split(':')[1] ?? 'reflectingDelay';
+      const old = structuredClone(snapshots.get('A')!);
+      old.values.title = 'Original evening in the studio';
+      old.values.year = '2024';
+      snapshots.get('A')!.values.title = 'Current evening in the studio';
+      if (scenario === 'long') {
+        snapshots.get('A')!.values.title =
+          'A long studio recording with detailed archival notes '.repeat(12);
+        snapshots.get('A')!.lyricsFrames = [
+          {
+            selector: { language: 'eng', description: 'Studio lyric notes' },
+            text: 'A synthetic lyric line for scroll and focus review.\n'.repeat(60),
+          },
+        ];
+      }
+      const unsaved = ['staleRevision', 'diskFull', 'workerRestart'].includes(scenario);
+      const stage =
+        scenario === 'staleRevision'
+          ? 'conflict'
+          : scenario === 'diskFull'
+            ? 'failed'
+            : scenario === 'workerRestart'
+              ? 'recovery_required'
+              : ['restoreConflict', 'restoreSucceeded', 'denied'].includes(scenario)
+                ? 'succeeded'
+                : 'reflecting';
+      const id = `recovery-${scenario}`;
+      const item: MetadataJob['items'][number] = {
+        itemId: `${id}-item`,
+        originalTrackId: 'A',
+        currentTrackId: 'A',
+        stage,
+        fileSavedAt: unsaved ? null : Date.now() - 5000,
+        reflectedAt: stage === 'succeeded' ? Date.now() : null,
+        previousRevision: 'original-revision',
+        resultRevision: unsaved ? null : snapshots.get('A')!.fileRevision,
+        changedFields: ['title', 'year'],
+        errorCode:
+          scenario === 'staleRevision'
+            ? 'revision_conflict'
+            : scenario === 'diskFull'
+              ? 'write_failed'
+              : scenario === 'workerRestart'
+                ? 'write_uncertain'
+                : scenario === 'coverStale'
+                  ? 'reflection_mismatch'
+                  : scenario === 'idConflict'
+                    ? 'reference_conflict'
+                    : null,
+        recoveryActions:
+          scenario === 'denied'
+            ? []
+            : unsaved
+              ? scenario === 'workerRestart'
+                ? ['refresh']
+                : ['retry', 'refresh']
+              : ['recheck', 'restore'],
+        restoreAvailable: !unsaved && scenario !== 'denied',
+      };
+      const job: MetadataJob = {
+        id,
+        libraryId: 'music',
+        createdAt: Date.now() - 10000,
+        status:
+          stage === 'succeeded' ? 'succeeded' : stage === 'reflecting' ? 'reflecting' : 'failed',
+        kind: 'edit',
+        parentJobId: null,
+        items: [item],
+      };
+      if (scenario === 'partial') {
+        job.status = 'partial';
+        item.stage = 'succeeded';
+        item.reflectedAt = Date.now();
+        const failed = {
+          ...item,
+          itemId: `${id}-failed`,
+          originalTrackId: 'B',
+          currentTrackId: 'B',
+          stage: 'failed' as const,
+          fileSavedAt: null,
+          reflectedAt: null,
+          resultRevision: null,
+          errorCode: 'write_failed' as const,
+          recoveryActions: ['retry', 'refresh'] as MetadataJob['items'][number]['recoveryActions'],
+          restoreAvailable: false,
+        };
+        job.items.push(failed);
+        originals.set(failed.itemId, structuredClone(snapshots.get('B')!));
+        intents.set(failed.itemId, { year: { op: 'set', value: '2028' } });
+      }
+      jobs.unshift(job);
+      originals.set(item.itemId, old);
+      intents.set(item.itemId, {
+        title: { op: 'set', value: 'Previously submitted evening title' },
+      });
+    }
     const url = new URL(req.url!, 'http://localhost');
     const path = url.pathname;
     const method = req.method ?? 'GET';
@@ -215,6 +330,78 @@ export function createBulkMetadataFixture() {
       const parts = path.split('/');
       const job = jobs.find((job) => job.id === parts[4]);
       if (!job) return fail(res, 'not_found');
+      if (parts[5] === 'items' && parts[7] === 'restore-preview') {
+        const item = job.items.find((item) => item.itemId === parts[6]);
+        const original = item && originals.get(item.itemId);
+        if (!item?.restoreAvailable || !original) return fail(res, 'forbidden');
+        const current = snapshots.get(item.currentTrackId)!;
+        return json(res, {
+          schemaVersion: 1,
+          jobId: job.id,
+          itemId: item.itemId,
+          backupCreatedAt: job.createdAt,
+          current,
+          currentCovers: [],
+          original: { values: original.values, lyricsFrames: original.lyricsFrames, covers: [] },
+        });
+      }
+      if (parts[5] === 'restores' && method === 'POST') {
+        const input = await read(req);
+        const previous = operations.get(input.operationId);
+        if (previous) return json(res, { schemaVersion: 1, job: previous }, 202);
+        const item = job.items.find((item) => item.itemId === input.itemId);
+        const original = item && originals.get(item.itemId);
+        if (!item?.restoreAvailable || !original) return fail(res, 'forbidden');
+        if (
+          mode === 'recovery:restoreConflict' ||
+          snapshots.get(item.currentTrackId)!.fileRevision !== input.currentExpectedRevision
+        )
+          return fail(res);
+        const restored = create(
+          {
+            operationId: input.operationId,
+            targets: [
+              { trackId: item.currentTrackId, expectedRevision: input.currentExpectedRevision },
+            ],
+            patch: {},
+          },
+          job,
+          mode,
+          original,
+        );
+        restored.items[0]!.changedFields = ['title', 'year'];
+        return json(res, { schemaVersion: 1, job: restored }, 202);
+      }
+      if (parts[5] === 'rechecks' && method === 'POST') {
+        const input = await read(req);
+        const selected = job.items.filter((item) => input.itemIds.includes(item.itemId));
+        if (
+          !selected.length ||
+          selected.some(
+            (item) => item.fileSavedAt === null || !item.recoveryActions.includes('recheck'),
+          )
+        )
+          return fail(res);
+        for (const item of selected) {
+          item.stage = 'reflecting';
+          item.errorCode = null;
+        }
+        job.status = 'reflecting';
+        if (!['recovery:coverStale', 'recovery:idConflict'].includes(mode))
+          setTimeout(() => {
+            for (const item of selected) {
+              item.stage = 'succeeded';
+              item.reflectedAt = Date.now();
+              item.recoveryActions = ['restore'];
+            }
+            job.status = 'succeeded';
+          }, 1200).unref();
+        else
+          for (const item of selected)
+            item.errorCode =
+              mode === 'recovery:idConflict' ? 'reference_conflict' : 'reflection_mismatch';
+        return json(res, { schemaVersion: 1, job }, 202);
+      }
       if (parts[5] === 'items' && parts[7] === 'intent') {
         const item = job.items.find((item) => item.itemId === parts[6]);
         return item
