@@ -205,6 +205,18 @@ export function createMetadataService(service: SessionService) {
         frameId,
       });
     },
+    async intent(v: Verified, id: string, itemId: string) {
+      const job = await scopedJob(v, id);
+      const item = job.items.find((item) => item.itemId === itemId);
+      if (!item) throw new ApiError(404, 'not_found');
+      const row = db
+        .prepare('SELECT patch_json FROM metadata_items WHERE id=? AND job_id=?')
+        .get(itemId, id)!;
+      return {
+        targets: [{ trackId: item.currentTrackId, expectedRevision: item.previousRevision }],
+        patch: JSON.parse(String(row.patch_json)) as MetadataPatch,
+      };
+    },
     async preview(v: Verified, body: Pick<MetadataJobRequest, 'targets' | 'patch'>) {
       const files = await validate(v, body.targets, body.patch);
       return {

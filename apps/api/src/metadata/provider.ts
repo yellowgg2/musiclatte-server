@@ -45,7 +45,9 @@ export function metadataCapability(
     availability: metadataReady(options) ? 'available' : 'temporarily_unavailable',
     formats: ['mp3'],
     fields: lyrics ? ['lyrics'] : [...metadataFields],
-    bulkFields: [],
+    bulkFields: lyrics
+      ? []
+      : metadataFields.filter((field) => field !== 'cover' && field !== 'lyrics'),
   };
 }
 export function createMetadataProvider(service: SessionService) {

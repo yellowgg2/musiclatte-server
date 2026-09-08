@@ -1,6 +1,7 @@
 import {
   apiErrorCodes,
   decodeMetadataChanges,
+  decodeMetadataIntent,
   decodeMetadataCoverUpload,
   decodeMetadataJob,
   decodeMetadataPreview,
@@ -168,6 +169,13 @@ export function createMetadataClient({
           if (job.id !== id) throw new Error();
           return job;
         },
+        signal,
+      );
+    },
+    intent(id: string, itemId: string, signal?: AbortSignal) {
+      return request(
+        `${routes.job(id)}/items/${encodeURIComponent(itemId)}/intent`,
+        decodeMetadataIntent,
         signal,
       );
     },

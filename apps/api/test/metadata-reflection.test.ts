@@ -350,3 +350,42 @@ it.each(['verified', 'mixed', 'id-change', 'stale-cover', 'file-change', 'lost-s
     }
   },
 );
+
+/** Shared scan cooldown must not repeatedly reschedule later saved files behind an older mismatch. */
+it('should leave queued reflection work untouched until the shared scan slot is available', async () => {
+  const { vi } = await import('vitest');
+  const { createMetadataReflector } = await import('../src/metadata/reflection');
+  const c = await createTestContext();
+  try {
+    let now = 1000;
+    const coordinator = createScanCoordinator({
+      database: c.db,
+      clock: () => now,
+      timeoutMs: 100,
+      retryMs: 30,
+    });
+    expect(coordinator.acquire('earlier-mismatch')).toBe(true);
+    coordinator.release('earlier-mismatch', true);
+    const claimNext = vi.fn(() => null);
+    const reflector = createMetadataReflector({
+      database: c.db,
+      repository: { claimNext } as never,
+      clock: () => now,
+      timeoutMs: 100,
+      pollMs: 10,
+      retryMs: 30,
+      scanClient: {} as never,
+      libraries: [],
+      accountClient: async () => ({}) as never,
+      fileSnapshot: async () => snapshot as MetadataTagSnapshot,
+      coverMatches: async () => true,
+    });
+    expect(await reflector.runOnce()).toBe(false);
+    expect(claimNext).not.toHaveBeenCalled();
+    now += 30;
+    await reflector.runOnce();
+    expect(claimNext).toHaveBeenCalledOnce();
+  } finally {
+    await c.cleanup();
+  }
+});

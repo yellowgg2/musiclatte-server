@@ -12,6 +12,7 @@ import { Artwork } from '../../design/components/Artwork';
 import { messages, type Locale } from '../../i18n';
 import { ApiError } from '../../auth/client';
 import type { MetadataClient } from '../client';
+import { commonValue } from '../bulk';
 import { newPlaylistOperationId } from '../../playlists/operation-id';
 import { useMetadataFocus } from '../modal-focus';
 import fields from '../../design/components/TextField.module.css';
@@ -21,6 +22,7 @@ type Field = keyof MetadataValues;
 const names: Field[] = ['title', 'artist', 'album', 'albumArtist', 'trackNumber', 'year', 'genre'];
 export function MetadataEditor({
   snapshot,
+  bulk,
   locale,
   client,
   csrfToken,
@@ -31,6 +33,12 @@ export function MetadataEditor({
   onUnauthenticated,
 }: {
   snapshot: MetadataSnapshot;
+  bulk?: {
+    snapshots: MetadataSnapshot[];
+    occurrenceCount: number;
+    fields: readonly string[];
+    excluded?: string[];
+  };
   locale: Locale;
   client: MetadataClient;
   csrfToken: string;
@@ -43,7 +51,30 @@ export function MetadataEditor({
   const copy = messages[locale];
   const dialog = useRef<HTMLDivElement>(null);
   const uid = useId();
-  const [values, setValues] = useState(() => structuredClone(snapshot.values));
+  const mixed = new Set<Field>(
+    bulk
+      ? names.filter(
+          (field) => commonValue(bulk.snapshots.map((item) => item.values[field])).kind === 'mixed',
+        )
+      : [],
+  );
+  const initialValues = Object.fromEntries(
+    names.map((field) => [
+      field,
+      mixed.has(field)
+        ? Array.isArray(snapshot.values[field])
+          ? []
+          : null
+        : snapshot.values[field],
+    ]),
+  ) as unknown as MetadataValues;
+  const [values, setValues] = useState(() => structuredClone(initialValues));
+  const [touched, setTouched] = useState<Set<Field>>(() => new Set());
+  const supported = (field: keyof MetadataPatch) =>
+    bulk
+      ? bulk.fields.includes(field) &&
+        bulk.snapshots.every((item) => item.supportedFields.includes(field))
+      : snapshot.supportedFields.includes(field);
   const [cleared, setCleared] = useState<Set<Field>>(() => new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -92,6 +123,7 @@ export function MetadataEditor({
     if (review) dialog.current?.querySelector<HTMLElement>('[role="region"]')?.focus();
   }, [review]);
   function update(field: Field, value: string | string[] | null) {
+    setTouched((previous) => new Set(previous).add(field));
     setValues((previous) => ({ ...previous, [field]: value }));
     setCleared((previous) => {
       const next = new Set(previous);
@@ -104,17 +136,20 @@ export function MetadataEditor({
     const patch: MetadataPatch = {};
     const nextErrors: Record<string, string> = {};
     for (const field of names) {
-      if (!snapshot.supportedFields.includes(field)) continue;
+      if (!supported(field)) continue;
+      if (bulk && !touched.has(field) && !cleared.has(field)) continue;
       if (cleared.has(field)) {
         if (
+          mixed.has(field) ||
           JSON.stringify(snapshot.values[field]) !==
-          JSON.stringify(Array.isArray(values[field]) ? [] : null)
+            JSON.stringify(Array.isArray(values[field]) ? [] : null)
         )
           Object.assign(patch, { [field]: { op: 'clear' } });
         continue;
       }
       const value = values[field];
-      if (JSON.stringify(value) === JSON.stringify(snapshot.values[field])) continue;
+      if (!mixed.has(field) && JSON.stringify(value) === JSON.stringify(snapshot.values[field]))
+        continue;
       const entries = Array.isArray(value) ? value : [value];
       if (
         !entries.length ||
@@ -129,7 +164,7 @@ export function MetadataEditor({
       }
       Object.assign(patch, { [field]: { op: 'set', value } });
     }
-    if (coverMode !== 'keep' && snapshot.supportedFields.includes('cover')) {
+    if (coverMode !== 'keep' && supported('cover')) {
       const frame = fronts.find((item) => item.frameId === coverTarget);
       if (!coverTarget || (coverMode === 'clear' && !frame))
         nextErrors.cover = copy['metadata.coverSelection'];
@@ -143,7 +178,7 @@ export function MetadataEditor({
       )
         nextErrors.cover = copy['metadata.invalidCover'];
     }
-    if (lyricsMode !== 'keep' && canLyrics && snapshot.supportedFields.includes('lyrics')) {
+    if (lyricsMode !== 'keep' && canLyrics && supported('lyrics')) {
       if (
         !/^[a-z]{3}$/.test(language) ||
         description.length > 256 ||
@@ -192,7 +227,10 @@ export function MetadataEditor({
     activeRequest.current = true;
     setBusy(true);
     setError('');
-    const targets = [{ trackId: snapshot.trackId, expectedRevision: snapshot.fileRevision }];
+    const targets = (bulk?.snapshots ?? [snapshot]).map((item) => ({
+      trackId: item.trackId,
+      expectedRevision: item.fileRevision,
+    }));
     const options = { csrfToken };
     try {
       if (coverMode === 'set' && cover) {
@@ -267,7 +305,9 @@ export function MetadataEditor({
         className={styles.panel}
       >
         <header className={styles.heading}>
-          <h2 id={`${uid}-heading`}>{copy[review ? 'metadata.summary' : 'metadata.editor']}</h2>
+          <h2 id={`${uid}-heading`}>
+            {copy[review ? 'metadata.summary' : bulk ? 'metadata.bulkEditor' : 'metadata.editor']}
+          </h2>
           <p className={styles.current}>{copy['metadata.intro']}</p>
         </header>
         <div
@@ -276,7 +316,35 @@ export function MetadataEditor({
           aria-label={copy['metadata.editor']}
           tabIndex={0}
         >
-          <p>{snapshot.values.title || copy['metadata.empty']}</p>
+          {bulk ? (
+            <>
+              <p>
+                {copy['metadata.occurrences']
+                  .replace('{count}', String(bulk.occurrenceCount))
+                  .replace('{files}', String(bulk.snapshots.length))}
+              </p>
+              <ul className={styles.summary}>
+                {bulk.snapshots.map((item) => (
+                  <li key={item.trackId}>
+                    {item.values.title || copy['metadata.empty']}
+                    {review && (
+                      <small className={styles.current}>
+                        {' '}
+                        {copy['metadata.revision']}: {item.fileRevision}
+                      </small>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {Boolean(bulk.excluded?.length) && (
+                <p>
+                  {copy['metadata.excluded']}: {bulk.excluded!.join(' · ')}
+                </p>
+              )}
+            </>
+          ) : (
+            <p>{snapshot.values.title || copy['metadata.empty']}</p>
+          )}
           {error && (
             <p role="alert" className={styles.error}>
               {error}
@@ -284,7 +352,12 @@ export function MetadataEditor({
           )}
           {review ? (
             <>
-              <p>{copy['metadata.targetCount'].replace('{count}', '1')}</p>
+              <p>
+                {copy['metadata.targetCount'].replace(
+                  '{count}',
+                  String(bulk?.snapshots.length ?? 1),
+                )}
+              </p>
               <ul className={styles.summary}>
                 {Object.entries(review.patch).map(([field, change]) => (
                   <li key={field}>
@@ -310,11 +383,13 @@ export function MetadataEditor({
                 <section key={field} className={styles.field}>
                   <p className={styles.current}>
                     {copy['metadata.current']}:{' '}
-                    {Array.isArray(snapshot.values[field])
-                      ? snapshot.values[field].join(' · ') || copy['metadata.empty']
-                      : snapshot.values[field] || copy['metadata.empty']}
+                    {mixed.has(field)
+                      ? copy['metadata.mixed']
+                      : Array.isArray(snapshot.values[field])
+                        ? snapshot.values[field].join(' · ') || copy['metadata.empty']
+                        : snapshot.values[field] || copy['metadata.empty']}
                   </p>
-                  {!snapshot.supportedFields.includes(field) ? (
+                  {!supported(field) ? (
                     <>
                       <strong>{copy[`metadata.${field}`]}</strong>
                       <p>{copy['metadata.readonly']}</p>
@@ -386,7 +461,14 @@ export function MetadataEditor({
                         </Action>
                         <Action
                           variant="quiet"
-                          onClick={() => update(field, structuredClone(snapshot.values[field]))}
+                          onClick={() => {
+                            update(field, structuredClone(initialValues[field]));
+                            setTouched((previous) => {
+                              const next = new Set(previous);
+                              next.delete(field);
+                              return next;
+                            });
+                          }}
                         >
                           {copy['metadata.undo']}
                         </Action>
@@ -396,7 +478,8 @@ export function MetadataEditor({
                   )}
                 </section>
               ))}
-              {snapshot.supportedFields.includes('cover') && (
+              {bulk && <p>{copy['metadata.bulkFrames']}</p>}
+              {supported('cover') && (
                 <section className={styles.field}>
                   <h3>{copy['metadata.cover']}</h3>
                   <label className={fields.field}>
@@ -478,7 +561,7 @@ export function MetadataEditor({
                   </p>
                 </section>
               )}
-              {canLyrics && snapshot.supportedFields.includes('lyrics') && (
+              {canLyrics && supported('lyrics') && (
                 <section className={styles.field}>
                   <h3>{copy['metadata.lyrics']}</h3>
                   <label className={fields.field}>

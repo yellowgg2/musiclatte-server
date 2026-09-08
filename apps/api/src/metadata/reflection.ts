@@ -237,7 +237,7 @@ export function createMetadataReflector(options: MetadataReflectorOptions) {
       repo.recordReferences(claim, references);
     },
     async runOnce(signal?: AbortSignal) {
-      if (signal?.aborted) return false;
+      if (signal?.aborted || !coordinator.available()) return false;
       const claim = repo.claimNext({
         workerId: 'metadata-reflection',
         leaseDurationMs: timeoutMs + 5000,

@@ -59,3 +59,44 @@ it('should serve deterministic normal-entry fixtures with strict DTOs', async ()
     await server.close();
   }
 });
+
+/** Persisted retry intent is closed and validated before displaying or reusing its patch. */
+it('should decode original intent and reject unknown or malformed changes', async () => {
+  const contracts = await import('@musiclatte/contracts');
+  const decode = (contracts as unknown as { decodeMetadataIntent?: (v: unknown) => unknown })
+    .decodeMetadataIntent;
+  expect(decode).toBeTypeOf('function');
+  const intent = {
+    targets: [{ trackId: 'A', expectedRevision: 'rev' }],
+    patch: { album: { op: 'clear' }, artist: { op: 'set', value: ['One', 'Two'] } },
+  };
+  expect(decode!(intent)).toEqual(intent);
+  for (const patch of [
+    { secret: { op: 'clear' } },
+    { artist: { op: 'set', value: 'One' } },
+    { title: { op: 'set', value: '' } },
+    { year: { op: 'set', value: 'nope' } },
+    { album: { op: 'clear', value: 'ignored' } },
+  ])
+    expect(() => decode!({ ...intent, patch })).toThrow();
+});
+
+/** Bulk review fixtures expose independent targets and preserve succeeded files during retry. */
+it('should serve three independent bulk songs through normal authenticated routes', async () => {
+  const { startMetadataUIHarness } = await import('../../tools/verification/metadata-ui-harness');
+  const server = await startMetadataUIHarness({ port: 0, scenario: 'bulk' } as never);
+  try {
+    const address = server.httpServer!.address() as { port: number };
+    const origin = `http://127.0.0.1:${address.port}`;
+    const login = await fetch(`${origin}/api/v1/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'fixture', password: 'fixture' }),
+    });
+    const cookie = login.headers.get('set-cookie')!.split(';')[0]!;
+    const response = await fetch(`${origin}/api/v1/music/folders/folder`, { headers: { cookie } });
+    expect((await response.json()).directory.child).toHaveLength(3);
+  } finally {
+    await server.close();
+  }
+});

@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useMetadataUI } from '../../metadata/MetadataUIProvider';
+import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
+import { BulkMetadataEditor } from '../../metadata/components/BulkMetadataEditor';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PlaylistDetail, PlaylistSummary } from '@musiclatte/contracts';
 import { ApiError } from '../../auth/client';
 import { Action } from '../../design/components/Action';
@@ -35,6 +38,16 @@ export function SelectionBar({
 }) {
   const { state, dispatch } = useSelection();
   const [picker, setPicker] = useState(false);
+  const ui = useMetadataUI();
+  const sync = useMetadataSync();
+  const [bulk, setBulk] = useState(false);
+  const closeBulk = useCallback(() => setBulk(false), []);
+  const selectionKey = JSON.stringify([state.scopeKey, state.items]);
+  useEffect(closeBulk, [selectionKey, ui.canEdit, sync.client, closeBulk]);
+  const occurrenceCount = Math.max(
+    state.items.length,
+    pageItems.filter((item) => state.items.some((selected) => selected.id === item.id)).length,
+  );
   const copy = messages[locale];
   if (!state.active)
     return (
@@ -65,11 +78,40 @@ export function SelectionBar({
           <Action disabled={!canWrite || state.items.length === 0} onClick={() => setPicker(true)}>
             {copy['selection.add']}
           </Action>
+          {ui.canEdit && Boolean(ui.bulkFields?.length) && (
+            <Action
+              variant="secondary"
+              disabled={!state.items.length || state.items.length > 64}
+              onClick={() => setBulk(true)}
+            >
+              {copy['metadata.bulkEditor']}
+            </Action>
+          )}
           <Action variant="quiet" onClick={() => dispatch({ type: 'finish' })}>
             {copy['selection.cancel']}
           </Action>
         </div>
       </section>
+      {ui.canEdit && Boolean(ui.bulkFields?.length) && state.items.length > 64 && (
+        <p role="status">{copy['metadata.bulkLimit']}</p>
+      )}
+      {bulk && ui.canEdit && sync.client && (
+        <BulkMetadataEditor
+          ids={state.items.map((item) => item.id)}
+          occurrenceCount={occurrenceCount}
+          fields={ui.bulkFields ?? []}
+          locale={locale}
+          client={sync.client}
+          apiOrigin={apiOrigin}
+          csrfToken={csrfToken}
+          onClose={closeBulk}
+          onSubmitted={(job) => {
+            closeBulk();
+            ui.accept(job);
+          }}
+          onUnauthenticated={onUnauthenticated}
+        />
+      )}
       {picker && (
         <PlaylistPicker
           locale={locale}

@@ -506,5 +506,19 @@
   "metadata.stage.recovery_required": "복구 확인 필요",
   "metadata.stage.running": "처리 중",
   "metadata.stage.partial": "일부 완료",
-  "metadata.readFailed": "편집 이력을 불러오지 못했습니다. 다시 시도해 주세요."
+  "metadata.readFailed": "편집 이력을 불러오지 못했습니다. 다시 시도해 주세요.",
+  "metadata.bulkEditor": "공통 음악 정보 편집",
+  "metadata.mixed": "여러 값",
+  "metadata.occurrences": "선택 항목 {count}개 · 실제 파일 {files}개",
+  "metadata.revision": "파일 revision",
+  "metadata.excluded": "명시적으로 제외한 대상",
+  "metadata.bulkFrames": "커버와 가사는 곡별로 편집하세요. 파일마다 항목 선택자가 다를 수 있습니다.",
+  "metadata.bulkLimit": "한 번에 최대 64곡까지 편집할 수 있습니다. 더 많으면 선택을 나눠 주세요.",
+  "metadata.exclude": "편집할 수 없는 곡 제외",
+  "metadata.libraryGroups": "편집할 보관함 그룹 하나를 선택하세요. 다른 그룹은 별도 편집을 위해 선택 상태로 남습니다.",
+  "metadata.editGroup": "보관함 {group} 편집 · {count}곡",
+  "metadata.retryReview": "실패한 곡 재시도 검토",
+  "metadata.retryIntro": "아직 저장되지 않은 실패 곡만 재시도합니다. 최신 값과 원래 변경 내용을 다시 확인하세요.",
+  "metadata.retryPrepareFailed": "최신 값을 확인하지 못했습니다. 검토를 닫고 작업을 새로고침한 뒤 다시 시도하세요.",
+  "metadata.retrySubmit": "이 실패 곡만 재시도"
 }

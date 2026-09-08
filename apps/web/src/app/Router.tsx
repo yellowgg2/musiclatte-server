@@ -265,6 +265,7 @@ export function Router({
               base={base}
               apiOrigin={apiOrigin}
               csrfToken={state.session.csrfToken}
+              bulkFields={state.capabilities?.features['metadata.write']?.bulkFields ?? []}
               canEdit={canEditMetadata}
               canLyrics={canLyrics}
               canHistory={canMetadataHistory}

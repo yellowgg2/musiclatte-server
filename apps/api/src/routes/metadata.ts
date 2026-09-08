@@ -133,6 +133,24 @@ export function registerMetadataRoutes(app: FastifyInstance, service: SessionSer
     },
     (request) => boundary(request, true, (m, v) => m.preview(v, request.body)),
   );
+  app.get<{ Params: { id: string; itemId: string } }>(
+    '/api/v1/metadata-jobs/:id/items/:itemId/intent',
+    {
+      attachValidation: true,
+      schema: {
+        params: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['id', 'itemId'],
+          properties: { id: schemas.params.properties.id, itemId: schemas.params.properties.id },
+        },
+        querystring: schemas.empty,
+        response: { 200: schemas.preview },
+      },
+    },
+    (request) =>
+      boundary(request, false, (m, v) => m.intent(v, request.params.id, request.params.itemId)),
+  );
   app.post<{ Body: MetadataJobRequest }>(
     '/api/v1/metadata-jobs',
     {

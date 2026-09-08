@@ -506,5 +506,19 @@
   "metadata.stage.recovery_required": "Recovery needed",
   "metadata.stage.running": "Running",
   "metadata.stage.partial": "Partially completed",
-  "metadata.readFailed": "Edit history could not be loaded. Try again."
+  "metadata.readFailed": "Edit history could not be loaded. Try again.",
+  "metadata.bulkEditor": "Edit shared music information",
+  "metadata.mixed": "Multiple values",
+  "metadata.occurrences": "{count} selected entries · {files} files",
+  "metadata.revision": "File revision",
+  "metadata.excluded": "Explicitly excluded",
+  "metadata.bulkFrames": "Edit cover and lyrics one song at a time. Their frame selectors can differ.",
+  "metadata.bulkLimit": "Edit up to 64 unique songs at a time. Split larger selections explicitly.",
+  "metadata.exclude": "Exclude unavailable songs",
+  "metadata.libraryGroups": "Choose one library group. Other groups remain selected for a separate edit.",
+  "metadata.editGroup": "Edit library {group} · {count} songs",
+  "metadata.retryReview": "Review failed songs for retry",
+  "metadata.retryIntro": "Only failed songs that have not been saved are retried. Review current values and the original change again.",
+  "metadata.retryPrepareFailed": "Current values could not be verified. Close this review, reload the job and try again.",
+  "metadata.retrySubmit": "Retry these failed songs"
 }

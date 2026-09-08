@@ -1,3 +1,4 @@
+import { MetadataRetry } from '../../metadata/components/MetadataRetry';
 import { useEffect, useState } from 'react';
 import type { MetadataJob } from '@musiclatte/contracts';
 import { Action } from '../../design/components/Action';
@@ -75,6 +76,17 @@ export function MetadataJobPage({ jobId }: { jobId: string }) {
             />
           )}
           {!job && !error && <p role="status">{copy['metadata.checking']}</p>}
+          {job && ui.canEdit && sync.client && (
+            <MetadataRetry
+              key={job.id}
+              job={job}
+              locale={ui.locale}
+              client={sync.client}
+              csrfToken={ui.csrfToken}
+              onSubmitted={ui.accept}
+              onUnauthenticated={ui.onUnauthenticated}
+            />
+          )}
           {job && <MetadataJobStatus job={job} locale={ui.locale} />}
         </>
       )}

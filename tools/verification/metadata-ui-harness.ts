@@ -1,7 +1,9 @@
+import { createBulkMetadataFixture } from './metadata-bulk-fixture.js';
 /** Source-only normal-entry UI harness; never imported by the product application. */
 import { createServer, type ViteDevServer } from 'vite';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type {
@@ -15,10 +17,12 @@ export async function startMetadataUIHarness({
   port,
   apiOrigin,
   controlFile,
+  scenario: initialScenario = 'single',
 }: {
   port: number;
   apiOrigin?: string;
   controlFile?: string;
+  scenario?: string;
 }): Promise<ViteDevServer> {
   if (apiOrigin && !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(apiOrigin).hostname))
     throw new Error('Real BFF must use an owned loopback tunnel');
@@ -43,7 +47,7 @@ export async function startMetadataUIHarness({
     duration: 180,
     isDir: false,
   });
-  const scenario = () => (controlFile ? readFileSync(controlFile, 'utf8').trim() : 'single');
+  const scenario = () => (controlFile ? readFileSync(controlFile, 'utf8').trim() : initialScenario);
   const json = (res: ServerResponse, value: unknown, status = 200) => {
     res.statusCode = status;
     res.setHeader('Content-Type', 'application/json');
@@ -62,6 +66,7 @@ export async function startMetadataUIHarness({
     }
     return Buffer.concat(chunks);
   };
+  const bulkFixture = createBulkMetadataFixture();
   const middleware = async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const path = url.pathname;
@@ -99,9 +104,28 @@ export async function startMetadataUIHarness({
         instanceId: 'metadata-fixture',
         revision: `single-${mode}`,
         features: Object.fromEntries(
-          ['music.browse', 'music.stream', 'metadata.write', 'metadata.lyrics.write'].map((key) => [
+          [
+            'music.browse',
+            'music.stream',
+            'metadata.write',
+            'metadata.lyrics.write',
+            ...(mode.startsWith('bulk') ? ['playlists.read'] : []),
+          ].map((key) => [
             key,
             {
+              ...(key === 'metadata.write' && mode.startsWith('bulk')
+                ? {
+                    bulkFields: [
+                      'title',
+                      'artist',
+                      'album',
+                      'albumArtist',
+                      'trackNumber',
+                      'year',
+                      'genre',
+                    ],
+                  }
+                : {}),
               supported: mode !== 'capability-unsupported',
               permission: mode === 'denied' ? 'denied' : 'allowed',
               availability: mode === 'worker-down' ? 'temporarily_unavailable' : 'available',
@@ -109,6 +133,7 @@ export async function startMetadataUIHarness({
           ]),
         ),
       });
+    if (mode.startsWith('bulk') && (await bulkFixture(req, res, mode))) return;
     if (path === '/api/v1/music/folders' && !url.searchParams.has('musicFolderId'))
       return json(res, { schemaVersion: 1, folders: [{ id: 'music', name: 'Studio collection' }] });
     if (path === '/api/v1/music/folders')
@@ -365,7 +390,9 @@ export async function startMetadataUIHarness({
     }
     return fail(res, 'not_found', 404);
   };
+  const cacheDir = mkdtempSync(join(tmpdir(), 'musiclatte-metadata-ui-'));
   const server = await createServer({
+    cacheDir,
     root: resolve('apps/web'),
     configFile: false,
     server: {
@@ -391,6 +418,14 @@ export async function startMetadataUIHarness({
           },
         ],
   });
+  const close = server.close.bind(server);
+  server.close = async () => {
+    try {
+      await close();
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  };
   await server.listen();
   return server;
 }
@@ -404,6 +439,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const controlFile = args.includes('--control-file') ? option('--control-file') : undefined;
   const server = await startMetadataUIHarness({
     port,
+    scenario: args.includes('--scenario') ? (option('--scenario') ?? 'single') : 'single',
     ...(apiOrigin ? { apiOrigin } : {}),
     ...(controlFile ? { controlFile } : {}),
   });

@@ -596,3 +596,36 @@ describe('metadata API', () => {
     expect(capabilities.features['metadata.curation'].supported).toBe(false);
   });
 });
+
+/** A job owner can review the original intent after a reload without exposing it anonymously. */
+it('should return an authenticated original retry intent and advertised bulk scalar fields', async () => {
+  const c = await makeSUT();
+  const snapshot = (await c.get()).json();
+  const patch = { year: { op: 'set', value: '2028' }, album: { op: 'clear' } };
+  const accepted = await c.post('metadata-jobs', {
+    operationId: operationId(90),
+    targets: [{ trackId: 'track-1', expectedRevision: snapshot.fileRevision }],
+    patch,
+  });
+  expect(accepted.statusCode, accepted.body).toBe(202);
+  const job = accepted.json().job;
+  const url = `/api/v1/metadata-jobs/${job.id}/items/${job.items[0].itemId}/intent`;
+  const intent = await c.get(url);
+  expect(intent.statusCode).toBe(200);
+  expect(intent.json()).toEqual({
+    targets: [{ trackId: 'track-1', expectedRevision: snapshot.fileRevision }],
+    patch,
+  });
+  expect((await c.app.inject({ url })).statusCode).toBe(401);
+  expect((await c.get(url.replace(job.items[0].itemId, 'unknown'))).statusCode).toBe(404);
+  const capability = (await c.get('/api/v1/capabilities')).json().features['metadata.write'];
+  expect(capability.bulkFields).toEqual([
+    'title',
+    'artist',
+    'album',
+    'albumArtist',
+    'trackNumber',
+    'year',
+    'genre',
+  ]);
+});

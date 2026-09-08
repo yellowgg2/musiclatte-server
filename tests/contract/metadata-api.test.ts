@@ -13,7 +13,7 @@ import { clientFeatures } from '../../apps/web/src/capabilities/client-features.
 
 describe('metadata API consumer-independent contract', () => {
   /** Future descriptors are optional; malformed known descriptors are never treated as permission. */
-  it('should preserve strict optional descriptors without enabling unfinished consumers', () => {
+  it('should preserve strict optional descriptors while exposing completed editors and keeping future consumers closed', () => {
     const feature = {
       supported: true,
       permission: 'allowed',
@@ -41,8 +41,8 @@ describe('metadata API consumer-independent contract', () => {
       expect(() =>
         decodeCapabilities({ ...body, features: { 'music.browse': { ...feature, ...change } } }),
       ).toThrow();
-    expect(clientFeatures['metadata.write']).toBe(false);
-    expect(clientFeatures['metadata.lyrics.write']).toBe(false);
+    expect(clientFeatures['metadata.write']).toBe(true);
+    expect(clientFeatures['metadata.lyrics.write']).toBe(true);
     expect(clientFeatures['metadata.curation']).toBe(false);
     expect(clientFeatures['automation.tokens']).toBe(false);
   });

@@ -761,3 +761,90 @@ export function decodeMetadataChanges(value: unknown): MetadataChangesPage {
     throw new Error('Invalid metadata response');
   return { schemaVersion: 1, changes, hasMore: v.hasMore, nextCursor: boundedText(v.nextCursor) };
 }
+
+/** Original, actor-scoped intent for a fresh preview before a write retry. */
+export function decodeMetadataIntent(value: unknown): MetadataPreviewRequest {
+  const v = record(value, ['targets', 'patch']);
+  const targets = list(
+    v.targets,
+    (entry) => {
+      const item = record(entry, ['trackId', 'expectedRevision']);
+      return {
+        trackId: trackIdentifier(item.trackId),
+        expectedRevision: identifier(item.expectedRevision),
+      };
+    },
+    100,
+  );
+  if (!targets.length || new Set(targets.map((item) => item.trackId)).size !== targets.length)
+    throw new Error('Invalid metadata response');
+  if (!v.patch || typeof v.patch !== 'object' || Array.isArray(v.patch))
+    throw new Error('Invalid metadata response');
+  const patch: MetadataPatch = {};
+  const entries = Object.entries(v.patch);
+  if (!entries.length) throw new Error('Invalid metadata response');
+  for (const [key, raw] of entries) {
+    const field = member(key, metadataFields);
+    if (!raw || typeof raw !== 'object' || !('op' in raw))
+      throw new Error('Invalid metadata response');
+    const op = member(raw.op, ['set', 'clear'] as const);
+    if (field === 'cover') {
+      const change = record(
+        raw,
+        op === 'set' ? ['op', 'selector', 'uploadId'] : ['op', 'selector'],
+      );
+      const selector = change.selector;
+      if (
+        selector &&
+        typeof selector === 'object' &&
+        'kind' in selector &&
+        selector.kind === 'new' &&
+        op === 'set'
+      ) {
+        record(selector, ['kind']);
+        patch.cover = { op, selector: { kind: 'new' }, uploadId: identifier(change.uploadId) };
+      } else {
+        const frame = record(selector, ['kind', 'description']);
+        member(frame.kind, ['front']);
+        const target = {
+          kind: 'front' as const,
+          description: boundedText(frame.description, 256, true),
+        };
+        patch.cover =
+          op === 'set'
+            ? { op, selector: target, uploadId: identifier(change.uploadId) }
+            : { op, selector: target };
+      }
+    } else if (field === 'lyrics') {
+      const change = record(raw, op === 'set' ? ['op', 'selector', 'text'] : ['op', 'selector']);
+      const frame = record(change.selector, ['language', 'description']);
+      if (typeof frame.language !== 'string' || !/^[a-z]{3}$/.test(frame.language))
+        throw new Error('Invalid metadata response');
+      const selector = {
+        language: frame.language,
+        description: boundedText(frame.description, 256, true),
+      };
+      patch.lyrics =
+        op === 'set' ? { op, selector, text: boundedText(change.text, 100000) } : { op, selector };
+    } else {
+      const change = record(raw, op === 'set' ? ['op', 'value'] : ['op']);
+      if (op === 'clear') {
+        Object.assign(patch, { [field]: { op } });
+        continue;
+      }
+      let result: string | string[];
+      if (['artist', 'albumArtist', 'genre'].includes(field)) {
+        result = list(change.value, (item) => boundedText(item), 32);
+        if (!result.length) throw new Error('Invalid metadata response');
+      } else {
+        result = boundedText(change.value, field === 'trackNumber' ? 16 : 4096);
+        if (field === 'year' && !/^\d{4}$/.test(result))
+          throw new Error('Invalid metadata response');
+        if (field === 'trackNumber' && !/^[1-9]\d*(\/[1-9]\d*)?$/.test(result))
+          throw new Error('Invalid metadata response');
+      }
+      Object.assign(patch, { [field]: { op, value: result } });
+    }
+  }
+  return { targets, patch };
+}

@@ -31,6 +31,8 @@
   font-size: var(--text-title);
 }
 .content {
+  flex: 1;
+  align-content: start;
   overflow: auto;
   overscroll-behavior: contain;
   min-height: 0;

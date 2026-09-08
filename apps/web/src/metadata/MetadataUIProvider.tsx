@@ -13,6 +13,8 @@ interface MetadataUIContext {
   canEdit: boolean;
   canLyrics: boolean;
   canHistory: boolean;
+  bulkFields?: readonly string[];
+  accept(job: MetadataJob): void;
   open(snapshot: MetadataSnapshot): void;
   onUnauthenticated(): void;
 }
@@ -25,12 +27,13 @@ const Context = createContext<MetadataUIContext>({
   canLyrics: false,
   canHistory: false,
   open: () => undefined,
+  accept: () => undefined,
   onUnauthenticated: () => undefined,
 });
 export function MetadataUIProvider({
   children,
   ...options
-}: Omit<MetadataUIContext, 'open'> & { children: ReactNode }) {
+}: Omit<MetadataUIContext, 'open' | 'accept'> & { children: ReactNode }) {
   const sync = useMetadataSync();
   const [editor, setEditor] = useState<MetadataSnapshot>();
   const [accepted, setAccepted] = useState<MetadataJob>();
@@ -52,7 +55,7 @@ export function MetadataUIProvider({
   }, [options.canEdit]);
   const copy = messages[options.locale];
   return (
-    <Context.Provider value={{ ...options, open: setEditor }}>
+    <Context.Provider value={{ ...options, open: setEditor, accept: submitted }}>
       {children}
       {accepted && (
         <aside className={styles.notice} role="status">
