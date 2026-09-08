@@ -43,3 +43,14 @@ volume. Cleanup used a guarded transaction and foreign-key validation without st
 Authenticated imports GET now returns 200, zero jobs, one allowed library and a valid web response
 shape. Existing media links and music files remain; this cleanup removes import/recent history only.
 All acceptance services remain healthy and the existing gonic demo remains running.
+
+## Latest same-port update — 2026-09-09
+
+Server source is now `ebd503e`; Compose working directory is
+`/home/yellowgg2/.local/share/musiclatte/p5-acceptance-20260908/source-ebd503e`.
+Use the existing four overlays and private `.env` there for subsequent operations. Gateway remains
+`http://192.168.129.119:18517`; five services healthy, schema14 and preserved session/data verified.
+Account-based imports, atomic replacement, scan settings and playlist width improvements are included.
+Automatic scanning defaults off with360-minute interval; administrator permission is required.
+Pre-upgrade private snapshots and old source directories remain outside build contexts.
+See `../media-scan.md` and `../account-imports.md` for verification and backup records.

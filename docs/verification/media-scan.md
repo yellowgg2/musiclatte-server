@@ -29,3 +29,15 @@ No applicable new central Rulebook lesson; postflight skipped(no_new_lesson), no
 Final visual/zoom/reflow/VoiceOver acceptance remains pending:
 `<Obsidian project>/specific-plan/ui-acceptance.md`: SCAN-UA-001, SCAN-UA-002, PLAYLIST-UA-001.
 Automated browser evidence is not physical accessibility or user acceptance.
+
+## Devserver deployment
+
+Source `ebd503e` pushed to origin/main and deployed in `source-ebd503e` under the retained acceptance
+root, using the same project/private configuration and all four Compose overlays. Consistent
+pre-upgrade snapshot verified at `backup-before-ebd503e`. All five services healthy; LAN18517 and
+loopback18516/18515 unchanged, separate gonic-demo4747 uninterrupted. Schema14 quick_check=ok.
+
+Real administrator session: GET scan/schedule200 (disabled,360), GET scan200, PUT disabled/360 saved,
+POST manual scan accepted by the actual upstream. Temporary verification session revoked204.
+Existing listener token still reads imports200 and is denied scan settings403. Gateway root and
+live/ready endpoints200. Automatic scheduling remains off, with the requested six-hour default.
