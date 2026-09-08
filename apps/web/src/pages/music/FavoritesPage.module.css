@@ -1,8 +1,8 @@
 .page {
-  max-width: 68rem;
+  width: 100%;
+  min-width: 0;
   display: grid;
   gap: var(--space-5);
-  margin-inline: auto;
 }
 .topline,
 .headingActions {
@@ -30,7 +30,7 @@
   overflow-wrap: anywhere;
 }
 .heading h1 {
-  font-size: var(--text-display);
+  font-size: 2rem;
   letter-spacing: -0.04em;
   line-height: 1.2;
 }

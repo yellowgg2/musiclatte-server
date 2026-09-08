@@ -41,3 +41,10 @@ Real administrator session: GET scan/schedule200 (disabled,360), GET scan200, PU
 POST manual scan accepted by the actual upstream. Temporary verification session revoked204.
 Existing listener token still reads imports200 and is denied scan settings403. Gateway root and
 live/ready endpoints200. Automatic scheduling remains off, with the requested six-hour default.
+
+## Related collection-page alignment
+
+Favorites and recent downloads had retained their own68rem centered limit. Both now use100% of the
+shell content width with min-width0 and2rem headings, matching Music and Playlists. Existing list,
+selection, filter and playback behavior is unchanged. Focused favorites-ui/recent-ui tests passed17/17;
+typecheck, build and format:check passed. Final visual acceptance includes these two related pages.
