@@ -20,7 +20,7 @@ const result: MusicSearchResult = {
   artist: [{ id: 'artist/1', name: 'Daylight', album: [] }],
   album: [{ id: 'album/1', name: 'Small hours', song: [] }],
 };
-function createTestContext() {
+function createTestContext(libraries = [{ id: 'root & 1', name: 'My music' }]) {
   let signedIn = true;
   let failure = '';
   let pending: ((value: Response) => void) | undefined;
@@ -90,7 +90,7 @@ function createTestContext() {
                 ],
               },
             }
-          : { schemaVersion: 1, folders: [{ id: 'root & 1', name: 'My music' }] },
+          : { schemaVersion: 1, folders: libraries },
       );
     if (url.pathname.includes('/folders/'))
       return Response.json({
@@ -170,7 +170,8 @@ describe('library UI', () => {
       expect(context.calls.some((c) => c.url.pathname.endsWith('/capabilities'))).toBe(true),
     );
     expect(screen.queryByRole('heading', { name: 'Music' })).not.toBeNull();
-    await user.click(await screen.findByRole('link', { name: 'My music' }));
+    expect(await screen.findByRole('link', { name: 'Daylight folder' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'My music' })).toBeNull();
     await user.click(await screen.findByRole('link', { name: 'Daylight folder' }));
     expect(await screen.findAllByText(song.title)).toBeTruthy();
     expect(window.location.pathname).toBe('/music/folders/dir%2F%ED%95%9C%EA%B8%80%3F%26');
@@ -181,6 +182,64 @@ describe('library UI', () => {
     expect(call.url.search).toBe('');
     expect(call.init?.credentials).toBe('include');
     expect(call.init?.signal).toBeTruthy();
+  });
+  /** A single library opens inline, preserving scope, history and direct reloads. */
+  it('should open the sole library without adding a history entry', async () => {
+    const { user, context, view } = makeSUT('/latte/music', undefined, '/latte/');
+    const initialHistory = window.history.length;
+    const folder = await screen.findByRole('link', { name: 'Daylight folder' });
+    expect(window.location.pathname + window.location.search).toBe('/latte/music');
+    expect(window.history.length).toBe(initialHistory);
+    expect(folder.getAttribute('href')).toContain('musicFolderId=root');
+    await user.click(folder);
+    await screen.findByRole('heading', { name: 'Daylight folder' });
+    await act(async () => window.history.back());
+    await screen.findByRole('link', { name: 'Daylight folder' });
+    expect(window.location.pathname + window.location.search).toBe('/latte/music');
+    view.unmount();
+    makeSUT('/latte/music', context, '/latte/');
+    expect(await screen.findByRole('link', { name: 'Daylight folder' })).toBeTruthy();
+  });
+  /** Multiple libraries remain explicitly selectable, and an empty library list stays empty. */
+  it('should preserve library selection when more than one library exists', async () => {
+    const { user } = makeSUT(
+      '/music',
+      createTestContext([
+        { id: 'root & 1', name: 'My music' },
+        { id: 'second', name: 'Other music' },
+      ]),
+    );
+    expect(await screen.findByRole('link', { name: 'Other music' })).toBeTruthy();
+    await user.click(screen.getByRole('link', { name: 'My music' }));
+    expect(await screen.findByRole('link', { name: 'Daylight folder' })).toBeTruthy();
+    expect(window.location.search).toContain('musicFolderId=root');
+  });
+  /** No library must not trigger a fabricated scoped request. */
+  it('should keep an empty library response recoverable', async () => {
+    const { context } = makeSUT('/music', createTestContext([]));
+    await screen.findByText('No music here yet');
+    expect(context.calls.some(({ url }) => url.searchParams.has('musicFolderId'))).toBe(false);
+  });
+  /** Implicit selection also scopes search, and a failed index read can be retried in place. */
+  it('should retry the sole library and retain its scope when searching', async () => {
+    const context = createTestContext();
+    const originalFetch = context.fetcher;
+    let failIndexes = true;
+    context.fetcher = async (input, init) => {
+      if (failIndexes && String(input).includes('musicFolderId=')) {
+        return Response.json({ error: { code: 'upstream_unavailable' } }, { status: 503 });
+      }
+      return originalFetch(input, init);
+    };
+    const { user } = makeSUT('/music', context);
+    expect((await screen.findByRole('alert')).textContent).toContain('Cannot reach the server');
+    expect(window.location.pathname + window.location.search).toBe('/music');
+    failIndexes = false;
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByRole('link', { name: 'Daylight folder' });
+    await user.type(screen.getByLabelText('Search music'), 'Daylight{Enter}');
+    await screen.findByRole('heading', { name: 'Search results' });
+    expect(new URLSearchParams(window.location.search).get('musicFolderId')).toBe('root & 1');
   });
   /** URL query identity wins even when upstream ignores abort and responds out of order. */
   it('should discard a late search response and restore the previous query on back', async () => {

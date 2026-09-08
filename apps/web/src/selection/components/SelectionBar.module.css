@@ -102,6 +102,11 @@
 .error {
   color: var(--color-error);
 }
+@media (max-width: 80rem) and (min-width: 48.001rem) {
+  .bar {
+    bottom: 11rem;
+  }
+}
 @media (max-width: 48rem) {
   .bar {
     position: fixed;

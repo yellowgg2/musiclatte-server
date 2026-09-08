@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentType } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -256,6 +256,19 @@ describe('persistent player UI', () => {
     expect(screen.getAllByRole('slider', { name: 'Volume' }).length).toBeGreaterThan(0);
     await user.click(screen.getAllByRole('button', { name: 'Show queue' })[0]!);
     expect(screen.getByRole('region', { name: 'Queue' }).getAttribute('tabindex')).toBe('0');
+  });
+
+  /** A paused seek immediately updates the visible time and slider before delayed media events. */
+  it('should reflect the requested seek position while paused', async () => {
+    const { audio, user } = await makeSUT();
+    await user.click(await screen.findByRole('button', { name: 'Play First patient song' }));
+    act(() => audio.emit('playing'));
+    await user.click(screen.getAllByRole('button', { name: 'Pause First patient song' })[0]!);
+    const seek = screen.getAllByRole('slider', { name: 'Seek' })[0] as HTMLInputElement;
+    fireEvent.change(seek, { target: { value: '42' } });
+    expect(audio.currentTime).toBe(42);
+    expect(seek.value).toBe('42');
+    expect(within(seek.parentElement!).getByText('0:42')).toBeTruthy();
   });
 
   /** The mobile sheet is a named modal and Escape closes it back to its opener. */

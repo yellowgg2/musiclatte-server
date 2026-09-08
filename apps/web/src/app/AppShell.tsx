@@ -1,4 +1,3 @@
-import { useMetadataUI } from '../metadata/MetadataUIProvider';
 import type { ReactNode } from 'react';
 import type { CapabilitiesResponse } from '@musiclatte/contracts';
 import { availableEntries } from '../capabilities/client-features';
@@ -18,7 +17,6 @@ export function AppShell({
   player?: ReactNode;
 }) {
   const copy = messages[locale];
-  const metadata = useMetadataUI();
   // Both direct route guards and the navigation registry stay closed until a consumer exists.
   const entries = availableEntries(capabilities);
   return (
@@ -26,46 +24,97 @@ export function AppShell({
       <a className={styles.skip} href="#main">
         {copy['shell.skip']}
       </a>
-      <header className={styles.shellBrand}>
-        <span className={styles.brand}>
-          <img
-            src={`${base}icons/musiclatte-192.png`}
-            width="32"
-            height="32"
-            alt=""
-            className={styles.brandIcon}
-          />
-          Musiclatte
-        </span>
-      </header>
-      <nav aria-label={copy['shell.navigation']} className={styles.navigation}>
-        {entries.includes('music.browse') && (
-          <a
-            href={`${base}music`}
-            aria-current={window.location.pathname.startsWith(`${base}music`) ? 'page' : undefined}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="22"
-              height="22"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              aria-hidden="true"
+      <div className={styles.sidebar}>
+        <header className={styles.shellBrand}>
+          <span className={styles.brand}>
+            <img
+              src={`${base}icons/musiclatte-192.png`}
+              width="32"
+              height="32"
+              alt=""
+              className={styles.brandIcon}
+            />
+            Musiclatte
+          </span>
+        </header>
+        <nav aria-label={copy['shell.navigation']} className={styles.navigation}>
+          {entries.includes('music.browse') && (
+            <a
+              href={`${base}music`}
+              aria-current={
+                window.location.pathname.startsWith(`${base}music`) ? 'page' : undefined
+              }
             >
-              <path d="M9 17V5l11-2v12M9 9l11-2" />
-              <ellipse cx="6" cy="18" rx="3" ry="2" />
-              <ellipse cx="17" cy="16" rx="3" ry="2" />
-            </svg>
-            {copy['music.title']}
-          </a>
-        )}
+              <svg
+                viewBox="0 0 24 24"
+                width="22"
+                height="22"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                aria-hidden="true"
+              >
+                <path d="M9 17V5l11-2v12M9 9l11-2" />
+                <ellipse cx="6" cy="18" rx="3" ry="2" />
+                <ellipse cx="17" cy="16" rx="3" ry="2" />
+              </svg>
+              {copy['music.title']}
+            </a>
+          )}
 
-        {entries.includes('playlists.read') && (
+          {entries.includes('playlists.read') && (
+            <a
+              href={`${base}playlists`}
+              aria-current={
+                window.location.pathname.startsWith(`${base}playlists`) ? 'page' : undefined
+              }
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="22"
+                height="22"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                aria-hidden="true"
+              >
+                <path d="M4 6h11M4 12h11M4 18h7" />
+                <path d="M18 10v8M18 10l4-1v7" />
+                <ellipse cx="15.5" cy="19" rx="2.5" ry="1.8" />
+                <ellipse cx="19.5" cy="17" rx="2.5" ry="1.8" />
+              </svg>
+              {copy['playlists.title']}
+            </a>
+          )}
+
+          {entries.includes('imports.youtube') && (
+            <a
+              href={`${base}imports`}
+              aria-current={
+                window.location.pathname === `${base}imports` ||
+                window.location.pathname === `${base}imports/`
+                  ? 'page'
+                  : undefined
+              }
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="22"
+                height="22"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                aria-hidden="true"
+              >
+                <path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5" />
+              </svg>
+              {copy['imports.nav']}
+            </a>
+          )}
           <a
-            href={`${base}playlists`}
+            href={`${base}settings`}
             aria-current={
-              window.location.pathname.startsWith(`${base}playlists`) ? 'page' : undefined
+              window.location.pathname.startsWith(`${base}settings`) ? 'page' : undefined
             }
           >
             <svg
@@ -77,65 +126,15 @@ export function AppShell({
               strokeWidth="1.7"
               aria-hidden="true"
             >
-              <path d="M4 6h11M4 12h11M4 18h7" />
-              <path d="M18 10v8M18 10l4-1v7" />
-              <ellipse cx="15.5" cy="19" rx="2.5" ry="1.8" />
-              <ellipse cx="19.5" cy="17" rx="2.5" ry="1.8" />
+              <path d="M4 7h16M4 17h16" />
+              <circle cx="9" cy="7" r="3" fill="var(--color-selection)" />
+              <circle cx="15" cy="17" r="3" fill="var(--color-selection)" />
             </svg>
-            {copy['playlists.title']}
+            {copy['shell.settings']}
           </a>
-        )}
-
-        {entries.includes('imports.youtube') && (
-          <a
-            href={`${base}imports`}
-            aria-current={
-              window.location.pathname === `${base}imports` ||
-              window.location.pathname === `${base}imports/`
-                ? 'page'
-                : undefined
-            }
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="22"
-              height="22"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              aria-hidden="true"
-            >
-              <path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5" />
-            </svg>
-            {copy['imports.nav']}
-          </a>
-        )}
-        <a
-          href={`${base}settings`}
-          aria-current={window.location.pathname.startsWith(`${base}settings`) ? 'page' : undefined}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="22"
-            height="22"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            aria-hidden="true"
-          >
-            <path d="M4 7h16M4 17h16" />
-            <circle cx="9" cy="7" r="3" fill="var(--color-selection)" />
-            <circle cx="15" cy="17" r="3" fill="var(--color-selection)" />
-          </svg>
-          {copy['shell.settings']}
-        </a>
-      </nav>
+        </nav>
+      </div>
       <main id="main" tabIndex={-1} className={styles.content}>
-        {metadata.canHistory && window.location.pathname.startsWith(`${base}music`) && (
-          <div className={styles.metadataHistory}>
-            <a href={`${base}metadata-jobs`}>{copy['metadata.history']}</a>
-          </div>
-        )}
         {children}
       </main>
       {player}

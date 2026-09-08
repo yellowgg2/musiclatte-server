@@ -1,3 +1,4 @@
+import { useMetadataUI } from '../../metadata/MetadataUIProvider';
 import { MetadataAction } from '../../metadata/components/MetadataAction';
 import { navigateMusic } from '../../music/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -51,6 +52,7 @@ export function MusicPage({
   csrfToken: string;
 }) {
   const player = usePlayer();
+  const metadataUI = useMetadataUI();
   const metadata = useMetadataSync();
   const selection = useSelection();
   const route = useMemo(() => musicRoute(location, base)!, [location, base]);
@@ -75,6 +77,7 @@ export function MusicPage({
   const [state, setState] = useState<{
     key: string;
     data?: LibraryData;
+    libraryId?: string;
     error?: ApiErrorCode;
     loading: boolean;
   }>({ key: location, loading: true });
@@ -95,12 +98,31 @@ export function MusicPage({
     }
     setState((previous) => ({
       key: location,
-      ...(previous.key === location && previous.data ? { data: previous.data } : {}),
+      ...(previous.key === location && previous.data
+        ? { data: previous.data, ...(previous.libraryId ? { libraryId: previous.libraryId } : {}) }
+        : {}),
       loading: previous.key !== location || !previous.data,
     }));
-    void client.read(route, controller.signal).then(
-      (data) => {
-        if (current) setState({ key: location, data, loading: false });
+    void (async () => {
+      const data = await client.read(route, controller.signal);
+      if (
+        route.kind === 'folders' &&
+        !route.query.has('musicFolderId') &&
+        data.kind === 'folders' &&
+        data.folders.length === 1
+      ) {
+        const libraryId = data.folders[0]!.id;
+        const query = new URLSearchParams(route.query);
+        query.set('musicFolderId', libraryId);
+        return {
+          data: await client.read({ ...route, query }, controller.signal),
+          libraryId,
+        };
+      }
+      return { data };
+    })().then(
+      (result) => {
+        if (current) setState({ key: location, ...result, loading: false });
       },
       (error) => {
         if (!current) return;
@@ -130,6 +152,7 @@ export function MusicPage({
   const error = state.key === location ? state.error : undefined;
   const loading = state.key !== location || state.loading;
   const scope = scopeQuery(route.query);
+  if (state.key === location && state.libraryId) scope.set('musicFolderId', state.libraryId);
   const title =
     data?.kind === 'folder'
       ? data.directory.name
@@ -238,62 +261,74 @@ export function MusicPage({
   return (
     <div className={styles.page}>
       <div className={styles.topline}>
-        <p className={styles.eyebrow}>{copy['music.eyebrow']}</p>
-        <LanguagePicker locale={locale} onChange={onLocale} />
-      </div>
-      <nav className={styles.breadcrumb} aria-label={copy['music.breadcrumb']}>
-        <a href={`${base}music`}>{copy['music.all']}</a>
-        {scope.size > 0 && (
-          <>
-            <span aria-hidden="true">/</span>
-            <a href={link('folders')}>{copy['music.selectedLibrary']}</a>
-          </>
-        )}
-        {data?.kind === 'folder' && data.directory.parent && (
-          <>
-            <span aria-hidden="true">/</span>
-            <a href={link('folder', data.directory.parent)}>{copy['music.parent']}</a>
-          </>
-        )}
-      </nav>
-      <header className={styles.heading}>
-        <h1 tabIndex={-1} data-page-heading>
-          {title}
-        </h1>
-        <p>
-          {route.kind === 'search' ? `${copy['music.query']}: ${q}` : copy['music.description']}
-        </p>
-      </header>
-      {canRecent && (
-        <a className={styles.favoriteLink} href={`${base}music/recent`}>
-          {copy['recent.title']}
-        </a>
-      )}
-      {canFavorites && (
-        <a className={styles.favoriteLink} href={`${base}music/favorites`}>
-          <span aria-hidden="true">★</span> {copy['favorites.title']}
-        </a>
-      )}
-      {canRandom && (
-        <div className={styles.random}>
-          <Action
-            busy={player.state.randomStatus === 'loading'}
-            onClick={() => void player.playRandom()}
-          >
-            {
-              copy[
-                player.state.randomStatus === 'loading' ? 'player.random.loading' : 'player.random'
-              ]
-            }
-          </Action>
-          {player.state.randomStatus === 'empty' && (
-            <p role="status">{copy['player.random.empty']}</p>
-          )}
-          {player.state.randomStatus === 'error' && (
-            <p role="alert">{copy['player.random.error']}</p>
-          )}
+        <header className={styles.heading}>
+          <h1 tabIndex={-1} data-page-heading>
+            {title}
+          </h1>
+        </header>
+        <div className={styles.utilities}>
+          {metadataUI.canHistory && <a href={`${base}metadata-jobs`}>{copy['metadata.history']}</a>}
+          <LanguagePicker locale={locale} onChange={onLocale} />
         </div>
+      </div>
+      {route.kind !== 'folders' && (
+        <nav className={styles.breadcrumb} aria-label={copy['music.breadcrumb']}>
+          <a href={`${base}music`}>{copy['music.all']}</a>
+          {scope.size > 0 && (
+            <>
+              <span aria-hidden="true">/</span>
+              <a href={link('folders')}>{copy['music.selectedLibrary']}</a>
+            </>
+          )}
+          {data?.kind === 'folder' && data.directory.parent && (
+            <>
+              <span aria-hidden="true">/</span>
+              <a href={link('folder', data.directory.parent)}>{copy['music.parent']}</a>
+            </>
+          )}
+        </nav>
       )}
+      <div className={styles.toolbar}>
+        <nav className={styles.views} aria-label={copy['music.title']}>
+          {route.kind === 'folders' && (
+            <a className={styles.favoriteLink} href={`${base}music`} aria-current="page">
+              {copy['music.all']}
+            </a>
+          )}
+          {canRecent && (
+            <a className={styles.favoriteLink} href={`${base}music/recent`}>
+              {copy['recent.title']}
+            </a>
+          )}
+          {canFavorites && (
+            <a className={styles.favoriteLink} href={`${base}music/favorites`}>
+              <span aria-hidden="true">★</span> {copy['favorites.title']}
+            </a>
+          )}
+        </nav>
+        {canRandom && (
+          <div className={styles.random}>
+            <Action
+              busy={player.state.randomStatus === 'loading'}
+              onClick={() => void player.playRandom()}
+            >
+              {
+                copy[
+                  player.state.randomStatus === 'loading'
+                    ? 'player.random.loading'
+                    : 'player.random'
+                ]
+              }
+            </Action>
+            {player.state.randomStatus === 'empty' && (
+              <p role="status">{copy['player.random.empty']}</p>
+            )}
+            {player.state.randomStatus === 'error' && (
+              <p role="alert">{copy['player.random.error']}</p>
+            )}
+          </div>
+        )}
+      </div>
       <form
         className={styles.search}
         role="search"
@@ -303,7 +338,7 @@ export function MusicPage({
             setInvalid(true);
             return;
           }
-          const query = scopeQuery(route.query);
+          const query = new URLSearchParams(scope);
           query.set('q', draft.trim());
           navigateMusic(musicHref(base, 'search', undefined, query));
         }}

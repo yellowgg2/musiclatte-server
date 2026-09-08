@@ -27,34 +27,36 @@ export function DesktopPlayer({ locale }: { locale: Locale }) {
           <small>{state.current.artist || copy['music.unknownArtist']}</small>
         </span>
       </div>
-      <div className={styles.transport}>
-        <IconAction label={copy['player.previous']} onClick={player.previous}>
-          ◀|
-        </IconAction>
-        <IconAction
-          label={playLabel(locale, state.current.title, state.status)}
-          onClick={state.status === 'playing' ? player.pause : player.resume}
-        >
-          {state.status === 'playing' ? 'Ⅱ' : '▶'}
-        </IconAction>
-        <IconAction label={copy['player.next']} onClick={player.next}>
-          |▶
-        </IconAction>
+      <div className={styles.playback}>
+        <div className={styles.transport}>
+          <IconAction label={copy['player.previous']} onClick={player.previous}>
+            ◀|
+          </IconAction>
+          <IconAction
+            label={playLabel(locale, state.current.title, state.status)}
+            onClick={state.status === 'playing' ? player.pause : player.resume}
+          >
+            {state.status === 'playing' ? 'Ⅱ' : '▶'}
+          </IconAction>
+          <IconAction label={copy['player.next']} onClick={player.next}>
+            |▶
+          </IconAction>
+        </div>
+        <label className={styles.seek}>
+          <span>{copy['player.seek']}</span>
+          <span aria-hidden="true">{formatTime(state.currentTime)}</span>
+          <input
+            aria-label={copy['player.seek']}
+            type="range"
+            min="0"
+            max={Math.max(1, state.duration)}
+            step="1"
+            value={Math.min(state.currentTime, Math.max(1, state.duration))}
+            onChange={(event) => player.seek(Number(event.currentTarget.value))}
+          />
+          <span aria-hidden="true">{formatTime(state.duration)}</span>
+        </label>
       </div>
-      <label className={styles.seek}>
-        <span>{copy['player.seek']}</span>
-        <span aria-hidden="true">{formatTime(state.currentTime)}</span>
-        <input
-          aria-label={copy['player.seek']}
-          type="range"
-          min="0"
-          max={Math.max(1, state.duration)}
-          step="1"
-          value={Math.min(state.currentTime, Math.max(1, state.duration))}
-          onChange={(event) => player.seek(Number(event.currentTarget.value))}
-        />
-        <span aria-hidden="true">{formatTime(state.duration)}</span>
-      </label>
       <div className={styles.options}>
         <FavoriteAction song={state.current} locale={locale} compact />
         <IconAction

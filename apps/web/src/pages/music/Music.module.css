@@ -1,8 +1,6 @@
 .page {
-  max-width: 68rem;
   display: grid;
   gap: var(--space-5);
-  margin-inline: auto;
 }
 .topline {
   display: flex;
@@ -34,7 +32,7 @@
   overflow-wrap: anywhere;
 }
 .heading h1 {
-  font-size: var(--text-display);
+  font-size: 2rem;
   letter-spacing: -0.04em;
   line-height: 1.2;
 }
@@ -145,4 +143,28 @@
   .eyebrow {
     display: none;
   }
+}
+
+.utilities,
+.toolbar,
+.views {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.utilities {
+  gap: var(--space-4);
+  font-size: var(--text-small);
+}
+.toolbar {
+  justify-content: space-between;
+}
+.views .favoriteLink {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  text-decoration: none;
+}
+.views a[aria-current] {
+  background: var(--color-selection);
 }

@@ -210,6 +210,7 @@ export function PlayerProvider({
     (seconds: number) => {
       const duration = Number.isFinite(audio.duration) ? audio.duration : stateRef.current.duration;
       audio.currentTime = Math.min(Math.max(0, seconds), duration || Number.MAX_SAFE_INTEGER);
+      commit({ type: 'time', currentTime: audio.currentTime, duration });
       commit({ type: 'seeking' });
     },
     [audio, commit],

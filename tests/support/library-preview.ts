@@ -44,17 +44,28 @@ const upstream = createServer((request, response) => {
       return;
     }
     const body = operation === 'stream' ? syntheticAudioFixture : syntheticCoverFixture;
-    response.writeHead(200, {
+    const range = request.headers.range?.match(/^bytes=(\d+)-(\d*)$/);
+    const start = range ? Number(range[1]) : 0;
+    const end = range?.[2] ? Math.min(Number(range[2]), body.length - 1) : body.length - 1;
+    if (range && (start >= body.length || start > end)) {
+      response.writeHead(416, { 'content-range': `bytes */${body.length}` });
+      response.end();
+      return;
+    }
+    const payload = range ? body.subarray(start, end + 1) : body;
+    response.writeHead(range ? 206 : 200, {
+      'accept-ranges': 'bytes',
+      ...(range ? { 'content-range': `bytes ${start}-${end}/${body.length}` } : {}),
       'content-type':
         operation === 'stream'
           ? syntheticMediaMetadata.audioContentType
           : syntheticMediaMetadata.coverContentType,
-      'content-length': String(body.length),
+      'content-length': String(payload.length),
       etag: syntheticMediaMetadata.etag,
       'last-modified': syntheticMediaMetadata.lastModified,
     });
     if (request.method === 'HEAD') response.end();
-    else response.end(body);
+    else response.end(payload);
     return;
   }
   const error = !valid

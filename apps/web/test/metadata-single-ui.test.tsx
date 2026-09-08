@@ -425,7 +425,13 @@ it('should navigate from the normal music entry after login', async () => {
                 ],
               },
             }
-          : { schemaVersion: 1, folders: [{ id: 'music', name: 'Studio collection' }] },
+          : {
+              schemaVersion: 1,
+              folders: [
+                { id: 'music', name: 'Studio collection' },
+                { id: 'archive', name: 'Archive collection' },
+              ],
+            },
       );
     throw new Error('Unexpected fixture route');
   };
