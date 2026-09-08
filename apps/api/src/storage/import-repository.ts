@@ -31,6 +31,7 @@ export interface ImportItem {
 }
 
 export interface ImportJob {
+  accountDirectory?: string;
   id: string;
   identityKey: string;
   libraryId: string;
@@ -254,6 +255,9 @@ export function createImportRepository(options: {
     )
       throw new Error('Storage unavailable');
     return {
+      ...(row.account_directory === null
+        ? {}
+        : { accountDirectory: validateRelativeKey(String(row.account_directory)) }),
       id: row.id,
       identityKey: row.identity_key,
       libraryId: row.library_id,
@@ -268,6 +272,7 @@ export function createImportRepository(options: {
   };
 
   type JobInput = {
+    accountDirectory?: string;
     id: string;
     identityKey: string;
     libraryId: string;
@@ -291,6 +296,27 @@ export function createImportRepository(options: {
       new Set(input.items.map((item) => item.id)).size !== input.items.length
     )
       throw new Error('Invalid import job');
+    if (
+      input.accountDirectory !== undefined &&
+      validateRelativeKey(input.accountDirectory).includes('/')
+    )
+      throw new Error('Invalid import account');
+    if (input.accountDirectory !== undefined) {
+      const owners = db
+        .prepare(
+          'SELECT DISTINCT account_directory,identity_key FROM import_jobs WHERE library_id=? AND account_directory IS NOT NULL',
+        )
+        .all(input.libraryId);
+      if (
+        owners.some(
+          (owner) =>
+            String(owner.account_directory).normalize('NFC').toLowerCase() ===
+              input.accountDirectory!.normalize('NFC').toLowerCase() &&
+            owner.identity_key !== input.identityKey,
+        )
+      )
+        throw new Error('Import account directory conflict');
+    }
     const createdAt = now();
     const existing = db
       .prepare(
@@ -305,7 +331,7 @@ export function createImportRepository(options: {
       };
     }
     db.prepare(
-      'INSERT INTO import_jobs(id,identity_key,library_id,operation_id_hash,request_hash,retry_of_job_id,created_at,cancel_requested_at) VALUES(?,?,?,?,?,?,?,NULL)',
+      'INSERT INTO import_jobs(id,identity_key,library_id,operation_id_hash,request_hash,retry_of_job_id,created_at,cancel_requested_at,account_directory) VALUES(?,?,?,?,?,?,?,NULL,?)',
     ).run(
       input.id,
       input.identityKey,
@@ -314,6 +340,7 @@ export function createImportRepository(options: {
       input.requestHash,
       input.retryOfJobId ?? null,
       createdAt,
+      input.accountDirectory ?? null,
     );
     const statement = db.prepare(
       "INSERT INTO import_items(id,job_id,item_order,source_id,stage,failure_code,attempt,lease_owner,lease_expires_at,engine_version,media_link_id,stage_changed_at) VALUES(?,?,?,?,'queued',NULL,0,NULL,NULL,NULL,NULL,?)",
@@ -323,18 +350,28 @@ export function createImportRepository(options: {
     );
     if (input.deduplicate) {
       for (const item of input.items) {
-        const media = db
-          .prepare(
-            "SELECT m.id FROM import_items i JOIN import_jobs j ON j.id=i.job_id JOIN media_links m ON m.id=i.media_link_id WHERE i.source_id=? AND j.library_id=? AND m.availability='available' AND m.gonic_song_id IS NOT NULL ORDER BY i.id LIMIT 1",
-          )
-          .get(item.sourceId, input.libraryId);
+        const media =
+          input.accountDirectory !== undefined
+            ? undefined
+            : db
+                .prepare(
+                  "SELECT m.id FROM import_items i JOIN import_jobs j ON j.id=i.job_id JOIN media_links m ON m.id=i.media_link_id WHERE i.source_id=? AND j.library_id=? AND j.account_directory IS NULL AND m.availability='available' AND m.gonic_song_id IS NOT NULL ORDER BY i.id LIMIT 1",
+                )
+                .get(item.sourceId, input.libraryId);
         const active = media
           ? undefined
           : db
               .prepare(
-                "SELECT i.id FROM import_items i JOIN import_jobs j ON j.id=i.job_id WHERE i.source_id=? AND j.library_id=? AND i.id<>? AND i.stage IN ('queued','resolving','downloading','postprocessing','publishing','registering') AND (j.id<>? OR i.item_order<(SELECT item_order FROM import_items WHERE id=?)) ORDER BY j.created_at,j.id,i.item_order LIMIT 1",
+                "SELECT i.id FROM import_items i JOIN import_jobs j ON j.id=i.job_id WHERE i.source_id=? AND j.library_id=? AND j.account_directory IS ? AND i.id<>? AND i.stage IN ('queued','resolving','downloading','postprocessing','publishing','registering') AND (j.id<>? OR i.item_order<(SELECT item_order FROM import_items WHERE id=?)) ORDER BY j.created_at,j.id,i.item_order LIMIT 1",
               )
-              .get(item.sourceId, input.libraryId, item.id, input.id, item.id);
+              .get(
+                item.sourceId,
+                input.libraryId,
+                input.accountDirectory ?? null,
+                item.id,
+                input.id,
+                item.id,
+              );
         if (media || active)
           db.prepare(
             "UPDATE import_items SET stage='duplicate',media_link_id=?,duplicate_of_item_id=? WHERE id=?",
@@ -594,6 +631,9 @@ export function createImportRepository(options: {
           throw new Error('Only failed import items can be retried');
         return insertJob({
           id: input.id,
+          ...(source.accountDirectory === undefined
+            ? {}
+            : { accountDirectory: source.accountDirectory }),
           identityKey: source.identityKey,
           libraryId: source.libraryId,
           operationIdHash: input.operationIdHash,

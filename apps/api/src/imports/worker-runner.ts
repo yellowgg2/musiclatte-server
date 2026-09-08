@@ -6,7 +6,12 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { ManagementDatabase } from '../storage/database.js';
 import { createDownloader, type Engine } from './downloader.js';
 import { createWorkerLedger } from './worker-state.js';
-import { prepareMediaFileKey, publishMediaFile, resolveFileKey } from './file-keys.js';
+import {
+  prepareMediaFileKey,
+  publishMediaFile,
+  resolveFileKey,
+  syncMediaDirectory,
+} from './file-keys.js';
 
 export interface WorkerOptions {
   database: ManagementDatabase;
@@ -178,7 +183,10 @@ export function createWorkerRunner(options: WorkerOptions) {
       }
       let intent = ledger.intent(item.id);
       if (!intent) {
-        const existing = ledger.findSource(job.libraryId, item.sourceId);
+        const existing =
+          job.accountDirectory === undefined
+            ? ledger.findSource(job.libraryId, item.sourceId)
+            : null;
         if (existing) {
           await downloader.validateFile(options.musicRoot, existing.fileKey, item.sourceId, signal);
           ledger.assertOwned(item.id);
@@ -246,6 +254,9 @@ export function createWorkerRunner(options: WorkerOptions) {
           signal.throwIfAborted();
           const fileKey = prepareMediaFileKey(options.musicRoot, {
             relativeRoot: options.libraryRoot(job.libraryId),
+            ...(job.accountDirectory === undefined
+              ? {}
+              : { accountDirectory: job.accountDirectory }),
             channelName: artifact.metadata.channel,
             channelId: artifact.metadata.channelId,
             title: artifact.metadata.title,
@@ -253,7 +264,9 @@ export function createWorkerRunner(options: WorkerOptions) {
           });
           // Existing exact files are verified before recording whether this is a duplicate.
           const target = resolveFileKey(options.musicRoot, fileKey);
-          const exists = Boolean(lstatSync(target, { throwIfNoEntry: false }));
+          const exists =
+            job.accountDirectory === undefined &&
+            Boolean(lstatSync(target, { throwIfNoEntry: false }));
           if (exists)
             await downloader.validateFile(options.musicRoot, fileKey, item.sourceId, signal);
           check();
@@ -265,21 +278,45 @@ export function createWorkerRunner(options: WorkerOptions) {
         checkpoint('intent');
       }
       ledger.assertOwned(item.id);
-      const result = await publishMediaFile({
-        musicRoot: options.musicRoot,
-        stagingRoot: options.stagingRoot,
-        stagedFileKey: intent.stagingKey,
-        pendingToken: intent.eventId,
-        commitIdentity: (identity) => ledger.recordIdentity(item.id, identity),
-        checkpoint,
-        fileKey: intent.fileKey,
-        videoId: item.sourceId,
-        inspectAudio: (file) => downloader.inspectAudio(file, signal),
-        beforeCommit: () => {
-          ledger.assertOwned(item.id);
-          signal.throwIfAborted();
-        },
+      const existingTarget = lstatSync(resolveFileKey(options.musicRoot, intent.fileKey), {
+        throwIfNoEntry: false,
       });
+      const recovered =
+        job.accountDirectory !== undefined &&
+        existingTarget &&
+        ledger.ownsPublishedFile(item.id, existingTarget);
+      if (recovered) {
+        await downloader.validateFile(options.musicRoot, intent.fileKey, item.sourceId, signal);
+        syncMediaDirectory(options.musicRoot, intent.fileKey);
+      }
+      const result = recovered
+        ? 'published'
+        : await publishMediaFile({
+            replaceExisting: job.accountDirectory !== undefined,
+            commit: (publish) =>
+              options.database.transaction(() => {
+                const locked = options.database.connection
+                  .prepare(
+                    "SELECT 1 FROM metadata_items i JOIN media_links m ON m.id=i.media_link_id WHERE m.library_id=? AND m.relative_file_key=? AND (i.stage IN ('preparing','backed_up','prepared','recovery_required') OR EXISTS (SELECT 1 FROM metadata_file_locks l WHERE l.item_id=i.id)) LIMIT 1",
+                  )
+                  .get(job.libraryId, intent.fileKey);
+                if (locked) throw new Error('file_conflict');
+                publish();
+              }),
+            musicRoot: options.musicRoot,
+            stagingRoot: options.stagingRoot,
+            stagedFileKey: intent.stagingKey,
+            pendingToken: intent.eventId,
+            commitIdentity: (identity) => ledger.recordIdentity(item.id, identity),
+            checkpoint,
+            fileKey: intent.fileKey,
+            videoId: item.sourceId,
+            inspectAudio: (file) => downloader.inspectAudio(file, signal),
+            beforeCommit: () => {
+              ledger.assertOwned(item.id);
+              signal.throwIfAborted();
+            },
+          });
       checkpoint('published');
       ledger.assertOwned(item.id);
       // New durable intent + verified exact file on recovery is the same publication receipt.

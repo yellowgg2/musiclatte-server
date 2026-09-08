@@ -46,7 +46,7 @@ describe('import storage schema', () => {
   /** Fresh storage exposes schema v5 and every import ledger table. */
   it('should create the complete v5 ledger for fresh storage', async () => {
     const c = await makeSUT();
-    expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 12 });
+    expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 13 });
     expect(
       c.db.connection
         .prepare(
@@ -81,7 +81,7 @@ describe('import storage schema', () => {
     legacy.close();
 
     const migrated = c.open(legacyData);
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 12 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 13 });
     expect(migrated.connection.prepare('SELECT id FROM instance').get()).toEqual({
       id: 'legacy-instance',
     });

@@ -55,43 +55,35 @@ configuration; Step 09 owns mounting the policy and separating worker-only secre
 colon/control characters, trailing dot/space aliases and excessive UTF-8 lengths. It does not silently
 normalize unsafe keys. Only the server-side `resolveFileKey` returns an absolute path.
 
-`buildMediaFileKey(metadata, existingChannels)` returns:
+New API jobs persist a server-derived, sanitized `accountDirectory` (schema v13). Their path is:
 
 ```text
-relativeRoot/sanitized channel [stable-channel-or-uploader-ID]/sanitized title [video-ID].mp3
+relativeRoot/account/channel/title.mp3
 ```
 
-Display text is NFC normalized, reserved/control/separator characters are sanitized and display
-segments are bounded to 160 UTF-8 bytes before stable suffixes. Windows device names receive an
-underscore. `prepareMediaFileKey` creates validated directories and reuses exactly one existing
-channel directory with the same stable ID suffix. Ambiguous suffix matches are `file_conflict`.
-Legacy files and directories are never renamed.
+`relativeRoot` remains the configured import-library boundary. For example, `imports/listener/Channel/Song.mp3`.
+Channel and title no longer receive source-ID suffixes. NFC normalization, unsafe character replacement,
+Windows device-name handling and the 160 UTF-8 byte segment limit are retained from the existing sanitizer.
+Separators become `-`, double quotes become single quotes, and `?*<>` are removed; ordinary punctuation
+is retained. Sanitized account aliases cannot be assigned to different identities within a library.
 
-Roots must be existing canonical absolute directory paths (the filesystem root itself is rejected).
-Every relative component is checked with lstat and realpath; symlinks, non-directory parents and root
-aliases through symlink ancestors fail. Opened regular payloads use O_NOFOLLOW and are compared by
-device/inode. Roots and target parent identity are rechecked across awaited validation/copy work.
+Jobs predating v13 have no account directory and retain their original ID-suffixed path and duplicate
+recovery behavior. Existing media is never migrated or renamed. Retries retain their original job's account.
+New operations can download a completed source again. Concurrent requests for the same source in the
+same account share the active item; separate accounts download independently. Operation-ID replay remains idempotent.
 
-`publishMediaFile` receives separate canonical music and staging roots, relative staged/final keys,
-video ID and an injected `inspectAudio(FileHandle)` verifier. Staging must be disjoint from the music
-root in both directions. The Step 03 downloader implements real audio and embedded source-ID
-verification; Step 02 uses explicit synthetic bytes to test the boundary, not MP3 decoding.
+Roots must be canonical directories. All components are checked for symlinks and parent identity;
+staging and music roots must be disjoint. The worker verifies nonempty MP3 audio and embedded source ID
+before copying to an exclusive `.import-UUID.pending` beside the destination and syncing the bytes.
+For account imports, a POSIX rename atomically replaces the final name even when its previous source ID differs.
+A failed download or verification preserves the old file. Legacy jobs retain the no-replace hard-link commit.
+The metadata-file activity check and filename commit share a short SQLite transaction so an active metadata
+writer is not overwritten. The directory is synced after commit and again during publication recovery.
 
-1. Validate roots, key suffix and parent; hold an open parent directory descriptor.
-2. An exact existing target is a `duplicate_candidate` only if it is a regular file and the injected
-   verifier confirms valid audio with the same source ID. Otherwise return `file_conflict`.
-3. Open and verify the staging payload. Create an O_EXCL `.import-UUID.pending` in the final directory.
-4. Copy in bounded chunks with explicit offsets; detect source size/mtime/ctime changes; fsync pending.
-5. Recheck parent and pending inode, then atomically acquire the final filename without replacement.
-6. Fsync the directory, unlink the pending name, then fsync the directory again.
-
-The no-replace operation is POSIX `link` followed by unlink, **not** Node `rename`, which can replace an
-existing destination. It provides the required no-overwrite publication semantics using the same
-pending inode on local filesystems with hard-link and directory-fsync support. There is no replacing
-rename fallback. Concurrent losers verify the winner as a duplicate or fail closed. A crash may leave
-both names; only the final `.mp3` is audio, and durable intent/recovery belongs to Step 03. Failure after
-link is `publish_uncertain` and must trigger reconciliation, never deletion or a blind new event.
-Cleanup closes owned descriptors and removes only the owned pending inode with the original parent.
+A durable intent records the pending device/inode before commit. Recovery recognizes its own final inode
+and completes the same event without downloading again. Replacement reuses the existing media binding,
+increments its revision, marks it unavailable until registration, and records a new download event.
+Cleanup removes only this attempt's pending/staged files. Old MP3 bytes are replaced, not backed up.
 
 Filesystem trust boundary: music/staging roots and their ancestors are operator-controlled; the
 worker must not share write access with an untrusted local process. Repeated lstat/realpath checks are

@@ -191,10 +191,11 @@ describe('durable engine requests', () => {
       DROP TABLE metadata_items;
       DROP TABLE metadata_jobs;
       DROP TABLE engine_requests;
+      ALTER TABLE import_jobs DROP COLUMN account_directory;
       PRAGMA user_version=7;
     `);
     const migrated = s.c.open();
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 12 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 13 });
     expect(s.c.enginesFor(migrated).get()).toEqual(before);
     expect(s.c.sessionsFor(migrated).find(session.token)?.proof).toEqual(proof);
     const mailbox = createEngineRequestRepository({ ...s.options, database: migrated });

@@ -432,8 +432,7 @@ describe('imports API', () => {
     expect((await retry(job.id, job.items[0].id)).statusCode).toBe(422);
     const readyDuplicate = await c.create(3);
     expect(readyDuplicate.json().job.items[0]).toMatchObject({
-      stage: 'duplicate',
-      duplicate: { kind: 'media' },
+      stage: 'queued',
     });
     const cancelled = await c.app.inject({
       method: 'DELETE',
@@ -499,14 +498,19 @@ describe('imports API', () => {
       payload: { operationId: operationId(1), libraryId: 'music', urls },
     });
     expect(otherResponse.statusCode).toBe(202);
-    expect(otherResponse.json().job.items[0].stage).toBe('duplicate');
+    expect(otherResponse.json().job.items[0].stage).toBe('queued');
+    expect(
+      reopened.connection
+        .prepare('SELECT DISTINCT account_directory FROM import_jobs ORDER BY account_directory')
+        .all(),
+    ).toHaveLength(2);
     expect(
       reopened.connection
         .prepare(
           "SELECT count(*) AS n FROM import_items WHERE source_id='abcdefghijk' AND stage='queued'",
         )
         .get()?.n,
-    ).toBe(1);
+    ).toBe(2);
   });
   /** History defaults to 20 and signed cursors reject tampering or policy library changes. */
   it('should bound history pages and invalidate cursors after library scope changes', async () => {

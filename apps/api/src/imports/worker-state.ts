@@ -199,6 +199,10 @@ export function createWorkerLedger(
             "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at) VALUES(?,?,?,NULL,1,'unavailable',?)",
           ).run(value.mediaLinkId, job.libraryId, value.fileKey, at);
           media = { id: value.mediaLinkId };
+        } else if (!duplicate && job.accountDirectory !== undefined) {
+          db.prepare(
+            "UPDATE media_links SET revision=revision+1,availability='unavailable',validated_at=NULL WHERE id=?",
+          ).run(media.id!);
         }
         if (!duplicate)
           db.prepare(
@@ -222,7 +226,7 @@ export function createWorkerLedger(
     findSource(libraryId: string, sourceId: string) {
       const row = db
         .prepare(
-          "SELECT m.id,m.relative_file_key FROM import_items i JOIN import_jobs j ON j.id=i.job_id JOIN media_links m ON m.id=i.media_link_id WHERE i.source_id=? AND j.library_id=? AND i.stage IN ('registering','ready','duplicate') ORDER BY i.id LIMIT 1",
+          "SELECT m.id,m.relative_file_key FROM import_items i JOIN import_jobs j ON j.id=i.job_id JOIN media_links m ON m.id=i.media_link_id WHERE i.source_id=? AND j.library_id=? AND j.account_directory IS NULL AND i.stage IN ('registering','ready','duplicate') ORDER BY i.id LIMIT 1",
         )
         .get(sourceId, libraryId);
       return row

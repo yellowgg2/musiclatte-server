@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   linkSync,
+  renameSync,
   unlinkSync,
   openSync,
   closeSync,
@@ -17,6 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { validateRelativeKey } from './policy.js';
 
 export interface MediaMetadata {
+  accountDirectory?: string;
   relativeRoot: string;
   channelName: string;
   channelId: string;
@@ -37,7 +39,7 @@ function canonicalRoot(root: string): string {
   if (canonical !== root || root === sep) fail();
   return canonical;
 }
-function sanitize(value: string): string {
+export function sanitizeMediaName(value: string): string {
   let result = value
     .normalize('NFC')
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
@@ -68,13 +70,19 @@ export function buildMediaFileKey(
     !/^[A-Za-z0-9_-]{11}$/.test(metadata.videoId)
   )
     fail();
+  if (metadata.accountDirectory !== undefined) {
+    if (validateRelativeKey(metadata.accountDirectory).includes('/')) fail();
+    return validateRelativeKey(
+      `${metadata.relativeRoot}/${metadata.accountDirectory}/${sanitizeMediaName(metadata.channelName)}/${sanitizeMediaName(metadata.title)}.mp3`,
+    );
+  }
   const suffix = ` [${metadata.channelId}]`;
   const matching = existingChannels.filter((name) => name.endsWith(suffix));
   if (matching.length > 1) fail('file_conflict');
-  const channel = matching[0] ?? `${sanitize(metadata.channelName)}${suffix}`;
+  const channel = matching[0] ?? `${sanitizeMediaName(metadata.channelName)}${suffix}`;
   if (channel.includes('/')) fail();
   return validateRelativeKey(
-    `${metadata.relativeRoot}/${channel}/${sanitize(metadata.title)} [${metadata.videoId}].mp3`,
+    `${metadata.relativeRoot}/${channel}/${sanitizeMediaName(metadata.title)} [${metadata.videoId}].mp3`,
   );
 }
 /** Server-only absolute result. Reject every symlink component, including a missing-target symlink. */
@@ -136,7 +144,20 @@ export function prepareMediaFileKey(root: string, metadata: MediaMetadata): stri
     fail();
   }
 }
+/** Make an already verified publication durable again after a worker restart. */
+export function syncMediaDirectory(root: string, fileKey: string): void {
+  resolveFileKey(root, fileKey);
+  const parent = directory(root, dirname(fileKey), false);
+  const fd = openSync(parent, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
 export interface PublishOptions {
+  replaceExisting?: boolean;
+  commit?: (publish: () => void) => void;
   musicRoot: string;
   stagingRoot: string;
   stagedFileKey: string;
@@ -195,7 +216,7 @@ async function isDuplicate(options: PublishOptions): Promise<'duplicate_candidat
     await file?.close();
   }
 }
-/** Copy to a non-audio O_EXCL pending name, fsync, atomically link without replacement, then unlink/fsync. */
+/** Stage and verify bytes before an atomic rename (account imports) or legacy no-replace link. */
 async function publish(options: PublishOptions): Promise<'published' | 'duplicate_candidate'> {
   let source: FileHandle | undefined;
   let pending: FileHandle | undefined;
@@ -208,7 +229,9 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
     if (isWithin(musicRoot, stagingRoot) || isWithin(stagingRoot, musicRoot)) fail();
     if (
       !/^[A-Za-z0-9_-]{11}$/.test(options.videoId) ||
-      !options.fileKey.endsWith(` [${options.videoId}].mp3`)
+      !(options.replaceExisting
+        ? options.fileKey.endsWith('.mp3')
+        : options.fileKey.endsWith(` [${options.videoId}].mp3`))
     )
       fail();
     const target = resolveFileKey(musicRoot, options.fileKey);
@@ -246,7 +269,8 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
         fsyncSync(directoryFd);
       }
     }
-    if (lstatSync(target, { throwIfNoEntry: false })) return await isDuplicate(options);
+    if (!options.replaceExisting && lstatSync(target, { throwIfNoEntry: false }))
+      return await isDuplicate(options);
     source = await verifiedFile(stagingRoot, options.stagedFileKey);
     const before = await source.stat();
     const media = await options.inspectAudio(source);
@@ -304,11 +328,20 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
     )
       fail();
     try {
-      // Node rename replaces existing files. link is the atomic no-replace commit on local POSIX FS.
+      // Preserve legacy no-replace receipts; account imports atomically replace the final name.
       options.commitIdentity?.({ dev: pendingStat.dev, ino: pendingStat.ino });
-      options.beforeCommit?.();
-      linkSync(pendingPath, target);
-      published = true;
+      const readyPath = pendingPath;
+      const commit = () => {
+        options.beforeCommit?.();
+        resolveFileKey(musicRoot, options.fileKey);
+        if (options.replaceExisting) {
+          renameSync(readyPath, target);
+          pendingPath = undefined;
+        } else linkSync(readyPath, target);
+        published = true;
+      };
+      if (options.commit) options.commit(commit);
+      else commit();
       options.checkpoint?.('linked');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EEXIST') return await isDuplicate(options);
@@ -316,7 +349,7 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
     }
     fsyncSync(directoryFd);
     options.checkpoint?.('directory_synced');
-    unlinkSync(pendingPath);
+    if (pendingPath) unlinkSync(pendingPath);
     pendingPath = undefined;
     fsyncSync(directoryFd);
     return 'published';

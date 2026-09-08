@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -17,6 +17,7 @@ const MIGRATIONS = [
   new URL('./migrations/010-metadata-evidence.sql', import.meta.url),
   new URL('./migrations/011-metadata-rechecks.sql', import.meta.url),
   new URL('./migrations/012-metadata-backup-previews.sql', import.meta.url),
+  new URL('./migrations/013-import-account.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -85,7 +86,7 @@ export function validateSchema(db: DatabaseSync): void {
     'SELECT identity_key, operation_id_hash, request_hash, kind, resource_id, before_revision, after_revision, status, created_at, finished_at FROM playlist_operations LIMIT 0',
   );
   db.prepare(
-    'SELECT id, identity_key, library_id, operation_id_hash, request_hash, retry_of_job_id, created_at, cancel_requested_at FROM import_jobs LIMIT 0',
+    'SELECT account_directory, id, identity_key, library_id, operation_id_hash, request_hash, retry_of_job_id, created_at, cancel_requested_at FROM import_jobs LIMIT 0',
   );
   db.prepare(
     'SELECT id, job_id, item_order, source_id, observed_title, observed_channel, observed_channel_id, stage, failure_code, attempt, lease_owner, lease_expires_at, engine_version, media_link_id, stage_changed_at, resolving_at, downloading_at, postprocessing_at, publishing_at, registering_at, ready_at FROM import_items LIMIT 0',

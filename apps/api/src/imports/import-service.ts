@@ -19,6 +19,7 @@ import {
 import { createEngineRepository } from '../storage/engine-repository.js';
 import { createWorkerStateRepository } from '../storage/worker-state-repository.js';
 import type { ImportPolicy } from './policy.js';
+import { sanitizeMediaName } from './file-keys.js';
 import { parseYouTubeSource } from './source-url.js';
 
 export interface ImportOptions {
@@ -188,6 +189,17 @@ export function createImportService(service: SessionService) {
       const existing = replay(v, input.operationId, requestHash);
       if (existing) return existing;
       assertAvailable(v);
+      const accountDirectory = sanitizeMediaName(v.identity.username);
+      const accountKey = accountDirectory.toLowerCase();
+      const library = options!.policy.libraries.find((entry) => entry.id === input.libraryId)!;
+      if (
+        library.allowedUsers.some(
+          (username) =>
+            username !== v.identity.username &&
+            sanitizeMediaName(username).toLowerCase() === accountKey,
+        )
+      )
+        throw new ApiError(422, 'invalid_request');
       const id = randomUUID();
       return result(
         v,
@@ -195,6 +207,7 @@ export function createImportService(service: SessionService) {
           id,
           identityKey: identity(v),
           libraryId: input.libraryId,
+          accountDirectory,
           operationIdHash: fingerprint('operation', input.operationId),
           requestHash,
           items: sources.map((sourceId) => ({ id: randomUUID(), sourceId })),

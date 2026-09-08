@@ -1,5 +1,13 @@
 # Durable import worker
 
+## Account imports (2026-09-09)
+
+New API jobs use schema v13 `account_directory` and the path/overwrite contract in
+[import boundaries](import-boundaries.md). This supersedes the original no-overwrite/ready-source
+short-circuit behavior below for new jobs. Null account directories retain the legacy behavior for
+in-flight recovery. Completed-source reimports create fresh events; active same-account requests
+still deduplicate. No existing media is moved and no devserver deployment is implied by this change.
+
 `createWorkerRunner` in `apps/api/src/imports/worker-runner.ts` is inert until `runOnce()` or
 `run(signal)` is called. It receives the management database, canonical disjoint music/staging roots,
 a server-owned library mapping, clock, ffprobe executable and `acquireEngine(sourceId)` provider.

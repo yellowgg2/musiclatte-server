@@ -464,7 +464,7 @@ it('should migrate existing v3 links without changing their gonic mapping', asyn
   });
   expect(c.importsFor(migrated).getJob('legacy-job')!.items[0]!.mediaLinkId).toBe('legacy');
   expect(migrated.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 12 });
+  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 13 });
 });
 
 /** Backup restores pending publication receipts and rejects unsafe recovery paths before activation. */
@@ -701,4 +701,141 @@ it('should keep a heartbeat while awaiting registration and stop it on shutdown'
     await running;
   }
   expect(s.c.workerStates.get().status).toBe('stopped');
+});
+
+describe('account import replacement', () => {
+  it('downloads again into the account/channel/title path and reuses the media binding', async () => {
+    const s = await workerSUT();
+    s.c.db.connection
+      .prepare("UPDATE import_jobs SET account_directory='listener' WHERE id='job'")
+      .run();
+    await s.worker.runOnce();
+    expect(s.files()).toEqual(['imports/listener/Synthetic channel/Synthetic song.mp3']);
+    const first = s.item().mediaLinkId!;
+    s.c.imports.createJob({
+      id: 'again',
+      identityKey: 'a'.repeat(64),
+      libraryId: 'library',
+      accountDirectory: 'listener',
+      operationIdHash: 'd'.repeat(64),
+      requestHash: 'e'.repeat(64),
+      deduplicate: true,
+      items: [{ id: 'again-item', sourceId: 'lmnopqrstuv' }],
+    });
+    await s.worker.runOnce();
+    expect(s.acquired()).toBe(2);
+    expect(s.files()).toHaveLength(1);
+    expect(
+      JSON.parse(readFileSync(join(s.options.musicRoot, String(s.files()[0])), 'utf8')).sourceId,
+    ).toBe('lmnopqrstuv');
+    expect(s.c.imports.getJob('again')!.items[0]).toMatchObject({
+      stage: 'registering',
+      mediaLinkId: first,
+    });
+    expect(s.events()).toHaveLength(2);
+    expect(s.c.mediaLinks.get(first)!.revision).toBe(2);
+  });
+});
+
+it.each(['exit', 'invalid-audio'])(
+  'preserves an existing account MP3 on %s failure',
+  async (mode) => {
+    const s = await workerSUT(mode);
+    s.c.db.connection
+      .prepare("UPDATE import_jobs SET account_directory='listener' WHERE id='job'")
+      .run();
+    const folder = join(s.options.musicRoot, 'imports/listener/Synthetic channel');
+    mkdirSync(folder, { recursive: true });
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(folder, 'Synthetic song.mp3'), 'original bytes');
+    await s.worker.runOnce();
+    expect(s.item().stage).toBe('failed');
+    expect(readFileSync(join(folder, 'Synthetic song.mp3'), 'utf8')).toBe('original bytes');
+    expect(s.events()).toHaveLength(0);
+  },
+);
+
+it.each(['pending_synced', 'linked', 'published'])(
+  'recovers account replacement after %s without a second download or event',
+  async (point) => {
+    let crashed = false;
+    const s = await workerSUT('ok', (stage) => {
+      if (!crashed && stage === point) {
+        crashed = true;
+        throw new Error('simulated crash');
+      }
+    });
+    s.c.db.connection
+      .prepare("UPDATE import_jobs SET account_directory='listener' WHERE id='job'")
+      .run();
+    await expect(s.worker.runOnce()).rejects.toThrow();
+    s.expire();
+    await s.restart().runOnce();
+    expect(s.item().stage).toBe('registering');
+    expect(s.acquired()).toBe(1);
+    expect(s.events()).toHaveLength(1);
+    expect(s.files()).toHaveLength(1);
+  },
+);
+
+it('redownloads a completed source with a new operation and keeps the account after reopening', async () => {
+  const s = await workerSUT();
+  s.c.db.connection
+    .prepare("UPDATE import_jobs SET account_directory='listener' WHERE id='job'")
+    .run();
+  await s.worker.runOnce();
+  s.c.db.connection
+    .prepare("UPDATE import_items SET stage='ready',ready_at=1000 WHERE id='item'")
+    .run();
+  s.c.db.connection
+    .prepare("UPDATE media_links SET availability='available',gonic_song_id='song' ")
+    .run();
+  s.c.imports.createJob({
+    id: 'again',
+    identityKey: 'a'.repeat(64),
+    libraryId: 'library',
+    accountDirectory: 'listener',
+    operationIdHash: 'd'.repeat(64),
+    requestHash: 'e'.repeat(64),
+    deduplicate: true,
+    items: [{ id: 'again-item', sourceId: 'abcdefghijk' }],
+  });
+  expect(s.c.importsFor(s.c.open()).getJob('again')!.accountDirectory).toBe('listener');
+  await s.worker.runOnce();
+  expect(s.acquired()).toBe(2);
+  expect(s.events()).toHaveLength(2);
+  expect(s.files()).toHaveLength(1);
+});
+
+it('sanitizes channel and title without channel or video ID suffixes for account imports', async () => {
+  const { buildMediaFileKey, sanitizeMediaName } = await import('../src/imports/file-keys.js');
+  expect(
+    buildMediaFileKey({
+      relativeRoot: 'imports',
+      accountDirectory: sanitizeMediaName('listener'),
+      channelName: '../채널: "A"?*<>',
+      channelId: 'channel-1',
+      title: '노래/제목?*<>. ',
+      videoId: 'abcdefghijk',
+    }),
+  ).toBe("imports/listener/- 채널 - 'A'/노래 - 제목.mp3");
+});
+
+it('refuses an account directory already assigned to another identity', async () => {
+  const c = await makeSUT();
+  c.db.connection
+    .prepare("UPDATE import_jobs SET account_directory='Listener' WHERE id='job'")
+    .run();
+  expect(() =>
+    c.imports.createJob({
+      id: 'other',
+      identityKey: 'f'.repeat(64),
+      libraryId: 'library',
+      accountDirectory: 'listener',
+      operationIdHash: 'd'.repeat(64),
+      requestHash: 'e'.repeat(64),
+      items: [{ id: 'other-item', sourceId: 'abcdefghijk' }],
+    }),
+  ).toThrow('Import account directory conflict');
+  expect(c.imports.getJob('other')).toBeNull();
 });
