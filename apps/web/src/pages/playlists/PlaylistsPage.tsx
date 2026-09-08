@@ -95,25 +95,28 @@ export function PlaylistsPage({
   return (
     <div className={styles.page}>
       <div className={styles.topline}>
-        <p className={styles.eyebrow}>{copy['playlists.eyebrow']}</p>
+        <header className={styles.heading}>
+          <h1 tabIndex={-1} data-page-heading>
+            {copy['playlists.title']}
+          </h1>
+        </header>
         <LanguagePicker locale={locale} onChange={onLocale} />
       </div>
-      <header className={styles.heading}>
-        <h1 tabIndex={-1} data-page-heading>
-          {copy['playlists.title']}
-        </h1>
+      <div className={styles.summary}>
         <p className={styles.description}>{copy['playlists.description']}</p>
-        {state.playlists && (
-          <p className={styles.count}>
-            {countLabel(state.playlists.length, locale, 'playlists.count')}
-          </p>
-        )}
-        {canWrite && (
-          <div className={styles.headingActions}>
-            <Action onClick={() => setCreateOpen(true)}>{copy['playlists.create']}</Action>
-          </div>
-        )}
-      </header>
+        <div className={styles.headingActions}>
+          {state.playlists && (
+            <p className={styles.count}>
+              {countLabel(state.playlists.length, locale, 'playlists.count')}
+            </p>
+          )}
+          {canWrite && (
+            <div className={styles.headingActions}>
+              <Action onClick={() => setCreateOpen(true)}>{copy['playlists.create']}</Action>
+            </div>
+          )}
+        </div>
+      </div>
       {state.loading && !state.playlists && (
         <StatusSurface
           state="loading"

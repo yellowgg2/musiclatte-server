@@ -1,0 +1,31 @@
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.heading h2 {
+  margin: 0;
+}
+.form {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 32rem;
+  margin-top: var(--space-4);
+}
+.form > button {
+  justify-self: start;
+}
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  font-weight: 600;
+}
+.toggle input {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--color-accent);
+}

@@ -1,3 +1,4 @@
+import { createSubsonicClient } from '../subsonic/client.js';
 import { isAbsolute } from 'node:path';
 import { readApiImportConfig } from '../imports/config.js';
 import { readApiMetadataOptions } from '../metadata/api-config.js';
@@ -58,6 +59,14 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
       ...(metadata ? { metadata } : {}),
       ...(importConfig.enabled ? { recent: { musicRoot } } : {}),
       imports: { database, policy: importConfig.policy, clock: Date.now },
+      scan: {
+        database,
+        vault,
+        clock: Date.now,
+        policyRevision: () => instances.get().policyRevision,
+        allowed: () => env.ALLOW_SCAN === 'true',
+        client: (proof) => createSubsonicClient({ upstream, timeoutMs: Number(rawTimeout), proof }),
+      },
       sessions,
       instances,
       playlistOperations,

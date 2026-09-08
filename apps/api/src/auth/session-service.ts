@@ -16,6 +16,7 @@ import type { ImportOptions } from '../imports/import-service.js';
 import type { MetadataOptions } from '../metadata/provider.js';
 
 export interface AuthOptions {
+  scan?: import('../scan/scheduler.js').ScanOptions;
   metadata?: MetadataOptions;
   imports?: ImportOptions;
   recent?: { musicRoot: string };

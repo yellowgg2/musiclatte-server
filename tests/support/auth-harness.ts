@@ -371,12 +371,12 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
           }
         : state.registration
           ? registrationFixture(operation, url, state.registration)
-          : operation === 'startScan'
+          : operation === 'startScan' || operation === 'getScanStatus'
             ? {
                 'subsonic-response': {
                   status: 'ok',
                   version: '1.15.0',
-                  scanStatus: { scanning: true, count: 0 },
+                  scanStatus: { scanning: operation === 'startScan', count: 0 },
                 },
               }
             : isCollection

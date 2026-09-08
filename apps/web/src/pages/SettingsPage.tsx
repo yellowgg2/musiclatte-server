@@ -1,3 +1,4 @@
+import { ScanSettingsPanel } from './settings/ScanSettingsPanel';
 import { EngineStatusPanel } from './settings/EngineStatusPanel';
 import { clientFeatures } from '../capabilities/client-features';
 import type { SessionState } from '../auth/session-store';
@@ -68,6 +69,30 @@ export function SettingsPage({
         <LanguagePicker locale={locale} onChange={onLocale} />
         <p className={styles.secondary}>{copy['settings.languageHelp']}</p>
       </section>
+      {state.session &&
+        state.capabilities?.features['library.scan']?.permission === 'allowed' &&
+        state.capabilities.features['library.scan']?.supported === true && (
+          <ScanSettingsPanel
+            key={JSON.stringify([
+              state.session.username,
+              state.session.csrfToken,
+              state.capabilities.instanceId,
+              state.capabilities.revision,
+            ])}
+            locale={locale}
+            fetcher={fetcher}
+            apiOrigin={apiOrigin}
+            csrfToken={state.session.csrfToken}
+            onUnauthenticated={onUnauthenticated}
+            onRetryCapabilities={onRetryCapabilities}
+          />
+        )}
+      {state.capabilities?.features['library.scan']?.permission === 'denied' && (
+        <section className={styles.section}>
+          <h2>{copy['scan.title']}</h2>
+          <p className={styles.secondary}>{copy['scan.adminOnly']}</p>
+        </section>
+      )}
       {manager && state.session && (
         <EngineStatusPanel
           key={JSON.stringify([

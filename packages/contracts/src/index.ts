@@ -17,3 +17,5 @@ export * from './recent.js';
 
 export * from './engine.js';
 export * from './metadata.js';
+
+export * from './scan.js';

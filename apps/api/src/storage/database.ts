@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -18,6 +18,7 @@ const MIGRATIONS = [
   new URL('./migrations/011-metadata-rechecks.sql', import.meta.url),
   new URL('./migrations/012-metadata-backup-previews.sql', import.meta.url),
   new URL('./migrations/013-import-account.sql', import.meta.url),
+  new URL('./migrations/014-scan-schedule.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -32,6 +33,9 @@ export function validateSchema(db: DatabaseSync): void {
   ) {
     throw new Error('Unsupported storage schema');
   }
+  db.prepare(
+    'SELECT enabled,interval_minutes,next_run_at,last_started_at,last_error,encrypted_proof,policy_revision,generation,lease_until FROM scan_schedule LIMIT 0',
+  );
   db.prepare('SELECT backup_id,summary_json FROM metadata_backup_previews LIMIT 0');
   db.prepare(
     'SELECT identity_key,operation_id_hash,request_hash,job_id,created_at FROM metadata_rechecks LIMIT 0',
