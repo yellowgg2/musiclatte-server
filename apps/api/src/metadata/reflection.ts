@@ -67,6 +67,7 @@ export interface MetadataReflectorOptions {
     song: MusicEntry,
     client: SubsonicClient,
   ): Promise<boolean>;
+  refreshCoverCache?(ids: readonly string[]): Promise<void> | void;
   clock(): number;
   timeoutMs?: number;
   pollMs?: number;
@@ -185,6 +186,21 @@ export function createMetadataReflector(options: MetadataReflectorOptions) {
             if (song.albumId) relatedIds.albumIds.push(song.albumId);
             if (song.artistId) relatedIds.artistIds.push(song.artistId);
             if (song.coverArt) relatedIds.coverIds.push(song.coverArt);
+            owned();
+            const preRefreshDigest = (await options.fileSnapshot(work)).fullDigest;
+            if (preRefreshDigest !== work.resultDigest) {
+              changedRevision(preRefreshDigest);
+              return;
+            }
+            owned();
+            await options.refreshCoverCache?.([
+              ...new Set(
+                [work.trackId, song.coverArt, song.albumId].filter((id): id is string =>
+                  Boolean(id),
+                ),
+              ),
+            ]);
+            owned();
             const evidence = compareMetadataProjection(snapshot, song, {
               filename: posix.basename(work.key),
               coverMatches: await options.coverMatches(work, snapshot, song, client),

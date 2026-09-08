@@ -13,6 +13,7 @@ import { createMetadataFileStore } from './metadata/file-store.js';
 import { createMetadataHelper } from './metadata/helper-client.js';
 import { createMetadataWorker, type MetadataWork } from './metadata/worker.js';
 import { createMetadataReflector } from './metadata/reflection.js';
+import { createGonicCoverCache } from './metadata/gonic-cover-cache.js';
 import { createMetadataRevision } from './metadata/revision.js';
 import { metadataVerifiedProfile } from './metadata/api-config.js';
 import { createMetadataCoverVerifier } from './metadata/cover-verifier.js';
@@ -250,6 +251,9 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
       clock: Date.now,
       accountClient: async (work) => (await account(work)).client,
       fileSnapshot: (work) => helper.read({ key: work.key, signal }),
+      ...(config.coverCacheRoot
+        ? { refreshCoverCache: createGonicCoverCache(config.coverCacheRoot) }
+        : {}),
       coverMatches: createMetadataCoverVerifier({
         database,
         privateRoot: config.privateRoot,

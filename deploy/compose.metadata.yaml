@@ -4,6 +4,11 @@ services:
       GONIC_SCAN_EMBEDDED_COVER: 'true'
       GONIC_SCAN_INTERVAL: '0'
       GONIC_SCAN_WATCHER_ENABLED: 'false'
+    volumes:
+      - metadata-gonic-covers:/cache/covers
+    depends_on:
+      metadata-volume-init:
+        condition: service_completed_successfully
   api:
     build:
       context: .
@@ -46,8 +51,11 @@ services:
     environment:
       METADATA_UID: ${METADATA_UID:-1000}
       METADATA_GID: ${METADATA_GID:-1000}
+      GONIC_UID: ${GONIC_UID:-1000}
+      GONIC_GID: ${GONIC_GID:-1000}
     volumes:
       - ./deploy/initialize-metadata-volumes.sh:/initialize-metadata-volumes.sh:ro
+      - metadata-gonic-covers:/gonic-cover-cache
       - metadata-data:/metadata-data
       - metadata-uploads:/metadata-uploads
     read_only: true
@@ -77,12 +85,14 @@ services:
       METADATA_FFMPEG: /usr/bin/ffmpeg
       METADATA_FFPROBE: /usr/bin/ffprobe
       METADATA_COVER_PROJECTOR: /opt/metadata/cover-projection
+      METADATA_GONIC_COVER_CACHE_ROOT: /gonic-cover-cache
       METADATA_WRITE_PROFILE: posix-exclusive-mp3-id3v23-v24-v1
     volumes:
       - management-data:/management
       - management-keys:/keys:ro
       - metadata-data:/metadata-data
       - metadata-uploads:/metadata-uploads
+      - metadata-gonic-covers:/gonic-cover-cache
       - type: bind
         source: ${MUSIC_PATH:?Set MUSIC_PATH}
         target: /music
@@ -117,6 +127,7 @@ services:
     security_opt: ['no-new-privileges:true']
     cap_drop: ['ALL']
 volumes:
+  metadata-gonic-covers:
   metadata-data:
   metadata-uploads:
 secrets:

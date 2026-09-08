@@ -521,3 +521,55 @@ it('should reject unselected cover replacement and revoke its preview on close',
   expect(revoke).toHaveBeenCalledWith('blob:synthetic-cover');
   vi.unstubAllGlobals();
 });
+
+/** Leaving a row menu for selection dismisses it without blocking the next action. */
+it('should dismiss row options on outside activation and Escape while preserving editor entry', async () => {
+  const { default: userEvent } = await import('@testing-library/user-event');
+  const { MetadataAction } = await import('../src/metadata/components/MetadataAction');
+  const { MetadataUIProvider } = await import('../src/metadata/MetadataUIProvider');
+  const { MetadataSyncProvider } = await import('../src/metadata/MetadataSyncProvider');
+  const user = userEvent.setup();
+  const select = vi.fn();
+  render(
+    <MetadataSyncProvider
+      scope="test"
+      enabled={false}
+      fetcher={async () => Response.json(snapshot)}
+      apiOrigin=""
+      onUnauthenticated={vi.fn()}
+    >
+      <MetadataUIProvider
+        locale="en"
+        base="/"
+        apiOrigin=""
+        csrfToken="synthetic"
+        canEdit
+        canLyrics
+        canHistory
+        onUnauthenticated={vi.fn()}
+      >
+        <MetadataAction song={{ id: 'song', title: 'Original title', isDir: false }} />
+        <button onClick={select}>Select songs</button>
+      </MetadataUIProvider>
+    </MetadataSyncProvider>,
+  );
+  const trigger = screen.getByRole('button', { name: 'Music information: Original title' });
+  await user.click(trigger);
+  await screen.findByRole('button', { name: 'Edit music information' });
+  await user.click(screen.getByRole('button', { name: 'Select songs' }));
+  expect(select).toHaveBeenCalledOnce();
+  expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  expect(screen.queryByRole('button', { name: 'Edit music information' })).toBeNull();
+  await user.click(trigger);
+  (await screen.findByRole('button', { name: 'Edit music information' })).focus();
+  await user.keyboard('{Escape}');
+  expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  expect(document.activeElement).toBe(trigger);
+  await user.click(trigger);
+  await user.click(await screen.findByRole('button', { name: 'Edit music information' }));
+  expect(await screen.findByRole('dialog')).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Edit music information' }),
+  );
+});

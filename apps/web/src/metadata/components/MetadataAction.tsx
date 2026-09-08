@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { MetadataSnapshot, MusicEntry } from '@musiclatte/contracts';
 import { IconAction } from '../../design/components/IconAction';
 import { Action } from '../../design/components/Action';
@@ -11,11 +11,34 @@ export function MetadataAction({ song }: { song: MusicEntry }) {
   const ui = useMetadataUI();
   const sync = useMetadataSync();
   const id = useId();
+  const root = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [snapshot, setSnapshot] = useState<MetadataSnapshot>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  useEffect(() => {
+    if (!expanded) return;
+    const dismissOutside = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || root.current?.contains(target)) return;
+      // The editor owns its modal focus and must return to its still-mounted trigger.
+      if (target.closest('[role="dialog"]')) return;
+      setExpanded(false);
+    };
+    const dismissEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !root.current?.contains(event.target as Node)) return;
+      event.preventDefault();
+      setExpanded(false);
+      root.current.querySelector('button')?.focus();
+    };
+    document.addEventListener('click', dismissOutside);
+    document.addEventListener('keydown', dismissEscape);
+    return () => {
+      document.removeEventListener('click', dismissOutside);
+      document.removeEventListener('keydown', dismissEscape);
+    };
+  }, [expanded]);
   useEffect(() => {
     setSnapshot(undefined);
     setError(false);
@@ -43,7 +66,7 @@ export function MetadataAction({ song }: { song: MusicEntry }) {
   if (!ui.canEdit) return null;
   const copy = messages[ui.locale];
   return (
-    <div className={styles.action}>
+    <div ref={root} className={styles.action}>
       <IconAction
         label={`${copy['metadata.options']}: ${song.title}`}
         aria-expanded={expanded}

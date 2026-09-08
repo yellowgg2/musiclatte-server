@@ -80,6 +80,34 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe('login shell', () => {
+  /** Touch navigation retains the heading focus target while keyboard navigation can show its indicator. */
+  it('should distinguish pointer and keyboard heading focus without removing the focus target', async () => {
+    localStorage.setItem('musiclatte.locale', 'en');
+    const context = createTestContext();
+    context.signIn();
+    const { user, view } = await makeSUT(context);
+    await screen.findByRole('heading', { name: 'Music' });
+    await user.click(screen.getByRole('link', { name: 'Settings' }));
+    const settings = await screen.findByRole('heading', { name: 'Settings' });
+    await waitFor(() => expect(document.activeElement).toBe(settings));
+    expect(document.documentElement.dataset.pageHeadingInput).toBe('pointer');
+    screen.getByRole('link', { name: 'Music' }).focus();
+    await user.keyboard('{Enter}');
+    const music = await screen.findByRole('heading', { name: 'Music' });
+    await waitFor(() => expect(document.activeElement).toBe(music));
+    expect(document.documentElement.dataset.pageHeadingInput).toBe('keyboard');
+    await user.pointer({
+      target: screen.getByRole('link', { name: 'Settings' }),
+      keys: '[TouchA]',
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Settings' })),
+    );
+    expect(document.documentElement.dataset.pageHeadingInput).toBe('pointer');
+    view.unmount();
+    expect(document.documentElement.hasAttribute('data-page-heading-input')).toBe(false);
+  });
+
   /** A new cookie identity cannot inherit the previous account's capability snapshot. */
   it('should clear previous account capabilities when a new session cannot load its extensions', async () => {
     const { createSessionStore } = await moduleAt('auth/session-store.ts');

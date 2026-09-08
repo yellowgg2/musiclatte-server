@@ -188,6 +188,33 @@ export function Router({
     currentPlaylistRoute,
   ]);
   useEffect(() => {
+    const root = document.documentElement;
+    const previous = root.getAttribute('data-page-heading-input');
+    const pointer = () => {
+      root.dataset.pageHeadingInput = 'pointer';
+    };
+    const keyboard = (event: KeyboardEvent) => {
+      if (
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        ['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)
+      )
+        return;
+      root.dataset.pageHeadingInput = 'keyboard';
+    };
+    // Initial programmatic heading focus is not a keyboard interaction.
+    pointer();
+    document.addEventListener('pointerdown', pointer, true);
+    document.addEventListener('keydown', keyboard, true);
+    return () => {
+      document.removeEventListener('pointerdown', pointer, true);
+      document.removeEventListener('keydown', keyboard, true);
+      if (previous === null) root.removeAttribute('data-page-heading-input');
+      else root.setAttribute('data-page-heading-input', previous);
+    };
+  }, []);
+  useEffect(() => {
     const heading = document.querySelector<HTMLElement>('[data-page-heading]');
     if (heading) heading.focus({ preventScroll: true });
     else if (state.status === 'signed-out')

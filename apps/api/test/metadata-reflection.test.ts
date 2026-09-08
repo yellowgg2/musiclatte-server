@@ -131,7 +131,19 @@ import { createSubsonicClient } from '../src/subsonic/client.js';
 import { createScanCoordinator } from '../src/subsonic/scan-coordinator.js';
 import type { MetadataTagSnapshot } from '../src/metadata/helper-client.js';
 import type { SubsonicClient } from '../src/subsonic/client.js';
-it.each(['verified', 'mixed', 'id-change', 'stale-cover', 'file-change', 'lost-scan-lease'])(
+const reflectionScenarios = [
+  'verified',
+  'mixed',
+  'id-change',
+  'stale-cover',
+  'file-change',
+  'lost-scan-lease',
+  'refreshed-cover',
+  'cache-failure',
+  'lease-during-snapshot',
+];
+/** Refresh is fenced by file revision and scan ownership; failed refresh cannot succeed. */
+it.each(reflectionScenarios)(
   'should persist honest reflection state and fence a real ledger for %s',
   async (scenario) => {
     const c = await createTestContext();
@@ -234,18 +246,28 @@ it.each(['verified', 'mixed', 'id-change', 'stale-cover', 'file-change', 'lost-s
         getPlaylists: async () => [],
         getStarred2: async () => [],
       } as SubsonicClient;
+      let coverRefreshed = false;
+      let reads = 0;
       const reflector = createMetadataReflector({
         database: c.db,
         repository: repo,
         scanClient: client,
         libraries: [{ id: 'library', relativeRoot: 'channel', musicFolderId: '0' }],
         accountClient: async () => client,
-        fileSnapshot: async () =>
-          ({
+        fileSnapshot: async () => {
+          if (++reads === 2 && scenario === 'lease-during-snapshot')
+            c.db.connection.prepare("UPDATE registration_cycle SET owner='new-owner'").run();
+          return {
             ...snapshot,
             fullDigest: scenario === 'file-change' ? 'f'.repeat(64) : observedDigest,
-          }) as MetadataTagSnapshot,
-        coverMatches: async () => scenario !== 'stale-cover',
+          } as MetadataTagSnapshot;
+        },
+        refreshCoverCache: async () => {
+          if (scenario === 'cache-failure') throw new Error('cache unavailable');
+          coverRefreshed = true;
+        },
+        coverMatches: async () =>
+          scenario === 'refreshed-cover' ? coverRefreshed : scenario !== 'stale-cover',
         clock: () => now,
         timeoutMs: 100,
         pollMs: 10,
@@ -257,12 +279,17 @@ it.each(['verified', 'mixed', 'id-change', 'stale-cover', 'file-change', 'lost-s
       await reflector.reflect(claim, repo.readWork(claim));
       const item = repo.getJob('job', '1'.repeat(64))!.items[0]!;
       expect(item.stage).toBe(
-        scenario === 'verified'
+        scenario === 'verified' || scenario === 'refreshed-cover'
           ? 'succeeded'
           : scenario === 'file-change'
             ? 'recovery_required'
             : 'reflecting',
       );
+      if (scenario === 'cache-failure') expect(item.errorCode).toBe('reflection_unavailable');
+      if (
+        ['file-change', 'id-change', 'lost-scan-lease', 'lease-during-snapshot'].includes(scenario)
+      )
+        expect(coverRefreshed).toBe(false);
       if (scenario === 'mixed' || scenario === 'stale-cover')
         expect(item.errorCode).toBe('reflection_mismatch');
       if (scenario === 'id-change') expect(item.errorCode).toBe('reference_conflict');

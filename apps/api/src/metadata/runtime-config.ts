@@ -24,7 +24,17 @@ export function readMetadataWorkerConfig(env: MetadataEnvironment) {
     const privateRoot = metadataDirectory(env.METADATA_DATA_ROOT, true);
     const uploadRoot = metadataDirectory(env.METADATA_UPLOAD_ROOT, true);
     const musicRoot = metadataDirectory(metadata.musicRoot, false);
-    const roots = [management, privateRoot, uploadRoot, musicRoot];
+    const coverCacheRoot =
+      env.METADATA_GONIC_COVER_CACHE_ROOT === undefined
+        ? undefined
+        : metadataDirectory(env.METADATA_GONIC_COVER_CACHE_ROOT, false);
+    const roots = [
+      management,
+      privateRoot,
+      uploadRoot,
+      musicRoot,
+      ...(coverCacheRoot ? [coverCacheRoot] : []),
+    ];
     if (
       roots.some((root, i) =>
         roots.some((other, j) => i !== j && (root === other || root.startsWith(`${other}/`))),
@@ -85,6 +95,7 @@ export function readMetadataWorkerConfig(env: MetadataEnvironment) {
       ffmpeg,
       ffprobe,
       projector,
+      coverCacheRoot,
       keyPath,
       upstream: upstream.href,
       credential: { username: credential.username, password: credential.password },

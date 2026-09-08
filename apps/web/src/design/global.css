@@ -22,6 +22,10 @@ button {
   outline: 3px solid var(--color-focus);
   outline-offset: 3px;
 }
+/* Keep route announcements focused without painting a keyboard ring after touch/mouse input. */
+html[data-page-heading-input='pointer'] [data-page-heading]:focus {
+  outline: none;
+}
 ::selection {
   background: var(--color-selection);
   color: var(--color-text);
