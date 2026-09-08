@@ -35,3 +35,18 @@ No UI/components/localization changes; UI acceptance is not expanded by this bac
 Obsidian Phase 3 overview, relevant Steps and media/jobs contract synchronized outside repo Git.
 Rulebook search found no applicable task-specific rule; postflight `skipped(no_new_lesson)`, no canonical
 write or sync. No deployment, commit or push performed. Existing devserver version is unchanged.
+
+## Same-port devserver deployment
+
+On the user's subsequent explicit deployment request, source `7d5f0a3` was pushed to `origin/main`
+and built on devserver in `source-7d5f0a3`. The existing `musiclatte-p5-acceptance` project was
+updated with all four Compose overlays and the same private environment. LAN gateway18517,
+loopback gateway18516 and loopback admin18515 were preserved.
+
+Before migration, all five project services were stopped after confirming no active import/metadata
+items. A private consistent archive of mounted project volumes, music and private configuration was
+verified in `backup-before-7d5f0a3`, outside source/build contexts; old source and image IDs remain.
+All five services are healthy. Management schema13, quick_check=ok and zero foreign-key violations
+were verified. Gateway root, live/ready health and authenticated imports each returned200; the
+existing bearer session remains valid, zero import jobs and one allowed library remain.
+The separate gonic-demo4747 container remained running throughout. No live download was initiated.
