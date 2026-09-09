@@ -716,5 +716,6 @@
   "listening.helpTitle": "감상 기록 안내",
   "listening.help": "실제로 재생한 구간이 곡 길이의 절반 또는 4분에 도달하면 한 번 기록합니다. 브라우저 종료, 긴 오프라인 상태 또는 메모리 한도로 일부 기록이 누락될 수 있습니다.",
   "listening.upstreamHelp": "이 화면의 횟수는 웹 감상 기록입니다. gonic 전송 여부나 외부 서비스의 누적 횟수와 합산하지 않습니다.",
-  "listening.uncertain": "웹 감상은 저장됐지만 gonic 전송 결과는 확인할 수 없습니다. 중복 제출을 피하기 위해 다시 전송하지 않습니다."
+  "listening.uncertain": "웹 감상은 저장됐지만 gonic 전송 결과는 확인할 수 없습니다. 중복 제출을 피하기 위해 다시 전송하지 않습니다.",
+  "error.playback_plan_changed": "재생 조건이 바뀌었습니다. 재생 옵션을 다시 불러오세요."
 }

@@ -1,3 +1,4 @@
+import { registerPlaybackRoute } from './routes/media/playback.js';
 import { registerListeningRoutes } from './routes/listening.js';
 import { registerMixRoutes } from './routes/mixes.js';
 import { registerCurationRoutes } from './routes/curation.js';
@@ -109,6 +110,7 @@ export function createApp(options?: AuthOptions) {
     registerMixRoutes(app, service);
     registerListeningRoutes(app, service);
     registerStreamRoute(app, service);
+    registerPlaybackRoute(app, service);
     registerCoverRoute(app, service);
     registerPlaylistReadRoutes(app, service);
     registerPlaylistMutationRoutes(app, service);

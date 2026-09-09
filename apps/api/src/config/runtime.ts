@@ -31,3 +31,12 @@ export function readListeningConfig(env: Record<string, string | undefined>) {
     scrobble: env.LISTENING_SCROBBLE_ENABLED === 'true',
   };
 }
+
+export function readStreamQualityEnabled(env: Record<string, string | undefined>): boolean {
+  if (
+    env.STREAM_QUALITY_ENABLED !== undefined &&
+    !['true', 'false'].includes(env.STREAM_QUALITY_ENABLED)
+  )
+    throw new Error('Invalid stream quality configuration');
+  return env.STREAM_QUALITY_ENABLED === 'true';
+}

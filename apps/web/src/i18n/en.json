@@ -716,5 +716,6 @@
   "listening.helpTitle": "About listening history",
   "listening.help": "A play is recorded after distinct played sections reach half the track or four minutes. Browser closure, prolonged offline use or memory limits can leave some plays unrecorded.",
   "listening.upstreamHelp": "Counts here are web listening records. They are not combined with gonic or external service totals.",
-  "listening.uncertain": "The web play was saved, but the gonic submission result is uncertain. It will not be resubmitted to avoid duplicates."
+  "listening.uncertain": "The web play was saved, but the gonic submission result is uncertain. It will not be resubmitted to avoid duplicates.",
+  "error.playback_plan_changed": "The playback plan changed. Reload the playback options."
 }

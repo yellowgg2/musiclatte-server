@@ -14,6 +14,7 @@ export type CurationFailureReason = (typeof curationFailureReasons)[number];
 export const mixFailureReasons = ['mix_scope_unavailable'] as const;
 export type ApiFailureReason = CurationFailureReason | (typeof mixFailureReasons)[number];
 export const apiErrorCodes = [
+  'playback_plan_changed',
   'invalid_request',
   'unauthenticated',
   'forbidden',

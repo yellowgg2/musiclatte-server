@@ -51,3 +51,29 @@ component.
 The origin-root `/rest/*` gateway and native clients are unchanged. Synthetic fixture provenance
 is recorded in `packages/test-support/media/README.md`; live verification records only formats,
 statuses, lengths, and allowed headers, never IDs, titles, credentials, queries, or media bytes.
+
+## Phase 7: explicit playback quality
+
+`STREAM_QUALITY_ENABLED` is strict, opt-in and defaults false. It enables the authenticated
+`GET /api/v1/media/songs/:id/playback?quality=original|economy` plan and optional stream queries.
+The qualityless legacy transport remains unchanged. `media/playback-plan.ts` validates the
+latest song metadata and observes transcodeOffset v1 before offering economy offset seeking.
+Original adds only format=raw; economy adds format=mp3,maxBitRate=128 and integer timeOffset.
+Bitrate <=128 returns original/native with already_small. Missing positive bitrate/duration
+returns metadata_unknown; missing extension returns offset_unsupported. These are explicit
+unavailability reasons, not permission to silently fall back after a conversion fails.
+The browser must handle these reasons before using an original stream path.
+
+Economy stream requests repeat metadata/extension validation. Raw bypass conditions return
+409 playback_plan_changed without streaming; offsets must be smaller than duration.
+`quality-headers.ts` binds validators to quality/offset. An upstream ETag is wrapped; gonic's
+Last-Modified-only response gets a representation ETag which maps back to conditional dates.
+Mismatched If-Range drops Range, unbound date conditions are removed, and positive offsets
+never reuse byte ranges. Qualityless validators are unmodified. Native and base warm-cache
+200/206/304/416 and HEAD are preserved; cold transformations may be 200/chunked.
+The proxy remains streaming with downstream-abort propagation and no transcoder in Node.
+
+The isolated v0.22.0 live harness reads only a private0600 JSON via MUSICLATTE_P7_PRIVATE_CONFIG.
+Its operator supplies an isolated, version/digest-verified container and exactly three synthetic
+90-second files:64/256kbps MP3 and high-bitrate FLAC. Empty only that owned audio cache before
+a cold probe. No production cache or library is inspected or cleared by the harness.

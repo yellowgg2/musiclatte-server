@@ -1,6 +1,10 @@
 import { acquireListeningRuntime } from '../listening/runtime.js';
 import { createListeningRepository } from '../storage/listening-repository.js';
-import { readListeningConfig, readMixEnabled } from '../config/runtime.js';
+import {
+  readListeningConfig,
+  readMixEnabled,
+  readStreamQualityEnabled,
+} from '../config/runtime.js';
 import { createMixRepository } from '../storage/mix-repository.js';
 import { configuredMediaFence, curationRuntimeReady } from '../curation/runtime.js';
 import { createSubsonicClient } from '../subsonic/client.js';
@@ -23,6 +27,7 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
   let releaseListening: (() => void) | undefined;
   let database: ReturnType<typeof openDatabase> | undefined;
   try {
+    const streamQuality = readStreamQualityEnabled(env);
     const listeningConfig = readListeningConfig(env);
     const mixesEnabled = readMixEnabled(env);
     const importConfig = readApiImportConfig(env);
@@ -72,6 +77,7 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
     if (automation.enabled && !metadata?.policy.enabled) throw new Error();
     if (importConfig.enabled && !isAbsolute(musicRoot)) throw new Error();
     const app = createApp({
+      streamQuality,
       ...(listeningConfig.enabled
         ? {
             listening: {

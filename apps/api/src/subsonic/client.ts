@@ -66,6 +66,8 @@ export interface RandomOptions extends RequestOptions {
   toYear?: number;
 }
 export interface MediaOptions extends RequestOptions {
+  quality?: 'original' | 'economy';
+  offset?: number;
   size?: number;
   method?: 'GET' | 'HEAD';
   range?: string;
@@ -430,6 +432,17 @@ export function createSubsonicClient(options: SubsonicClientOptions): SubsonicCl
       )
         throw new SubsonicError('invalid_request');
       const pairs: Pair[] = [['id', required(id)]];
+      if (opts.quality !== undefined) {
+        if (kind !== 'stream' || !['original', 'economy'].includes(opts.quality))
+          throw new SubsonicError('invalid_request');
+        pairs.push(['format', opts.quality === 'original' ? 'raw' : 'mp3']);
+        if (opts.quality === 'economy') pairs.push(['maxBitRate', '128']);
+      }
+      if (opts.offset !== undefined) {
+        if (opts.quality !== 'economy' || !Number.isSafeInteger(opts.offset) || opts.offset < 0)
+          throw new SubsonicError('invalid_request');
+        pairs.push(['timeOffset', String(opts.offset)]);
+      }
       if (opts.size !== undefined) pairs.push(['size', numeric(opts.size)]);
       if (opts.range !== undefined && !/^bytes=\d*-\d*(?:,\s*\d*-\d*)*$/.test(opts.range))
         throw new SubsonicError('invalid_request');

@@ -37,6 +37,7 @@ export const browserHeaders = {
   'content-type': 'application/json',
 };
 export interface AuthOptions {
+  streamQuality?: boolean;
   sessions: Awaited<ReturnType<typeof storageContext>>['sessions'];
   instances: Awaited<ReturnType<typeof storageContext>>['instances'];
   playlistOperations: Awaited<ReturnType<typeof storageContext>>['playlistOperations'];
@@ -88,6 +89,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     closedCollectionRequests: 0,
     songResponseGate: undefined as (() => Promise<void>) | undefined,
     songError: 0,
+    songBitRateOverride: undefined as number | undefined,
     songStatus: 0,
     scrobbleDrop: false,
     scrobbleStall: false,
@@ -409,7 +411,9 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
                     : state.playlistEntryIds,
                   coverArt: state.playlistCoverArt,
                 })
-              : operation === 'getGenres' || operation === 'scrobble'
+              : operation === 'getGenres' ||
+                  operation === 'scrobble' ||
+                  operation === 'getOpenSubsonicExtensions'
                 ? listeningFixture(operation)
                 : subsonicFixture(operation, state.emptyLibrary);
     if (
@@ -432,6 +436,14 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     ) {
       const song = body['subsonic-response'].song;
       if (song && typeof song === 'object') Reflect.deleteProperty(song, 'duration');
+    }
+    if (
+      operation === 'getSong' &&
+      state.songBitRateOverride !== undefined &&
+      'song' in body['subsonic-response']
+    ) {
+      const song = body['subsonic-response'].song;
+      if (song && typeof song === 'object') Reflect.set(song, 'bitRate', state.songBitRateOverride);
     }
     const payload = JSON.stringify(
       (isLibrary && state.malformedLibrary) || (isCollection && state.malformedCollections)

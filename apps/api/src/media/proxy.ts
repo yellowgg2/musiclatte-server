@@ -1,3 +1,5 @@
+import type { MediaOptions } from '../subsonic/client.js';
+import { qualityRequestHeaders, qualityResponseHeaders } from './quality-headers.js';
 import { Readable } from 'node:stream';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { MediaTransportKind } from '@musiclatte/contracts';
@@ -28,6 +30,10 @@ export async function proxyMedia(
   id: string,
   options?: {
     freshCover?: boolean;
+    streamOptions?: (
+      verified: Awaited<ReturnType<SessionService['verify']>>,
+      signal: AbortSignal,
+    ) => Promise<Pick<MediaOptions, 'quality' | 'offset'>>;
     authorize?: (verified: Awaited<ReturnType<SessionService['verify']>>) => Promise<void>;
   },
 ) {
@@ -51,6 +57,7 @@ export async function proxyMedia(
     const verified = await service.verify(auth.token, auth.scheme, { signal: controller.signal });
     raw = verified.session.raw;
     await options?.authorize?.(verified);
+    const streamOptions = await options?.streamOptions?.(verified, controller.signal);
     const range = options?.freshCover ? undefined : request.headers.range;
     if (range !== undefined && typeof range !== 'string')
       throw new ApiError(400, 'invalid_request');
@@ -58,12 +65,15 @@ export async function proxyMedia(
       kind === 'audio' ? 'stream' : 'getCoverArt',
       id,
       {
+        ...streamOptions,
         method: request.method === 'HEAD' ? 'HEAD' : 'GET',
         signal: controller.signal,
         ...(range === undefined ? {} : { range }),
       },
     );
     if (!options?.freshCover) forwardMediaRequestHeaders(request, upstreamRequest);
+
+    if (streamOptions?.quality) qualityRequestHeaders(upstreamRequest, streamOptions);
 
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -100,6 +110,7 @@ export async function proxyMedia(
 
     reply.code(response.status);
     forwardMediaResponseHeaders(response, reply);
+    if (streamOptions?.quality) qualityResponseHeaders(response, reply, streamOptions);
     if (options?.freshCover) reply.header('Cache-Control', 'private, no-store');
     if (request.method === 'HEAD' || response.status === 304 || response.status === 416) {
       await discard(response);
