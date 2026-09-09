@@ -271,3 +271,11 @@
     text-align: center;
   }
 }
+
+.qualityOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  padding: var(--space-2);
+}

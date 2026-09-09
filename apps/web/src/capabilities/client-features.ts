@@ -17,7 +17,7 @@ export const clientFeatures = {
   'automation.tokens': true,
   'mixes.saved': true,
   'listening.history': true,
-  'music.streamQuality': false,
+  'music.streamQuality': true,
   'music.artistInfo': false,
 } satisfies Record<FeatureKey, boolean>;
 export function featureState(feature: FeatureCapability | undefined) {

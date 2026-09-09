@@ -717,5 +717,20 @@
   "listening.help": "실제로 재생한 구간이 곡 길이의 절반 또는 4분에 도달하면 한 번 기록합니다. 브라우저 종료, 긴 오프라인 상태 또는 메모리 한도로 일부 기록이 누락될 수 있습니다.",
   "listening.upstreamHelp": "이 화면의 횟수는 웹 감상 기록입니다. gonic 전송 여부나 외부 서비스의 누적 횟수와 합산하지 않습니다.",
   "listening.uncertain": "웹 감상은 저장됐지만 gonic 전송 결과는 확인할 수 없습니다. 중복 제출을 피하기 위해 다시 전송하지 않습니다.",
-  "error.playback_plan_changed": "재생 조건이 바뀌었습니다. 재생 옵션을 다시 불러오세요."
+  "error.playback_plan_changed": "재생 조건이 바뀌었습니다. 재생 옵션을 다시 불러오세요.",
+  "quality.title": "재생 품질",
+  "quality.preference": "다음 곡 재생 품질",
+  "quality.original": "원본",
+  "quality.economy": "절약 (MP3 최대 128 kbps)",
+  "quality.next": "다음에 재생을 시작하는 곡부터 적용됩니다. 현재 곡의 품질은 유지됩니다.",
+  "quality.default": "선택한 품질이 없습니다. 기존 서버 재생 설정을 사용합니다.",
+  "quality.server": "서버 기본값",
+  "quality.current": "현재 곡",
+  "quality.unavailable": "이 서버에서는 재생 품질을 선택할 수 없습니다.",
+  "quality.resolving": "재생 옵션을 확인하고 있습니다…",
+  "quality.reason.already_small": "이미 충분히 작은 파일입니다. 원본 형식으로 재생합니다.",
+  "quality.reason.metadata_unknown": "곡 정보가 부족해 절약 모드를 사용할 수 없습니다.",
+  "quality.reason.offset_unsupported": "이 서버는 절약 모드 탐색을 지원하지 않습니다.",
+  "quality.error": "절약 모드를 계속 재생할 수 없습니다. 원본 형식으로 다시 들을 수 있습니다.",
+  "quality.retryOriginal": "원본으로 다시 듣기"
 }

@@ -1,3 +1,4 @@
+import { CurrentQuality } from './QualityFeedback';
 import { useState } from 'react';
 import { Artwork } from '../design/components/Artwork';
 import { IconAction } from '../design/components/IconAction';
@@ -25,6 +26,7 @@ export function DesktopPlayer({ locale }: { locale: Locale }) {
         <span>
           <strong>{state.current.title}</strong>
           <small>{state.current.artist || copy['music.unknownArtist']}</small>
+          <CurrentQuality locale={locale} />
         </span>
       </div>
       <div className={styles.playback}>

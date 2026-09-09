@@ -1,3 +1,5 @@
+import { usePlaybackQuality } from '../player/use-playback-quality';
+import { QualityFeedback } from '../player/QualityFeedback';
 import { ListeningHistoryPage } from '../pages/music/ListeningHistoryPage';
 import { listeningRoute } from '../listening/routes';
 import { MixesPage } from '../pages/music/MixesPage';
@@ -68,6 +70,12 @@ export function Router({
     if (identity.current.instance !== undefined) identity.current.epoch++;
     identity.current.instance = instance;
   }
+  const playbackPreference = usePlaybackQuality(
+    apiOrigin,
+    state.capabilities?.instanceId,
+    state.session?.username,
+  );
+  const canQuality = availableEntries(state.capabilities).includes('music.streamQuality');
   const [locale, onLocale] = useLocale();
   const [location, setLocation] = useState(window.location.pathname + window.location.search);
   const path = location.split('?')[0]!;
@@ -309,6 +317,15 @@ export function Router({
         onUnauthenticated={store.expire}
       >
         <PlayerProvider
+          {...(playbackPreference.value
+            ? {
+                quality: {
+                  enabled: canQuality,
+                  value: playbackPreference.value,
+                  scope: playbackPreference.scope,
+                },
+              }
+            : {})}
           listening={{
             enabled:
               featureState(state.capabilities?.features['listening.history']) === 'available',
@@ -348,6 +365,7 @@ export function Router({
                   </>
                 }
               >
+                <QualityFeedback locale={locale} />
                 {currentCurationPath ? (
                   canCuration ? (
                     <CurationPage
@@ -609,6 +627,7 @@ export function Router({
                   />
                 ) : isSettingsPath(path, base) || path === `${base}login` || path === base ? (
                   <SettingsPage
+                    playbackQuality={{ enabled: canQuality, preference: playbackPreference }}
                     state={state}
                     locale={locale}
                     onLocale={onLocale}

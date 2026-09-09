@@ -1,3 +1,5 @@
+import { PlaybackQualityPanel } from './settings/PlaybackQualityPanel';
+import type { PlaybackPreference } from '../player/use-playback-quality';
 import { AccessTokensPanel } from './settings/AccessTokensPanel';
 import { ScanSettingsPanel } from './settings/ScanSettingsPanel';
 import { EngineStatusPanel } from './settings/EngineStatusPanel';
@@ -9,6 +11,7 @@ import { LanguagePicker } from '../app/LanguagePicker';
 import { messages, type Locale } from '../i18n';
 import styles from '../app/Shell.module.css';
 export function SettingsPage({
+  playbackQuality,
   state,
   locale,
   onLocale,
@@ -18,6 +21,7 @@ export function SettingsPage({
   onRetryCapabilities,
   onUnauthenticated,
 }: {
+  playbackQuality?: { enabled: boolean; preference: PlaybackPreference };
   state: SessionState;
   locale: Locale;
   onLocale: (locale: Locale) => void;
@@ -70,6 +74,7 @@ export function SettingsPage({
         <LanguagePicker locale={locale} onChange={onLocale} />
         <p className={styles.secondary}>{copy['settings.languageHelp']}</p>
       </section>
+      {playbackQuality && <PlaybackQualityPanel locale={locale} {...playbackQuality} />}
       {state.session &&
         state.capabilities?.features['library.scan']?.permission === 'allowed' &&
         state.capabilities.features['library.scan']?.supported === true && (

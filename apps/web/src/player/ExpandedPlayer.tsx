@@ -1,3 +1,4 @@
+import { CurrentQuality, QualityFeedback } from './QualityFeedback';
 import { useEffect, useRef } from 'react';
 import { Artwork } from '../design/components/Artwork';
 import { IconAction } from '../design/components/IconAction';
@@ -70,6 +71,7 @@ export function ExpandedPlayer({ locale, onClose }: { locale: Locale; onClose: (
         <div className={styles.sheetTitle}>
           <strong>{current.title}</strong>
           <span>{current.artist || copy['music.unknownArtist']}</span>
+          <CurrentQuality locale={locale} />
         </div>
         <label className={styles.sheetSeek}>
           <span>{copy['player.seek']}</span>
@@ -113,6 +115,7 @@ export function ExpandedPlayer({ locale, onClose }: { locale: Locale; onClose: (
             ↻
           </IconAction>
         </div>
+        <QualityFeedback locale={locale} />
         <QueueView locale={locale} />
       </section>
     </div>

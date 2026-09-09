@@ -251,3 +251,18 @@
     animation: none;
   }
 }
+
+.qualityFeedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+.qualityFeedback p {
+  flex: 1 1 18rem;
+  margin: 0;
+}

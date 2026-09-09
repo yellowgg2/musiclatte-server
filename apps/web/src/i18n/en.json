@@ -717,5 +717,20 @@
   "listening.help": "A play is recorded after distinct played sections reach half the track or four minutes. Browser closure, prolonged offline use or memory limits can leave some plays unrecorded.",
   "listening.upstreamHelp": "Counts here are web listening records. They are not combined with gonic or external service totals.",
   "listening.uncertain": "The web play was saved, but the gonic submission result is uncertain. It will not be resubmitted to avoid duplicates.",
-  "error.playback_plan_changed": "The playback plan changed. Reload the playback options."
+  "error.playback_plan_changed": "The playback plan changed. Reload the playback options.",
+  "quality.title": "Playback quality",
+  "quality.preference": "Next track quality",
+  "quality.original": "Original",
+  "quality.economy": "Economy (MP3 up to 128 kbps)",
+  "quality.next": "Applies to the next track you start. The current track keeps its quality.",
+  "quality.default": "No preference selected. Existing server playback settings apply.",
+  "quality.server": "Server default",
+  "quality.current": "Current track",
+  "quality.unavailable": "Playback quality selection is unavailable on this server.",
+  "quality.resolving": "Checking playback options…",
+  "quality.reason.already_small": "This file is already small enough. Playing its original format.",
+  "quality.reason.metadata_unknown": "Economy playback is unavailable because track information is incomplete.",
+  "quality.reason.offset_unsupported": "This server does not support seeking in economy playback.",
+  "quality.error": "Economy playback could not continue. You can retry in the original format.",
+  "quality.retryOriginal": "Retry with original"
 }
