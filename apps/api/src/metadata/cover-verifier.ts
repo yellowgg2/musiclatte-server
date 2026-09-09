@@ -62,9 +62,9 @@ export function createMetadataCoverVerifier(options: {
     if (work.patch.cover?.op === 'set') {
       const row = options.database.connection
         .prepare(
-          'SELECT digest FROM metadata_cover_uploads WHERE id=? AND identity_key=? AND library_id=?',
+          'SELECT digest FROM metadata_cover_uploads WHERE id=? AND identity_key=? AND library_id=? AND actor_token_id IS ?',
         )
-        .get(work.patch.cover.uploadId, work.identityKey, work.libraryId);
+        .get(work.patch.cover.uploadId, work.identityKey, work.libraryId, work.actorTokenId);
       if (!row) throw new Error('reflection_unavailable');
       frames = frames.filter((frame) => frame.pictureType === 3 && frame.digest === row.digest);
     }

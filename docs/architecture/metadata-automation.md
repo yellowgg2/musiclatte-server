@@ -33,3 +33,13 @@ S01 exposes token management only. P4 metadata routes still reject PATs until S0
 Web logout does not revoke independently issued PATs. Global authorization-policy invalidation revokes both session and PAT credentials. Offline restore follows the user's 2026-09-09 decision: retain the existing session restoration behavior, revoke restored PATs and rotate a separate automation credential epoch. S02 connects job-grant invalidation to that same restore boundary. Old automation cursors cannot be reused; audit metadata is retained.
 
 `automation.tokens` is advertised only for the actual configured producer and current account permissions. `metadata.curation` and web client support remain disabled until their owner steps implement them.
+
+## P4 principal adapter (S02)
+
+Scoped PATs can read track metadata, their own frame/upload handles and their own admitted jobs. A read-only PAT receives `editable:false`; PATs never acquire restore authority. Cover upload additionally requires metadata write scope. Public PAT job submission remains disabled until the automation claim/write routes are implemented. Ordinary session routes and legacy metadata mutation payloads retain their behavior.
+
+The account identity HMAC remains instance + canonical username. Token ID and scoped credential fingerprints separately bind frame handles, uploads, job history and replay. A token cannot read another token's or a legacy session's jobs even if both belong to the same account; sessions retain account-owned history.
+
+Schema 16 rebuilds metadata items with mutually exclusive nullable session/token FKs, preserving the existing dependent FK graph and indexes. Accepted PAT file intents receive an AES-GCM grant bound to their immutable item/owner/library/binding/revision/patch/policy and automation epoch. Token revocation prevents new requests but does not expand or cancel that accepted intent. The real metadata worker uses the grant only to obtain its upstream proof, then rechecks canonical account, folders, current metadata permissions, file binding and path before publication. Session workers retain their original session verification path.
+
+Definitive terminal jobs discard grant envelopes. Offline restore and global authorization-policy invalidation discard automation grants without deleting their audit actor or recovery ledger. Restore retains ordinary sessions as decided by the user. Restored/invalid grants cannot authorize a new publish; existing journal/recovery state remains available to the normal session recovery controls.

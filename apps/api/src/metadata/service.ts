@@ -1,3 +1,10 @@
+import {
+  metadataCredentialFingerprint,
+  revalidateMetadataPrincipal,
+  metadataContext,
+  metadataSession,
+  isTokenPrincipal,
+} from '../auth/metadata-principal.js';
 import { restoreState } from './backup-preview.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
@@ -43,12 +50,20 @@ export function createMetadataService(service: SessionService) {
     if (!metadataReady(options)) throw new ApiError(503, 'upstream_unavailable');
   };
   const scopedJob = async (v: Verified, id: string): Promise<MetadataJob> => {
+    if (
+      isTokenPrincipal(v) &&
+      !db
+        .prepare('SELECT 1 FROM metadata_items WHERE job_id=? AND actor_token_id=?')
+        .get(id, v.accessToken.id)
+    )
+      throw new ApiError(404, 'not_found');
     const job = repository.getJob(id, identity(v));
     if (!job || !(await p.allowedLibraries(v)).includes(job.libraryId))
       throw new ApiError(404, 'not_found');
     const library = options.policy.libraries.find((entry) => entry.id === job.libraryId)!;
     const editAllowed = canEditMetadata(options.policy, v.identity.username, job.libraryId);
     const restoreAllowed =
+      !isTokenPrincipal(v) &&
       v.identity.adminRole &&
       options.policy.restoreManagers.includes(v.identity.username) &&
       library.writeProfile === 'exclusive' &&
@@ -56,14 +71,19 @@ export function createMetadataService(service: SessionService) {
     for (const item of job.items) {
       item.restoreAvailable = item.restoreAvailable && restoreAllowed;
       item.recoveryActions = item.recoveryActions.filter(
-        (action) => action === 'refresh' || (action === 'restore' ? restoreAllowed : editAllowed),
+        (action) =>
+          action === 'refresh' ||
+          (!isTokenPrincipal(v) && (action === 'restore' ? restoreAllowed : editAllowed)),
       );
     }
     return job;
   };
   const requestKey = (v: Verified, operationId: string, intent: unknown) => ({
     identityKey: identity(v),
-    operationIdHash: hash('operation', operationId),
+    operationIdHash: hash(
+      'operation',
+      isTokenPrincipal(v) ? [metadataCredentialFingerprint(v), operationId] : operationId,
+    ),
     requestHash: hash('request', canonical(intent)),
   });
   const replay = async (v: Verified, key: ReturnType<typeof requestKey>) => {
@@ -130,12 +150,12 @@ export function createMetadataService(service: SessionService) {
     trackId: file.trackId,
     expectedRevision: file.fileRevision,
     expectedDigest: file.inspection.digest,
-    actorSessionId: createHash('sha256').update(v.session.raw).digest('hex'),
-    policyRevision: v.session.policyRevision,
+    actorSessionId: createHash('sha256').update(metadataSession(v).raw).digest('hex'),
+    policyRevision: metadataContext(v).policyRevision,
     patch,
   });
   const frameHandle = (v: Verified, file: ResolvedMetadataFile, frameId: string) =>
-    `${frameId}.${file.fileRevision}.${service.sign('metadata-frame', JSON.stringify([identity(v), file.trackId, file.fileRevision, frameId]))}`;
+    `${frameId}.${file.fileRevision}.${service.sign('metadata-frame', JSON.stringify([p.credentialIdentity(v), file.trackId, file.fileRevision, frameId]))}`;
   return {
     provider: p,
     get covers() {
@@ -236,7 +256,7 @@ export function createMetadataService(service: SessionService) {
       const existing = await replay(v, key);
       if (existing) return { schemaVersion: 1 as const, job: existing };
       const files = await validate(v, body.targets, body.patch);
-      await service.verify(v.session.token, v.session.scheme);
+      await revalidateMetadataPrincipal(service, v);
       const request: ValidatedMetadataRequest = {
         ...key,
         id: randomUUID(),
@@ -273,14 +293,19 @@ export function createMetadataService(service: SessionService) {
         ...key,
         jobId: id,
         itemIds: body.itemIds,
-        actorSessionId: createHash('sha256').update(v.session.raw).digest('hex'),
-        policyRevision: v.session.policyRevision,
+        actorSessionId: createHash('sha256').update(metadataSession(v).raw).digest('hex'),
+        policyRevision: metadataContext(v).policyRevision,
       });
       return { schemaVersion: 1 as const, job: await scopedJob(v, id) };
     },
     async list(v: Verified, query: { cursor?: string; limit?: string }) {
       const libraries = await p.allowedLibraries(v);
-      const scope = [identity(v), v.session.policyRevision, options.policy, libraries];
+      const scope = [
+        p.credentialIdentity(v),
+        metadataContext(v).policyRevision,
+        options.policy,
+        libraries,
+      ];
       let before: [number, string] = [Number.MAX_SAFE_INTEGER, '\uffff'];
       const wrap = (value: [number, string]) => {
         const raw = Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -308,9 +333,18 @@ export function createMetadataService(service: SessionService) {
       const limit = Number(query.limit ?? 25);
       const rows = db
         .prepare(
-          'SELECT id,created_at FROM metadata_jobs WHERE identity_key=? AND library_id IN (SELECT value FROM json_each(?)) AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT ?',
+          'SELECT id,created_at FROM metadata_jobs WHERE identity_key=? AND library_id IN (SELECT value FROM json_each(?)) AND (? IS NULL OR EXISTS(SELECT 1 FROM metadata_items i WHERE i.job_id=metadata_jobs.id AND i.actor_token_id=?)) AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT ?',
         )
-        .all(identity(v), JSON.stringify(libraries), before[0], before[0], before[1], limit + 1);
+        .all(
+          identity(v),
+          JSON.stringify(libraries),
+          isTokenPrincipal(v) ? v.accessToken.id : null,
+          isTokenPrincipal(v) ? v.accessToken.id : null,
+          before[0],
+          before[0],
+          before[1],
+          limit + 1,
+        );
       const page = rows.slice(0, limit);
       const jobs: MetadataJob[] = [];
       for (const row of page) jobs.push(await scopedJob(v, String(row.id)));
@@ -353,7 +387,7 @@ export function createMetadataService(service: SessionService) {
         );
         items.push(item(v, files[0]!, patch));
       }
-      await service.verify(v.session.token, v.session.scheme);
+      await revalidateMetadataPrincipal(service, v);
       const job = repository.retryFailed({
         request: { ...key, id: randomUUID(), libraryId: parent.libraryId, items },
         parentJobId: id,
@@ -375,7 +409,7 @@ export function createMetadataService(service: SessionService) {
       const file = await p.resolver.resolve(v, item.currentTrackId, 'restore');
       const actual = await p.helper.read({ key: file.relativeFileKey });
       if (actual.fullDigest !== file.inspection.digest) throw new ApiError(409, 'conflict');
-      await service.verify(v.session.token, v.session.scheme);
+      await revalidateMetadataPrincipal(service, v);
       const state = restoreState(actual);
       return decodeMetadataRestorePreview({
         schemaVersion: 1,
@@ -424,7 +458,7 @@ export function createMetadataService(service: SessionService) {
         { trackId: old.currentTrackId, expectedRevision: body.currentExpectedRevision },
         'restore',
       );
-      await service.verify(v.session.token, v.session.scheme);
+      await revalidateMetadataPrincipal(service, v);
       const job = repository.createRestore({
         request: {
           ...key,

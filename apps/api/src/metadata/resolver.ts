@@ -1,3 +1,9 @@
+import {
+  checkMetadataPrincipal,
+  rejectMetadataUpstream,
+  isTokenPrincipal,
+  type VerifiedMetadataActor,
+} from '../auth/metadata-principal.js';
 import { randomUUID } from 'node:crypto';
 import { ApiError, type SessionService } from '../auth/session-service.js';
 import type { ManagementDatabase } from '../storage/database.js';
@@ -7,7 +13,7 @@ import { createMetadataRevision } from './revision.js';
 import { canEditMetadata, canRestoreMetadata, type MetadataPolicy } from './policy.js';
 import type { createMetadataFileAccess, MetadataFileInspection } from './file-access.js';
 
-export type VerifiedMetadataSession = Awaited<ReturnType<SessionService['verify']>>;
+export type VerifiedMetadataSession = VerifiedMetadataActor;
 export interface ResolvedMetadataFile {
   mediaLinkId: string;
   fileRevision: string;
@@ -47,7 +53,7 @@ export function createMetadataFileResolver(options: {
       )
         throw new ApiError(400, 'invalid_request');
       const { sessionService, policy } = options;
-      sessionService.find(verified.session.token, verified.session.scheme);
+      checkMetadataPrincipal(sessionService, verified);
       if (!policy.enabled) throw new ApiError(403, 'forbidden');
       let result: Awaited<ReturnType<VerifiedMetadataSession['upstream']['recentSong']>>;
       let folderIds: string[];
@@ -56,9 +62,9 @@ export function createMetadataFileResolver(options: {
         result = await verified.upstream.recentSong(trackId, requestOptions);
         folderIds = (await verified.upstream.folders(requestOptions)).map((folder) => folder.id);
       } catch (error) {
-        return sessionService.rejectUpstream(error, verified.session.raw);
+        return rejectMetadataUpstream(sessionService, verified, error);
       }
-      sessionService.find(verified.session.token, verified.session.scheme);
+      checkMetadataPrincipal(sessionService, verified);
       if (result.song.id !== trackId || result.song.isDir || !result.path)
         throw new ApiError(409, 'conflict');
       let key: string;
@@ -73,6 +79,14 @@ export function createMetadataFileResolver(options: {
       );
       if (candidates.length !== 1) throw new ApiError(403, 'forbidden');
       const library = candidates[0]!;
+      if (
+        isTokenPrincipal(verified) &&
+        (mode === 'restore' ||
+          !verified.allowedLibraries.includes(library.id) ||
+          !canEditMetadata(policy, verified.identity.username, library.id) ||
+          (mode === 'edit' && !verified.accessToken.scopes.includes('metadata:write')))
+      )
+        throw new ApiError(403, 'forbidden');
       const identity = { ...verified.identity, musicFolderIds: folderIds };
       const authorized =
         mode === 'restore'
@@ -80,7 +94,7 @@ export function createMetadataFileResolver(options: {
           : library.editors.includes(identity.username);
       if (mode !== 'read' && !authorized) throw new ApiError(403, 'forbidden');
       const inspection = await options.fileAccess.inspect(key, signal);
-      sessionService.find(verified.session.token, verified.session.scheme);
+      checkMetadataPrincipal(sessionService, verified);
       const existing = links.findBySongId(library.id, trackId);
       if (existing && existing.relativeFileKey !== key) throw new ApiError(409, 'conflict');
       let link;
@@ -98,7 +112,8 @@ export function createMetadataFileResolver(options: {
       const permission =
         mode === 'restore'
           ? canRestoreMetadata(policy, identity, library.id)
-          : canEditMetadata(policy, identity.username, library.id);
+          : canEditMetadata(policy, identity.username, library.id) &&
+            (!isTokenPrincipal(verified) || verified.accessToken.scopes.includes('metadata:write'));
       const editable = supported && permission && inspection.writable && options.workerReady();
       const scoped = { libraryId: library.id, relativeFileKey: key, digest: inspection.digest };
       return {

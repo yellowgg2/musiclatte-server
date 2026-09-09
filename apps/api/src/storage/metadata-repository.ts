@@ -22,7 +22,10 @@ export interface ValidatedMetadataItem {
   trackId: string;
   expectedRevision: string;
   expectedDigest: string;
-  actorSessionId: string;
+  actorSessionId: string | null;
+  actorTokenId?: string;
+  encryptedJobGrant?: string;
+  grantEpoch?: string;
   policyRevision: number;
   patch: MetadataPatch;
 }
@@ -157,6 +160,7 @@ export function validateMetadataStorage(db: DatabaseSync): void {
     .iterate()) {
     const backup = db.prepare('SELECT * FROM metadata_backups WHERE item_id=?').get(text(row.id));
     decodeMetadataItem(publicItem(row, !!backup));
+    if ((row.actor_session_id === null) === (row.actor_token_id === null)) invalid();
     const link = db
       .prepare('SELECT library_id FROM media_links WHERE id=?')
       .get(text(row.media_link_id));
@@ -345,12 +349,29 @@ export function createMetadataRepository({
       timestamp,
     );
     for (const [order, item] of input.items.entries()) {
+      if (lineage?.kind === 'restore' && item.actorTokenId) throw new Error('conflict');
       const link = db
         .prepare('SELECT library_id,revision,gonic_song_id FROM media_links WHERE id=?')
         .get(item.mediaLinkId);
-      const session = db
-        .prepare('SELECT policy_revision FROM sessions WHERE id_hash=?')
-        .get(item.actorSessionId);
+      const session = item.actorSessionId
+        ? db
+            .prepare('SELECT policy_revision FROM sessions WHERE id_hash=?')
+            .get(item.actorSessionId)
+        : db
+            .prepare(
+              'SELECT policy_revision FROM access_tokens WHERE id=? AND revoked_at IS NULL AND expires_at>? AND created_at<=?',
+            )
+            .get(item.actorTokenId ?? '', timestamp, timestamp);
+      if (
+        item.actorSessionId === null &&
+        (!item.actorTokenId ||
+          !item.encryptedJobGrant ||
+          item.grantEpoch !==
+            db.prepare('SELECT credential_epoch FROM automation_state WHERE singleton=1').get()
+              ?.credential_epoch)
+      )
+        throw new Error('conflict');
+      if (item.actorSessionId !== null && item.actorTokenId) throw new Error('conflict');
       if (
         !link ||
         link.library_id !== input.libraryId ||
@@ -367,9 +388,9 @@ export function createMetadataRepository({
         const uploadId = item.patch.cover.uploadId;
         const upload = db
           .prepare(
-            'SELECT expires_at FROM metadata_cover_uploads WHERE id=? AND identity_key=? AND library_id=?',
+            'SELECT expires_at FROM metadata_cover_uploads WHERE id=? AND identity_key=? AND library_id=? AND actor_token_id IS ?',
           )
-          .get(uploadId, input.identityKey, input.libraryId);
+          .get(uploadId, input.identityKey, input.libraryId, item.actorTokenId ?? null);
         if (
           !upload ||
           (integer(upload.expires_at) <= timestamp &&
@@ -388,7 +409,7 @@ export function createMetadataRepository({
         throw new Error('Invalid metadata request');
       const parent = lineage?.parents.get(item.id);
       db.prepare(
-        "INSERT INTO metadata_items(id,job_id,item_order,media_link_id,file_identity,binding_revision,original_track_id,current_track_id,expected_revision,expected_digest,patch_json,actor_session_id,policy_revision,parent_item_id,restore_backup_id,stage,stage_changed_at,changed_fields_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?)",
+        "INSERT INTO metadata_items(id,job_id,item_order,media_link_id,file_identity,binding_revision,original_track_id,current_track_id,expected_revision,expected_digest,patch_json,actor_session_id,actor_token_id,encrypted_job_grant,grant_epoch,policy_revision,parent_item_id,restore_backup_id,stage,stage_changed_at,changed_fields_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?)",
       ).run(
         item.id,
         input.id,
@@ -402,6 +423,9 @@ export function createMetadataRepository({
         item.expectedDigest,
         JSON.stringify(item.patch),
         item.actorSessionId,
+        item.actorTokenId ?? null,
+        item.encryptedJobGrant ?? null,
+        item.grantEpoch ?? null,
         item.policyRevision,
         parent?.itemId ?? null,
         parent?.backupId ?? null,
@@ -486,7 +510,7 @@ export function createMetadataRepository({
           db.prepare('UPDATE metadata_items SET next_reflection_at=0 WHERE id=?').run(id);
           if (input.actorSessionId)
             db.prepare(
-              'UPDATE metadata_items SET actor_session_id=?,policy_revision=? WHERE id=?',
+              'UPDATE metadata_items SET actor_session_id=?,policy_revision=? WHERE id=? AND actor_token_id IS NULL',
             ).run(input.actorSessionId, input.policyRevision!, id);
         }
         return job;
@@ -655,7 +679,9 @@ export function createMetadataRepository({
         fileIdentity: text(row.file_identity),
         expectedRevision: text(row.expected_revision),
         expectedDigest: text(row.expected_digest),
-        actorSessionId: text(row.actor_session_id),
+        actorSessionId: nullableText(row.actor_session_id),
+        actorTokenId: nullableText(row.actor_token_id),
+        originalTrackId: text(row.original_track_id),
         policyRevision: integer(row.policy_revision),
         patch: JSON.parse(text(row.patch_json)) as MetadataPatch,
         stage: text(row.stage) as MetadataStage,

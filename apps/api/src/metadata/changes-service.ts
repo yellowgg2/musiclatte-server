@@ -1,3 +1,4 @@
+import { checkMetadataPrincipal, metadataContext } from '../auth/metadata-principal.js';
 import type { SessionService } from '../auth/session-service.js';
 import { ApiError } from '../auth/session-service.js';
 import type { MetadataProvider } from './provider.js';
@@ -15,7 +16,7 @@ export function createMetadataChangesService(service: SessionService, p: Metadat
     if (!library) return false;
     try {
       const { song, path } = await v.upstream.recentSong(String(row.current_track_id));
-      service.find(v.session.token, v.session.scheme);
+      checkMetadataPrincipal(service, v);
       return (
         song.id === row.current_track_id &&
         !song.isDir &&
@@ -53,9 +54,9 @@ export function createMetadataChangesService(service: SessionService, p: Metadat
     async list(v: Verified, query: { cursor?: string; limit?: string }) {
       const libraries = await p.allowedLibraries(v);
       const scope = [
-        p.identity(v),
-        v.session.instanceId,
-        v.session.policyRevision,
+        p.credentialIdentity(v),
+        metadataContext(v).instanceId,
+        metadataContext(v).policyRevision,
         p.options.policy,
         libraries,
       ];

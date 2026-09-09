@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -20,6 +20,7 @@ const MIGRATIONS = [
   new URL('./migrations/013-import-account.sql', import.meta.url),
   new URL('./migrations/014-scan-schedule.sql', import.meta.url),
   new URL('./migrations/015-access-tokens.sql', import.meta.url),
+  new URL('./migrations/016-metadata-principals.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -60,7 +61,7 @@ export function validateSchema(db: DatabaseSync): void {
     'SELECT id,identity_key,library_id,operation_id_hash,request_hash,kind,parent_job_id,source_reference,usage_basis,created_at FROM metadata_jobs LIMIT 0',
   );
   db.prepare(
-    'SELECT id,job_id,item_order,media_link_id,file_identity,binding_revision,original_track_id,current_track_id,expected_revision,expected_digest,patch_json,actor_session_id,policy_revision,parent_item_id,restore_backup_id,stage,generation,stage_changed_at,file_saved_at,reflected_at,result_revision,result_digest,candidate_key,error_code,changed_fields_json FROM metadata_items LIMIT 0',
+    'SELECT id,job_id,item_order,media_link_id,file_identity,binding_revision,original_track_id,current_track_id,expected_revision,expected_digest,patch_json,actor_session_id,actor_token_id,encrypted_job_grant,grant_epoch,policy_revision,parent_item_id,restore_backup_id,stage,generation,stage_changed_at,file_saved_at,reflected_at,result_revision,result_digest,candidate_key,error_code,changed_fields_json FROM metadata_items LIMIT 0',
   );
   db.prepare(
     'SELECT file_identity,item_id,owner,generation,expires_at FROM metadata_file_locks LIMIT 0',
@@ -72,7 +73,7 @@ export function validateSchema(db: DatabaseSync): void {
     'SELECT id,item_id,identity_key,library_id,relative_key,preimage_digest,size,mode,owner_profile_json,parent_backup_id,created_at FROM metadata_backups LIMIT 0',
   );
   db.prepare(
-    'SELECT id,identity_key,library_id,operation_id_hash,digest,relative_key,mime_type,size,created_at,expires_at FROM metadata_cover_uploads LIMIT 0',
+    'SELECT id,identity_key,library_id,operation_id_hash,digest,relative_key,mime_type,size,created_at,expires_at,actor_token_id FROM metadata_cover_uploads LIMIT 0',
   );
   db.prepare(
     'SELECT sequence,item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at FROM metadata_changes LIMIT 0',

@@ -1,4 +1,9 @@
 import {
+  revalidateMetadataPrincipal,
+  isTokenPrincipal,
+  metadataCredentialFingerprint,
+} from '../auth/metadata-principal.js';
+import {
   constants,
   closeSync,
   fstatSync,
@@ -61,8 +66,10 @@ export function createMetadataCoverService(service: SessionService, p: MetadataP
       .get(id);
   const find = (v: Verified, id: string, libraryId?: string) => {
     const row = db
-      .prepare('SELECT * FROM metadata_cover_uploads WHERE id=? AND identity_key=?')
-      .get(id, identity(v));
+      .prepare(
+        'SELECT * FROM metadata_cover_uploads WHERE id=? AND identity_key=? AND actor_token_id IS ?',
+      )
+      .get(id, identity(v), isTokenPrincipal(v) ? v.accessToken.id : null);
     if (
       !row ||
       (libraryId !== undefined && row.library_id !== libraryId) ||
@@ -144,7 +151,10 @@ export function createMetadataCoverService(service: SessionService, p: MetadataP
       )
         throw new ApiError(413, 'invalid_request');
       const digest = createHash('sha256').update(data).digest('hex');
-      const operation = hash('cover-operation', operationId);
+      const operation = hash(
+        'cover-operation',
+        isTokenPrincipal(v) ? [metadataCredentialFingerprint(v), operationId] : operationId,
+      );
       const replay = () => {
         const row = db
           .prepare(
@@ -185,7 +195,7 @@ export function createMetadataCoverService(service: SessionService, p: MetadataP
           decoded.size !== data.length
         )
           throw new ApiError(422, 'invalid_request');
-        await service.verify(v.session.token, v.session.scheme);
+        await revalidateMetadataPrincipal(service, v);
         return options.database.transaction(() => {
           const duplicate = replay();
           if (duplicate) return duplicate;
@@ -207,7 +217,7 @@ export function createMetadataCoverService(service: SessionService, p: MetadataP
             closeSync(dir);
           }
           db.prepare(
-            'INSERT INTO metadata_cover_uploads(id,identity_key,library_id,operation_id_hash,digest,relative_key,mime_type,size,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+            'INSERT INTO metadata_cover_uploads(id,identity_key,library_id,operation_id_hash,digest,relative_key,mime_type,size,created_at,expires_at,actor_token_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
           ).run(
             id,
             identity(v),
@@ -219,6 +229,7 @@ export function createMetadataCoverService(service: SessionService, p: MetadataP
             data.length,
             options.clock(),
             options.clock() + 86400000,
+            isTokenPrincipal(v) ? v.accessToken.id : null,
           );
           retained = true;
           return project(find(v, id, libraryId));

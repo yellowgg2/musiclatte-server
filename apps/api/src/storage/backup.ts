@@ -21,6 +21,7 @@ import { validateMediaLinks } from './media-link-repository.js';
 import { validateEngineState } from './engine-repository.js';
 import { validateWorkerState } from './worker-state-repository.js';
 import { validateAccessTokens } from './access-token-repository.js';
+import { validateMetadataJobGrants } from '../auth/metadata-job-authorizer.js';
 
 /** Read-only verification: never initialize a missing instance or migrate a recovery artifact. */
 function verifySnapshot(path: string, key: Uint8Array): void {
@@ -40,6 +41,7 @@ function verifySnapshot(path: string, key: Uint8Array): void {
       throw new Error();
     const vault = createCredentialVault(key);
     validateAccessTokens(db, vault);
+    validateMetadataJobGrants(db, vault);
     const instance = db
       .prepare('SELECT id,policy_revision,key_id FROM instance WHERE singleton=1')
       .get();
@@ -138,6 +140,9 @@ export async function restoreBackup(source: string, destination: string): Promis
       restored.exec('BEGIN IMMEDIATE');
       restored.exec(
         'UPDATE access_tokens SET encrypted_proof=NULL,revoked_at=COALESCE(revoked_at,created_at)',
+      );
+      restored.exec(
+        'UPDATE metadata_items SET encrypted_job_grant=NULL WHERE actor_token_id IS NOT NULL',
       );
       restored
         .prepare('UPDATE automation_state SET credential_epoch=? WHERE singleton=1')

@@ -12,6 +12,11 @@ import { metadataErrors } from '../metadata/provider.js';
 import { createMetadataChangesService } from '../metadata/changes-service.js';
 import { proxyMedia } from '../media/proxy.js';
 import type { VerifiedMetadataSession } from '../metadata/resolver.js';
+import {
+  verifyMetadataPrincipal,
+  revalidateMetadataPrincipal,
+  isTokenPrincipal,
+} from '../auth/metadata-principal.js';
 
 export function registerMetadataRoutes(app: FastifyInstance, service: SessionService) {
   let metadata: MetadataService | undefined;
@@ -89,9 +94,11 @@ export function registerMetadataRoutes(app: FastifyInstance, service: SessionSer
       cookieMutation(request, service, auth.token);
     }
     if (request.validationError) throw new ApiError(400, 'invalid_request');
-    const verified = await service.verify(auth.token, auth.scheme);
+    const verified = await verifyMetadataPrincipal(request, service);
+    if (isTokenPrincipal(verified) && request.url.split('?')[0]!.endsWith('/restore-preview'))
+      throw new ApiError(403, 'forbidden');
     const result = await metadataErrors(() => work(getService(), verified));
-    await service.verify(auth.token, auth.scheme);
+    await revalidateMetadataPrincipal(service, verified);
     return result;
   }
   app.get<{ Params: { id: string } }>(
@@ -272,12 +279,14 @@ export function registerMetadataRoutes(app: FastifyInstance, service: SessionSer
       },
       async (request, reply) => {
         const auth = requiredCredentials(request, service);
-        if (auth.scheme !== 'cookie') throw new ApiError(403, 'forbidden');
+        const pat = auth.token.startsWith('mlpat_');
+        if (auth.scheme !== 'cookie' && !pat) throw new ApiError(403, 'forbidden');
         // Raw image uploads use the identical cookie/Origin/CSRF guard, with an explicit media-type gate.
         const mime = request.headers['content-type'];
         if (!['image/jpeg', 'image/png'].includes(String(mime)) || !Buffer.isBuffer(request.body))
           throw new ApiError(415, 'invalid_request');
-        cookieOriginMutation(request, service, auth.token);
+        if (!pat) cookieOriginMutation(request, service, auth.token);
+        else await verifyMetadataPrincipal(request, service, ['metadata:read', 'metadata:write']);
         const operation = request.headers['x-operation-id'];
         const library = request.headers['x-metadata-library-id'];
         if (request.validationError || typeof operation !== 'string' || typeof library !== 'string')

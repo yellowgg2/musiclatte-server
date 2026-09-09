@@ -25,6 +25,7 @@ import {
   type MetadataEnvironment,
 } from './metadata/runtime-config.js';
 import { createSubsonicClient } from './subsonic/client.js';
+import { createMetadataJobAuthorizer } from './auth/metadata-job-authorizer.js';
 
 export { readMetadataWorkerConfig } from './metadata/runtime-config.js';
 
@@ -170,8 +171,15 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
     });
     const repository = createMetadataRepository({ database, clock: Date.now });
     const revisions = createMetadataRevision(key);
+    const grants = createMetadataJobAuthorizer({ database, vault: createCredentialVault(key) });
     const account = async (work: MetadataWork) => {
-      const stored = sessions.findByIdHash(work.actorSessionId);
+      const credential = () =>
+        work.actorTokenId
+          ? grants.authorizeAcceptedWork(work)
+          : work.actorSessionId
+            ? sessions.findByIdHash(work.actorSessionId)
+            : null;
+      const stored = credential();
       if (!stored || stored.policyRevision !== work.policyRevision)
         throw new Error('permission_changed');
       const signed = createHmac('sha256', key)
@@ -211,7 +219,7 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
         binding.relative_file_key !== work.key ||
         revisions.fileIdentity({ libraryId: work.libraryId, relativeFileKey: work.key }) !==
           work.fileIdentity ||
-        !sessions.findByIdHash(work.actorSessionId)
+        !credential()
       )
         throw new Error('permission_changed');
       return { client, user, folders, library };
@@ -228,9 +236,9 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
       if (work.patch.cover?.op === 'set') {
         const row = db
           .prepare(
-            'SELECT relative_key,digest FROM metadata_cover_uploads WHERE id=? AND identity_key=? AND library_id=?',
+            'SELECT relative_key,digest FROM metadata_cover_uploads WHERE id=? AND identity_key=? AND library_id=? AND actor_token_id IS ?',
           )
-          .get(work.patch.cover.uploadId, work.identityKey, work.libraryId);
+          .get(work.patch.cover.uploadId, work.identityKey, work.libraryId, work.actorTokenId);
         if (!row || !/^[a-f0-9-]{36}\.upload$/.test(String(row.relative_key)))
           throw new Error('invalid_cover');
         const root = lstatSync(config.uploadRoot, { bigint: true });

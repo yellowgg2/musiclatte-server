@@ -44,6 +44,9 @@ export function createInstanceRepository(database: ManagementDatabase, keyId: st
         db.exec(
           'UPDATE access_tokens SET encrypted_proof=NULL, revoked_at=COALESCE(revoked_at,created_at)',
         );
+        db.exec(
+          'UPDATE metadata_items SET encrypted_job_grant=NULL WHERE actor_token_id IS NOT NULL',
+        );
         return get();
       });
     },

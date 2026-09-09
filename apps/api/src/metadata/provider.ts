@@ -1,3 +1,10 @@
+import {
+  checkMetadataPrincipal,
+  rejectMetadataUpstream,
+  metadataContext,
+  isTokenPrincipal,
+  metadataCredentialFingerprint,
+} from '../auth/metadata-principal.js';
 import { dirname, join } from 'node:path';
 import type { FeatureCapability } from '@musiclatte/contracts';
 import { metadataFields } from '@musiclatte/contracts';
@@ -74,17 +81,27 @@ export function createMetadataProvider(service: SessionService) {
       'hex',
     );
   const identity = (v: VerifiedMetadataSession) =>
-    hash('identity', [v.session.instanceId, v.identity.username]);
+    hash('identity', [metadataContext(v).instanceId, v.identity.username]);
+  const credentialIdentity = (v: VerifiedMetadataSession) =>
+    isTokenPrincipal(v)
+      ? hash('credential-identity', [identity(v), metadataCredentialFingerprint(v)])
+      : identity(v);
   const allowedLibraries = async (v: VerifiedMetadataSession) => {
     let ids: string[];
     try {
       ids = (await v.upstream.folders()).map((folder) => folder.id);
     } catch (error) {
-      return service.rejectUpstream(error, v.session.raw);
+      return rejectMetadataUpstream(service, v, error);
     }
-    service.find(v.session.token, v.session.scheme);
+    checkMetadataPrincipal(service, v);
     return options.policy.libraries
-      .filter((library) => ids.includes(library.musicFolderId))
+      .filter(
+        (library) =>
+          ids.includes(library.musicFolderId) &&
+          (!isTokenPrincipal(v) ||
+            (v.allowedLibraries.includes(library.id) &&
+              canEditMetadata(options.policy, v.identity.username, library.id))),
+      )
       .map((library) => library.id)
       .sort();
   };
@@ -101,6 +118,7 @@ export function createMetadataProvider(service: SessionService) {
     },
     hash,
     identity,
+    credentialIdentity,
     allowedLibraries,
   };
 }

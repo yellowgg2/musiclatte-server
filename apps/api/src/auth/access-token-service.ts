@@ -33,6 +33,7 @@ export function createAccessTokenService(service: SessionService, options: Autom
     return found;
   }
   return {
+    find,
     repository,
     allowedLibraries,
     async create(
