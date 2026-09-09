@@ -1,0 +1,127 @@
+.form {
+  display: grid;
+  gap: var(--space-4);
+  margin-block: var(--space-5);
+}
+.columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+.choices {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.choices legend {
+  font-weight: 650;
+  margin-block-end: var(--space-2);
+}
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  overflow-wrap: anywhere;
+}
+.choice input {
+  margin-block-start: 0.25em;
+  accent-color: var(--color-accent);
+}
+.expiry {
+  display: grid;
+  gap: var(--space-2);
+  max-inline-size: 20rem;
+}
+.expiry select {
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-control);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.actions p {
+  flex-basis: 100%;
+  margin-block: var(--space-2);
+}
+.secret {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-selection);
+  border-radius: var(--radius-control);
+}
+.secret p {
+  margin: 0;
+}
+.secret textarea {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+  resize: vertical;
+  font: inherit;
+  font-family: ui-monospace, monospace;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-control);
+}
+.listHeading,
+.tokenHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.listHeading {
+  margin-block-start: var(--space-5);
+}
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.token {
+  padding-block: var(--space-4);
+  border-block-start: 1px solid var(--color-border);
+  overflow-wrap: anywhere;
+}
+.token h4 {
+  margin: 0;
+  font-size: var(--text-body);
+}
+.details {
+  margin-block: var(--space-2);
+  color: var(--color-secondary);
+}
+.dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+  font-size: var(--text-small);
+}
+.dates dt {
+  color: var(--color-secondary);
+}
+.dates dd {
+  margin: var(--space-1) 0 0;
+}
+.error {
+  color: var(--color-error);
+}
+@media (max-width: 40rem) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

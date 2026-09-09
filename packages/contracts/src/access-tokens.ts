@@ -174,3 +174,37 @@ export function decodeAccessTokenList(value: unknown): {
     nextCursor: row.nextCursor,
   };
 }
+
+export interface AccessTokenOptions {
+  schemaVersion: 1;
+  now: number;
+  maxTokenAgeMs: number;
+  libraryIds: string[];
+  scopes: AccessTokenScope[];
+}
+export function decodeAccessTokenOptions(value: unknown): AccessTokenOptions {
+  const row = responseRecord(value, [
+    'schemaVersion',
+    'now',
+    'maxTokenAgeMs',
+    'libraryIds',
+    'scopes',
+  ]);
+  if (
+    typeof row.now !== 'number' ||
+    !Number.isSafeInteger(row.now) ||
+    row.now < 0 ||
+    typeof row.maxTokenAgeMs !== 'number' ||
+    !Number.isSafeInteger(row.maxTokenAgeMs) ||
+    row.maxTokenAgeMs < 1 ||
+    row.maxTokenAgeMs > 366 * 86400000
+  )
+    throw new Error('Invalid token options');
+  return {
+    schemaVersion: 1,
+    now: row.now,
+    maxTokenAgeMs: row.maxTokenAgeMs,
+    libraryIds: validateTokenLibraries(row.libraryIds),
+    scopes: validateTokenScopes(row.scopes),
+  };
+}

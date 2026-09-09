@@ -1,3 +1,4 @@
+import { AccessTokensPanel } from './settings/AccessTokensPanel';
 import { ScanSettingsPanel } from './settings/ScanSettingsPanel';
 import { EngineStatusPanel } from './settings/EngineStatusPanel';
 import { clientFeatures } from '../capabilities/client-features';
@@ -93,6 +94,35 @@ export function SettingsPage({
           <p className={styles.secondary}>{copy['scan.adminOnly']}</p>
         </section>
       )}
+      {clientFeatures['automation.tokens'] &&
+        state.session &&
+        !state.busy &&
+        state.capabilities?.features['automation.tokens']?.supported === true &&
+        (state.capabilities.features['automation.tokens']?.permission === 'allowed' ? (
+          <AccessTokensPanel
+            key={JSON.stringify([
+              state.session.username,
+              state.session.csrfToken,
+              state.capabilities.instanceId,
+              state.capabilities.revision,
+              state.capabilities.features['automation.tokens'],
+            ])}
+            locale={locale}
+            fetcher={fetcher}
+            apiOrigin={apiOrigin}
+            csrfToken={state.session.csrfToken}
+            unavailable={
+              state.capabilities.features['automation.tokens']?.availability !== 'available'
+            }
+            onRetryCapabilities={onRetryCapabilities}
+            onUnauthenticated={onUnauthenticated}
+          />
+        ) : (
+          <section className={styles.section}>
+            <h2>{copy['tokens.title']}</h2>
+            <p>{copy['tokens.denied']}</p>
+          </section>
+        ))}
       {manager && state.session && (
         <EngineStatusPanel
           key={JSON.stringify([

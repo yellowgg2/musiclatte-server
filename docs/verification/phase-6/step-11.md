@@ -1,0 +1,11 @@
+# Phase 6 S11 — Token settings
+
+Implemented `/settings` access-token creation options, strict web client, scope/library/expiry form, paged owned metadata, one-time secret display, clipboard recovery and revocation confirmation. Existing account/language/scan/engine panels and Gallery primitives are reused. The secret lives only in the keyed component; close, logout, navigation and session identity changes clear it, and aborted late issuance is discarded. A lost/malformed issuance response never automatically retries; the user can refresh metadata and revoke the uncertain token before replacing it.
+
+The S01 producer lacked selectable current libraries and configured expiry limits. Added session-owner-only `GET /api/v1/access-tokens/options`, strict `AccessTokenOptions` decoder, current upstream permission check and PAT denial. No filesystem paths or raw credentials appear in this DTO.
+
+Verification: Vitest RED (missing panel and options route), GREEN production Router tests (issuance/hide/revoke, uncertain outcome, locale draft preservation, clipboard failure, logout/late response, denied owner), existing login/engine tests; real Fastify HTTP client options/create/list/revoke and revoked PAT denial. Capability and production-exclusion contracts pass. Typecheck, production build and format check pass.
+
+Actual Chrome: source-only `automation-ui-harness.ts --port 18726 --scenario tokens --control-file <owned temporary file>` serves the production Router, synthetic HTTP responses and redacted placeholder secrets only. KO form issue → one-time placeholder displayed → English switch → hide → revoke confirmation → Revoked observed. Denied mode rendered permission text without the form. Logout then another synthetic profile rendered an empty list with no prior secret. Lost-create mode disabled Create, displayed uncertain-result guidance, and list refresh identified the token without creating another. Deterministic unresolved-promise UI test owns the precise late-response race assertion; Chrome profile flow separately verifies the normal account transition. No real token copied or recorded.
+
+Shared-new 0, Gallery changes none. P6-UA-001–005 remain pending for final visual/reflow/accessibility/Safari user acceptance. Existing running server was not deployed. Rulebook postflight: skipped (no new lesson).

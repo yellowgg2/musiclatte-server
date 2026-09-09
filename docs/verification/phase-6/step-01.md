@@ -20,3 +20,5 @@ Cwd: repository root. Node 24.20.0/npm 11.19.0 from the session-local toolchain.
 - Coverage includes default off/private file modes, issuance constraints, one-time output, cookie CSRF/mixed auth, native bearer, cross-owner 404/empty list, PAT session API denial, logout independence, permission loss, transient upstream failure, identity mismatch and revocation during upstream verification.
 
 No broader suite or real deployment was needed for this auth-only boundary. UI_PRECHECK/AUTOMATED_UI/Gallery/localization: not applicable (no UI changes). Existing KO/EN files are unchanged. ACCEPTANCE_SYNC: no new surface/ID. DOC_SYNC: S01/overview and C1 implementation notes synchronized. Rulebook: no directly relevant returned rule; postflight `skipped(no_new_lesson)`, no central write or sync. Gitignore inspection includes the private automation config and corresponding Docker exclusion.
+
+S11 consumer-driven producer extension: session-only creation options with current allowed libraries and expiry limits; disabled/PAT access denial covered by access-token-api tests. See step-11.md.

@@ -95,6 +95,8 @@ describe('development-only UI boundary', () => {
         expect(content.includes('MUSICLATTE_RECENT_PREVIEW')).toBe(false);
         expect(content.includes('MUSICLATTE_ENGINE_PREVIEW')).toBe(false);
         expect(content.includes('PREVIEW_CONTROL')).toBe(false);
+        expect(content.includes('REDACTED_SYNTHETIC_')).toBe(false);
+        expect(content.includes('automation-source-only-fixture')).toBe(false);
         if (!file.endsWith('.map')) expect(content.includes('__dev/gallery')).toBe(false);
         if (file.endsWith('.map')) {
           const map = JSON.parse(content) as { sources: string[] };

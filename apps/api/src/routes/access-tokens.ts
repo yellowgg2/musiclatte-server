@@ -18,6 +18,10 @@ export function registerAccessTokenRoutes(app: FastifyInstance, service: Session
     return service.verify(auth.token, auth.scheme);
   }
   const empty = { type: 'object', additionalProperties: false, properties: {} } as const;
+  app.get('/api/v1/access-tokens/options', { schema: { querystring: empty } }, async (request) => {
+    const verified = await owner(request, false);
+    return tokens!.creationOptions(verified);
+  });
   app.post<{ Body: AccessTokenRequest }>(
     '/api/v1/access-tokens',
     { schema: { body: accessTokenRequestSchema, querystring: empty } },

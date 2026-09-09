@@ -14,7 +14,7 @@ export const clientFeatures = {
   'metadata.write': true,
   'metadata.lyrics.write': true,
   'metadata.curation': false,
-  'automation.tokens': false,
+  'automation.tokens': true,
 } satisfies Record<FeatureKey, boolean>;
 export function featureState(feature: FeatureCapability | undefined) {
   if (feature?.supported === false) return 'unsupported';

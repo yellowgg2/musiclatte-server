@@ -9,6 +9,50 @@ import { chmodSync, writeFileSync } from 'node:fs';
 import { browserHeaders, password } from '../../../tests/support/auth-harness.js';
 
 describe('personal access token API', () => {
+  it('denies options safely when automation is disabled', async () => {
+    const c = await makeSUT(false);
+    try {
+      expect(
+        (await c.app.inject({ url: '/api/v1/access-tokens/options', headers: c.headers }))
+          .statusCode,
+      ).toBe(403);
+      expect((await c.app.inject({ url: '/api/v1/access-tokens/options' })).statusCode).toBe(401);
+    } finally {
+      await c.cleanup();
+    }
+  });
+  it('should expose current allowed libraries and expiry limits only to session owners', async () => {
+    const c = await makeSUT();
+    try {
+      const response = await c.app.inject({
+        url: '/api/v1/access-tokens/options',
+        headers: c.headers,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        schemaVersion: 1,
+        libraryIds: ['library-1'],
+        scopes: ['metadata:read', 'metadata:write', 'lyrics:write', 'curation:write'],
+      });
+      expect(response.json().maxTokenAgeMs).toBeGreaterThan(0);
+      const issued = await c.app.inject({
+        method: 'POST',
+        url: '/api/v1/access-tokens',
+        headers: c.headers,
+        payload: c.payload,
+      });
+      expect(
+        (
+          await c.app.inject({
+            url: '/api/v1/access-tokens/options',
+            headers: { authorization: 'Bearer ' + issued.json().token },
+          })
+        ).statusCode,
+      ).toBe(403);
+    } finally {
+      await c.cleanup();
+    }
+  });
   /** Legacy bearer owners can manage tokens while another owner sees no private token metadata. */
   it('should support native session owners and conceal tokens owned by other accounts', async () => {
     const c = await makeSUT();

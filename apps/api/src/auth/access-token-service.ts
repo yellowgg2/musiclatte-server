@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  accessTokenScopes,
   validateTokenScopes,
   validateTokenLibraries,
   validateTokenName,
@@ -36,6 +37,23 @@ export function createAccessTokenService(service: SessionService, options: Autom
     find,
     repository,
     allowedLibraries,
+    async creationOptions(verified: Awaited<ReturnType<SessionService['verify']>>) {
+      let libraryIds: string[];
+      try {
+        libraryIds = await allowedLibraries(verified.identity.username, verified.upstream);
+      } catch (error) {
+        return service.rejectUpstream(error, verified.session.raw);
+      }
+      service.find(verified.session.token, verified.session.scheme);
+      if (!libraryIds.length) throw new ApiError(403, 'forbidden');
+      return {
+        schemaVersion: 1 as const,
+        now: options.clock(),
+        maxTokenAgeMs: options.maxTokenAgeMs,
+        libraryIds,
+        scopes: [...accessTokenScopes],
+      };
+    },
     async create(
       verified: Awaited<ReturnType<SessionService['verify']>>,
       input: { name: string; scopes: AccessTokenScope[]; libraryIds: string[]; expiresAt: number },
