@@ -1,3 +1,6 @@
+import { readAutomationConfig } from './automation/config.js';
+import { configuredMediaFence, createCurationScheduler } from './curation/runtime.js';
+import { createMediaPublicationLedger } from './metadata/media-fence.js';
 import { createBackupPreviewIndexer } from './metadata/backup-preview.js';
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { lstatSync } from 'node:fs';
@@ -33,6 +36,7 @@ export function createMetadataScheduler(tasks: {
   recover(signal: AbortSignal): Promise<boolean>;
   file(signal: AbortSignal): Promise<boolean>;
   reflect(signal: AbortSignal): Promise<boolean>;
+  inventory?(signal: AbortSignal): Promise<boolean>;
 }) {
   let running = false;
   return {
@@ -41,7 +45,12 @@ export function createMetadataScheduler(tasks: {
       running = true;
       let worked = false;
       try {
-        for (const work of [tasks.recover, tasks.file, tasks.reflect]) {
+        for (const work of [
+          tasks.recover,
+          tasks.file,
+          tasks.reflect,
+          ...(tasks.inventory ? [tasks.inventory] : []),
+        ]) {
           if (signal.aborted) break;
           worked = (await work(signal)) || worked;
         }
@@ -81,6 +90,14 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
   if (!config.enabled) return;
   if (process.versions.node !== '24.20.0' || env.METADATA_WRITE_PROFILE !== metadataVerifiedProfile)
     throw new Error('unsupported_metadata_profile');
+  const automation = readAutomationConfig(env);
+  const fence =
+    automation.enabled && automation.curation
+      ? configuredMediaFence(env, { ...config, timeoutMs: config.policy.limits.timeoutMs }, [
+          config.privateRoot,
+          config.uploadRoot,
+        ])
+      : undefined;
   const key = loadKey(config.keyPath);
   const database = openDatabase(config.management);
   const db = database.connection;
@@ -138,6 +155,12 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
       timeoutMs: config.policy.limits.timeoutMs,
     });
     const fileStore = createMetadataFileStore({
+      ...(fence
+        ? {
+            lockRoot: env.MEDIA_FENCE_ROOT!,
+            publications: createMediaPublicationLedger(database, Date.now),
+          }
+        : {}),
       ...config,
       helperPath: config.transactionHelper,
       timeoutMs: config.policy.limits.timeoutMs,
@@ -281,7 +304,26 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
       beforeWrite: reflector.beforeWrite,
       reflect: (claim, work) => reflector.reflect(claim, work, signal),
     });
+    const curation =
+      automation.enabled && automation.curation && fence
+        ? createCurationScheduler({
+            database,
+            clock: Date.now,
+            signingKey: key,
+            policy: automation.curation,
+            libraries: config.policy.libraries,
+            source: scanClient,
+            helper,
+            fence,
+            runtime: {
+              ...config,
+              timeoutMs: config.policy.limits.timeoutMs,
+              maxFileBytes: config.policy.limits.maxFileBytes,
+            },
+          })
+        : undefined;
     const scheduler = createMetadataScheduler({
+      ...(curation ? { inventory: (abort: AbortSignal) => curation.cycle(abort) } : {}),
       recover: async (abort) => (await worker.recoverPending(abort)).processed > 0,
       file: (abort) => worker.runOnce(abort, 'file'),
       reflect: (abort) => reflector.runOnce(abort),

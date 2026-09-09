@@ -85,3 +85,18 @@ docker compose -f compose.yaml -f deploy/compose.imports.yaml exec worker node a
 ## 선택적 음악 metadata 편집
 
 private policy와 scan credential을 설정한 뒤 `docker compose -f compose.yaml -f deploy/compose.metadata.yaml up -d --build`로 실행한다. imports와 독립적이며 함께 쓸 때는 imports overlay를 metadata overlay 앞에 추가한다. API는 음악을 읽기만 하고, 전용 worker가 파일 변경과 private 원본 backup을 담당한다. [배포 가이드](docs/architecture/metadata-deployment.md)와 [v11 matching 백업·복원](deploy/backup/README.md)을 따른다. worker가 중지돼도 기존 음악 재생은 유지된다. 파일 저장과 gonic 반영은 별도 결과이며, 이미 사용한 gonic cover cache 때문에 반영 검증이 지연될 수 있다. 웹 metadata 진입점은 Phase 4 S09에서 활성화한다.
+
+### 선택적 메타데이터 자동화
+
+imports·metadata overlay 다음에 `deploy/compose.automation.yaml`을 추가합니다.
+`AUTOMATION_POLICY_FILE`은 소유자만 읽는 `0600` 절대 경로 JSON이며 정확한 예시는
+영문 README의 Optional metadata automation 항목을 참고하세요. API·metadata worker·import
+worker의 UID/GID를 일치시켜야 합니다. 세 프로세스는 전용 `media-fence` 볼륨을 공유하며,
+API의 음악 읽기 전용 권한과 작업자 전용 백업 저장소 경계를 유지합니다. overlay가 없으면
+자동화는 비활성입니다.
+
+작업자는 복구·파일 쓰기·반영·제한된 inventory 순회를 차례로 처리하고, 재시작 시 checkpoint에서
+이어갑니다. 복원된 inventory는 즉시 재검증합니다. `tools/verification/automation-http-client.ts`는
+private config/credential 파일로 HTTP 흐름을 검증하는 소스 전용 클라이언트입니다.
+`automation-runtime-probe.ts`는 소유 표식이 있는 격리 Linux 임시 프로젝트와 자작 MP3에서만
+재시작·백업·복원을 검증합니다. 실제 비밀값, 음악, private config는 Git에 넣지 않습니다.

@@ -85,3 +85,44 @@ Before updating, stop the worker and make the [matching management+key+gonic+eng
 ## Optional metadata editing
 
 Use `docker compose -f compose.yaml -f deploy/compose.metadata.yaml up -d --build` after configuring private policy and scan credentials. Metadata is independent of imports; add the imports overlay before the metadata overlay when both are needed. The API reads music only; the dedicated worker owns file writes and private backups. Follow the [metadata deployment guide](docs/architecture/metadata-deployment.md) and [matching v11 backup/restore procedure](deploy/backup/README.md). Worker downtime keeps existing music playback available. File save and gonic reflection are separate outcomes; warmed gonic cover caches can delay verified reflection. Web metadata entry points remain disabled until Phase 4 S09.
+
+### Optional metadata automation
+
+Apply `deploy/compose.automation.yaml` after the imports and metadata overlays. Set
+`AUTOMATION_POLICY_FILE` to an absolute, owner-only `0600` JSON file (example shape below).
+API, metadata worker and import worker must use the same UID/GID. The initializer creates a
+private shared `media-fence` volume; API music remains read-only and metadata backups remain
+worker-only. Without this overlay, automation remains disabled.
+
+```json
+{
+  "schemaVersion": 1,
+  "maxTokenAgeMs": 86400000,
+  "curation": {
+    "policyVersion": "required-v1",
+    "limits": {
+      "claimLeaseMs": 600000,
+      "maxTargets": 20,
+      "snapshotMaxAgeMs": 600000,
+      "snapshotMaxItems": 1000,
+      "snapshotMaxCount": 100
+    },
+    "inventory": {
+      "batchSize": 3,
+      "batchTimeMs": 2000,
+      "sweepIntervalMs": 60000,
+      "maxQueueItems": 10000
+    }
+  }
+}
+```
+
+The metadata worker fairly runs recovery, file writes, reflection and bounded inventory batches.
+Checkpointed discovery resumes after restart; restored inventories are reverified immediately.
+The source-only `tools/verification/automation-http-client.ts` uses an owner-only private config
+with `api`, `origin`, `upstream`, `credentialPath`, `libraryId`, and `fixtureTitle`. The credential
+file contains only `username` and `password`; use a dedicated synthetic fixture and never commit
+these files. `automation-runtime-probe.ts` additionally requires an owned Linux `/tmp/musiclatte-p6-*`
+workspace, matching `owner.json`, Compose project and `fixtureRelativeKey: imports/synthetic.mp3`.
+It changes only that isolated fixture and project. These scripts are verification clients, not
+an internal AI scheduler or a production deployment command.

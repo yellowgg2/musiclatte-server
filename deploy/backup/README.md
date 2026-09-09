@@ -148,3 +148,13 @@ Restore validates the manifest, matching key/schema, private file hashes and cur
 For a historical rollback, invalidate old management sessions as described above before serving. Start the restored gonic/API and metadata worker with the ordinary read-only-key overlay, allow durable recovery to finish, and verify history, current file revisions, reflection, readiness and Range playback. Keep existing volumes and the immutable snapshot until verification is complete. Do not run the old image on v11 storage: complete file restores while the current image understands them, then restore the matching pre-upgrade DB/key/music/gonic snapshot together with its old image into new volumes.
 
 한국어: 현재 schema는 v11이다. worker를 정상 정지한 뒤 DB·원래 key·metadata-data 원본/intent·참조 cover upload를 함께 백업한다. 실제 음악과 gonic 상태는 같은 경계의 별도 snapshot이 필요하다. 복원은 새 빈 volume에서만 실행하며 key volume 쓰기는 복원 컨테이너에만 허용한다. 파일 hash와 현재 음악이 다르면 중단한다. 구버전 image만 교체하거나 운영 volume을 덮어쓰지 않는다.
+
+### Automation after an offline restore
+
+A matching offline restore into new management/key/metadata directories preserves the existing
+web/legacy session contract. It revokes all personal access tokens, removes automation job grants,
+rotates claim/cursor epochs, drops curation snapshots and marks inventory stale. Reissue tokens
+and acquire fresh claims after actual file/index revalidation. Historical completion receipts
+remain evidence and do not make stale inventory writable. Use the optional automation overlay
+and a fresh private fence volume with the same worker UID/GID; never replace a running production
+volume or downgrade a database to roll back the overlay.

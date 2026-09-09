@@ -4,7 +4,12 @@ case "$METADATA_UID:$METADATA_GID" in *[!0-9:]*|:*|*:) echo 'invalid_metadata_ow
 [ "$METADATA_UID" -gt 0 ] && [ "$METADATA_GID" -gt 0 ] || exit 1
 # Both writers share only derived covers; fail closed instead of changing existing ownership.
 [ "$METADATA_UID:$METADATA_GID" = "$GONIC_UID:$GONIC_GID" ] || { echo 'metadata_cover_owner_mismatch' >&2; exit 1; }
-for directory in /metadata-data /metadata-uploads /gonic-cover-cache; do
+directories='/metadata-data /metadata-uploads /gonic-cover-cache'
+if [ "${MEDIA_FENCE_ENABLED:-false}" = true ]; then
+  [ "$METADATA_UID:$METADATA_GID" = "${IMPORT_UID:?}:${IMPORT_GID:?}" ] || { echo 'media_fence_owner_mismatch' >&2; exit 1; }
+  directories="$directories /media-fence"
+fi
+for directory in $directories; do
   [ -d "$directory" ] && [ ! -L "$directory" ] || exit 1
   if [ -z "$(ls -A "$directory")" ]; then
     chown "$METADATA_UID:$METADATA_GID" "$directory"

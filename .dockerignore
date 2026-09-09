@@ -67,3 +67,8 @@ docs
 **/.venv
 **/__pycache__
 **/*.pyc
+
+# Opt-in automation private policy, probe credentials and shared lock state.
+**/automation-policy.json
+**/automation-probe.json
+**/media-fence/

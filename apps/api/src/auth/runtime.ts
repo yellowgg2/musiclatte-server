@@ -1,3 +1,4 @@
+import { configuredMediaFence, curationRuntimeReady } from '../curation/runtime.js';
 import { createSubsonicClient } from '../subsonic/client.js';
 import { isAbsolute } from 'node:path';
 import { readApiImportConfig } from '../imports/config.js';
@@ -67,6 +68,20 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
               policy: metadata.policy,
               clock: Date.now,
               maxTokenAgeMs: automation.maxTokenAgeMs,
+              ...(automation.curation
+                ? {
+                    curation: {
+                      limits: automation.curation.limits,
+                      fence: configuredMediaFence(env, metadata.runtime, [metadata.uploadRoot]),
+                      ready: () =>
+                        curationRuntimeReady(
+                          database!,
+                          metadata.policy.libraries.map((l) => l.id),
+                          Date.now,
+                        ),
+                    },
+                  }
+                : {}),
             },
           }
         : {}),

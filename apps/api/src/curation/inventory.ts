@@ -74,6 +74,7 @@ export function createCurationInventory(options: CurationInventoryOptions) {
       .get(library.id);
     if (
       !run ||
+      run.status === 'stale' ||
       (['ready', 'partial', 'stale', 'error'].includes(String(run.status)) &&
         clock() - Number(run.last_discovery_at ?? 0) >= options.sweepIntervalMs)
     ) {
@@ -106,7 +107,7 @@ export function createCurationInventory(options: CurationInventoryOptions) {
           );
         });
       } catch (error) {
-        if (signal.aborted) return true;
+        if (signal.aborted) return false;
         markCoverage(
           library.id,
           'error',
@@ -166,7 +167,7 @@ export function createCurationInventory(options: CurationInventoryOptions) {
           ).run(library.id, generation, pending.opaque_id!);
         }
       } catch (error) {
-        if (signal.aborted) return true;
+        if (signal.aborted) return false;
         db.prepare(
           "UPDATE curation_inventory_queue SET status='error' WHERE library_id=? AND generation=? AND opaque_id=? AND kind=?",
         ).run(library.id, generation, pending.opaque_id!, pending.kind!);
@@ -215,16 +216,19 @@ export function createCurationInventory(options: CurationInventoryOptions) {
   }
   return {
     markCoverage,
-    async runBatch(): Promise<{ processed: number }> {
-      if (running || !options.libraries.length) return { processed: 0 };
+    async runBatch(signal?: AbortSignal): Promise<{ processed: number }> {
+      if (running || signal?.aborted || !options.libraries.length) return { processed: 0 };
       running = true;
       const deadline = Date.now() + options.batchTimeMs;
       const controller = new AbortController();
+      const abort = () => controller.abort();
+      signal?.addEventListener('abort', abort, { once: true });
       const timer = setTimeout(() => controller.abort(), options.batchTimeMs);
       let processed = 0;
       try {
         let idle = 0;
         while (
+          !controller.signal.aborted &&
           processed < options.batchSize &&
           Date.now() < deadline &&
           idle < options.libraries.length
@@ -238,6 +242,7 @@ export function createCurationInventory(options: CurationInventoryOptions) {
         return { processed };
       } finally {
         clearTimeout(timer);
+        signal?.removeEventListener('abort', abort);
         running = false;
       }
     },

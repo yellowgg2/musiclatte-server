@@ -29,6 +29,7 @@ describe('personal access token storage', () => {
       const session = c.sessions.create(proof);
       const snapshot = join(c.root, 'restore-source');
       await c.createBackup(c.db, c.keyPath, snapshot);
+      expect(readdirSync(snapshot).sort()).toEqual(['credential.key', 'management.sqlite']);
       const destination = join(c.root, 'restore-target');
       await c.restoreBackup(snapshot, destination);
       const db = c.open(destination);

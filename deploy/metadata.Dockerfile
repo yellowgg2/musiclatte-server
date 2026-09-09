@@ -43,7 +43,7 @@ COPY --from=build /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
 COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
-COPY apps/api/helpers/file_access.py apps/api/helpers/metadata.py ./apps/api/helpers/
+COPY apps/api/helpers/file_access.py apps/api/helpers/metadata.py apps/api/helpers/media_fence.py ./apps/api/helpers/
 RUN mkdir /management /keys && chown node:node /management /keys && chmod 700 /management /keys
 
 FROM runtime AS api

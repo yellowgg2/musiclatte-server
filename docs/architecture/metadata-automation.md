@@ -59,3 +59,16 @@ Curation claims are expiring reservations, independent of file fences and worker
 ## Explicit completion (S09)
 
 POST track curation complete requires a live required-review claim and fresh file revision/policy. The API verifies actual MP3 title/artist, audio identity, current path/binding, authenticated index projection and unresolved jobs while holding the shared file fence. Receipt/state/replay are atomic. Completion consumes that target reservation; same operation retries return its original receipt. Reopen records a reason and preserves receipt history. Optional-only changes preserve the first receipt; no write automatically completes review. Typed curation error reasons distinguish missing required fields, revision/policy/identity conflicts, expired claims, pending/failed work and reflection delays. Runtime readiness controls availability separately from route support.
+
+## S10 runtime and restored snapshots
+
+The opt-in automation overlay supplies a strictly bounded `required-v1` policy and a private
+shared fence volume to API/P4/P3 under the same UID/GID. Inventory runs as the final bounded
+metadata scheduler turn, forwards cancellation and resumes durable checkpoints. Stale restored
+inventory restarts discovery immediately. Capability availability includes actual worker health
+and inventory readiness. API keeps read-only music and no worker backup/credential mounts.
+
+Completed backup artifacts are checkpointed and sealed in DELETE journal mode before verification
+so read-only restoration does not depend on WAL shared-memory sidecars. Only the new snapshot is
+changed. Restoration still preserves web/legacy sessions while invalidating automation credentials,
+claims and cursors; fresh file/index validation is required before work resumes.

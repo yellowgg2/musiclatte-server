@@ -1,0 +1,56 @@
+# Apply after compose.imports.yaml and compose.metadata.yaml. All participating processes use one UID/GID.
+services:
+  metadata-volume-init:
+    environment:
+      MEDIA_FENCE_ENABLED: 'true'
+      IMPORT_UID: ${IMPORT_UID:-1000}
+      IMPORT_GID: ${IMPORT_GID:-1000}
+    volumes:
+      - media-fence:/media-fence
+  api:
+    environment:
+      AUTOMATION_ENABLED: 'true'
+      AUTOMATION_POLICY_PATH: /run/configs/automation-policy.json
+      MEDIA_FENCE_ROOT: /media-fence
+    volumes:
+      - media-fence:/media-fence
+      - type: bind
+        source: ${AUTOMATION_POLICY_FILE:?Set AUTOMATION_POLICY_FILE to a private absolute policy file}
+        target: /run/configs/automation-policy.json
+        read_only: true
+        bind:
+          create_host_path: false
+  metadata-worker:
+    environment:
+      AUTOMATION_ENABLED: 'true'
+      AUTOMATION_POLICY_PATH: /run/configs/automation-policy.json
+      MEDIA_FENCE_ROOT: /media-fence
+    volumes:
+      - media-fence:/media-fence
+      - type: bind
+        source: ${AUTOMATION_POLICY_FILE:?Set AUTOMATION_POLICY_FILE}
+        target: /run/configs/automation-policy.json
+        read_only: true
+        bind:
+          create_host_path: false
+  worker:
+    environment:
+      AUTOMATION_ENABLED: 'true'
+      AUTOMATION_POLICY_PATH: /run/configs/automation-policy.json
+      MEDIA_FENCE_ROOT: /media-fence
+      MEDIA_FENCE_PYTHON: /usr/bin/python3
+      CREDENTIAL_KEY_PATH: /keys/credential.key
+    volumes:
+      - management-keys:/keys:ro
+      - media-fence:/media-fence
+      - type: bind
+        source: ${AUTOMATION_POLICY_FILE:?Set AUTOMATION_POLICY_FILE}
+        target: /run/configs/automation-policy.json
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      metadata-volume-init:
+        condition: service_completed_successfully
+volumes:
+  media-fence:

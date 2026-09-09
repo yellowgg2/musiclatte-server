@@ -1,3 +1,10 @@
+import { readAutomationConfig } from './automation/config.js';
+import { configuredMediaFence } from './curation/runtime.js';
+import { createMediaPublicationLedger } from './metadata/media-fence.js';
+import { createMetadataFileAccess } from './metadata/file-access.js';
+import { createMetadataRevision } from './metadata/revision.js';
+import { loadKey } from './security/key-store.js';
+import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes } from 'node:crypto';
 import { accessSync, constants, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, resolve, sep } from 'node:path';
@@ -153,7 +160,30 @@ export async function runWorker(env: Environment, signal: AbortSignal) {
           .digest('hex'),
       },
     });
+    const automation = readAutomationConfig(env);
+    let mediaProtection;
+    if (automation.enabled && automation.curation) {
+      const runtime = {
+        python: env.MEDIA_FENCE_PYTHON ?? '/usr/bin/python3',
+        helperPath: fileURLToPath(new URL('../helpers/file_access.py', import.meta.url)),
+        musicRoot: config.musicRoot,
+        timeoutMs: 60000,
+        maxFileBytes: 2 * 1024 * 1024 * 1024,
+      };
+      const fence = configuredMediaFence(env, runtime, [config.stagingRoot, config.engineRoot]);
+      if (!env.CREDENTIAL_KEY_PATH) throw new Error('invalid_worker_config');
+      const revisions = createMetadataRevision(loadKey(env.CREDENTIAL_KEY_PATH));
+      const access = createMetadataFileAccess(runtime);
+      mediaProtection = {
+        fence,
+        publications: createMediaPublicationLedger(database, Date.now),
+        fileIdentity: (libraryId: string, relativeFileKey: string) =>
+          revisions.fileIdentity({ libraryId, relativeFileKey }),
+        inspect: (key: string) => access.inspect(key),
+      };
+    }
     const runner = createWorkerRunner({
+      ...(mediaProtection ? { mediaProtection } : {}),
       database,
       clock: Date.now,
       musicRoot: config.musicRoot,

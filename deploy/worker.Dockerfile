@@ -31,7 +31,7 @@ RUN set -eu; case "$TARGETARCH" in \
 FROM node:24.20.0-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg python3-minimal && rm -rf /var/lib/apt/lists/*
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/apps/api/package.json ./apps/api/package.json
@@ -39,5 +39,6 @@ COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
 COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
 COPY --from=seed /opt/seed /opt/seed
+COPY apps/api/helpers/file_access.py apps/api/helpers/media_fence.py ./apps/api/helpers/
 USER node
 CMD ["node", "apps/api/dist/worker-entry.js"]

@@ -103,6 +103,13 @@ export async function createBackup(
     const fd = openSync(path, 'wx', 0o600);
     closeSync(fd);
     await backup(database.connection, path);
+    // Seal this new artifact for immutable/read-only mounts: do not ship WAL shared-memory state.
+    const sealed = new DatabaseSync(path);
+    try {
+      sealed.exec('PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;');
+    } finally {
+      sealed.close();
+    }
     writeFileSync(join(destination, 'credential.key'), key, { flag: 'wx', mode: 0o600 });
     verifySnapshot(path, key);
     syncFile(path);
