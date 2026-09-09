@@ -383,6 +383,16 @@ export function createMetadataRepository({
         !hex(item.expectedDigest)
       )
         throw new Error('conflict');
+      // Session editor requests cannot steal an active automation reservation.
+      if (
+        item.actorSessionId &&
+        db
+          .prepare(
+            'SELECT 1 FROM curation_claim_items i JOIN curation_claims c ON c.id=i.claim_id JOIN curation_state s ON s.claim_epoch=c.claim_epoch WHERE i.file_identity=? AND c.released_at IS NULL AND c.created_at<=? AND c.lease_until>? LIMIT 1',
+          )
+          .get(item.fileIdentity, timestamp, timestamp)
+      )
+        throw new Error('conflict');
       const changedFields = Object.keys(item.patch);
       if (item.patch.cover?.op === 'set') {
         const uploadId = item.patch.cover.uploadId;

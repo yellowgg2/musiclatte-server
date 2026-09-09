@@ -464,7 +464,7 @@ it('should migrate existing v3 links without changing their gonic mapping', asyn
   });
   expect(c.importsFor(migrated).getJob('legacy-job')!.items[0]!.mediaLinkId).toBe('legacy');
   expect(migrated.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 17 });
+  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 18 });
 });
 
 /** Backup restores pending publication receipts and rejects unsafe recovery paths before activation. */
@@ -838,4 +838,53 @@ it('refuses an account directory already assigned to another identity', async ()
     }),
   ).toThrow('Import account directory conflict');
   expect(c.imports.getJob('other')).toBeNull();
+});
+
+it('publishes and recovers imports under the shared file fence with a durable dirty generation', async () => {
+  const s = await workerSUT('ok', (stage) => {
+    if (stage === 'published') throw new Error('synthetic crash');
+  });
+  const { createMediaFence, createMediaPublicationLedger } =
+    await import('../src/metadata/media-fence.js');
+  const { createMetadataRevision } = await import('../src/metadata/revision.js');
+  const { createHash } = await import('node:crypto');
+  const { resolve } = await import('node:path');
+  const lockRoot = join(realpathSync(s.c.root), 'locks');
+  mkdirSync(lockRoot, { mode: 0o700 });
+  const fence = createMediaFence({
+    root: lockRoot,
+    python: '/usr/bin/python3',
+    helperPath: resolve('apps/api/helpers/media_fence.py'),
+    timeoutMs: 5000,
+  });
+  const revisions = createMetadataRevision(new Uint8Array(32));
+  const protection = {
+    fence,
+    publications: createMediaPublicationLedger(s.c.db, () => 1000),
+    fileIdentity: (libraryId: string, relativeFileKey: string) =>
+      revisions.fileIdentity({ libraryId, relativeFileKey }),
+    inspect: async (key: string) => ({
+      digest: createHash('sha256')
+        .update(readFileSync(join(s.options.musicRoot, key)))
+        .digest('hex'),
+    }),
+  };
+  const worker = createWorkerRunner({ ...s.options, mediaProtection: protection });
+  await expect(worker.runOnce()).rejects.toThrow('synthetic crash');
+  expect(
+    s.c.db.connection.prepare('SELECT dirty,generation FROM media_publications').get(),
+  ).toEqual({ dirty: 1, generation: 1 });
+  expect(s.events()).toHaveLength(0);
+  s.expire();
+  const restart = createWorkerRunner({
+    ...s.options,
+    checkpoint: () => {},
+    mediaProtection: protection,
+  });
+  expect(await restart.runOnce()).toBe(true);
+  expect(s.events()).toHaveLength(1);
+  expect(s.item().stage).toBe('registering');
+  expect(
+    s.c.db.connection.prepare('SELECT dirty,generation FROM media_publications').get(),
+  ).toEqual({ dirty: 1, generation: 2 });
 });

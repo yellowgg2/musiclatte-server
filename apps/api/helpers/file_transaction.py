@@ -1,6 +1,5 @@
 """One OS-locked process owns backup, candidate, publish and receipt acknowledgement."""
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -12,6 +11,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from file_access import FileAccessError, digest_fd, fingerprint, open_media
 from metadata import execute as prepare_metadata, snapshot
+from media_fence import media_fence
 
 
 def fail(code):
@@ -122,7 +122,7 @@ def transaction(request):
     if os.path.commonpath([private, request["root"]]) in (private, request["root"]):
         fail("file_unavailable")
     directory = os.open(private, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    lock_fd = None
+    fences = contextlib.ExitStack()
     try:
         info = os.fstat(directory)
         if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) & 0o077:
@@ -136,13 +136,13 @@ def transaction(request):
         identity = request["fileIdentity"]
         if len(identity) != 64 or any(c not in "0123456789abcdef" for c in identity):
             fail("invalid_metadata")
-        lock_fd = os.open(identity + ".lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600, dir_fd=directory)
-        if not stat.S_ISREG(os.fstat(lock_fd).st_mode) or os.fstat(lock_fd).st_nlink != 1:
-            fail("file_unavailable")
-        try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            fail("file_busy")
+        lock_root = request.get("lockRoot", private)
+        lock_identity = request.get("lockRootIdentity", request["privateRootIdentity"])
+        verify_fence = fences.enter_context(media_fence(lock_root, lock_identity, identity))
+        if "lockRoot" in request:
+            emit({"stage": "fence_acquired"})
+            ack("fence_acquired", request["generation"])
+        verify_fence()
         opaque = hashlib.sha256(request["itemId"].encode()).hexdigest()
         name = opaque + ".json"
         previous = journal_read(directory, name)
@@ -168,6 +168,9 @@ def transaction(request):
                         state = "recovery_required"
                 verify_private()
                 emit({"stage": "recovered", "state": state, "digest": current, "intent": previous})
+                if "lockRoot" in request:
+                    ack("recovered", request["generation"])
+                    verify_fence()
                 return
             if previous is not None:
                 fail("recovery_required")
@@ -226,6 +229,7 @@ def transaction(request):
                 emit({"stage": "candidate_verified", "digest": intent["candidateDigest"], "candidateKey": candidate_key})
                 ack("candidate_verified", request["generation"])
                 verify_private()
+                verify_fence()
                 verify()
                 if digest_fd(source, request["maxFileBytes"])[0] != current or fingerprint(os.fstat(source)) != fingerprint(original_stat):
                     fail("revision_conflict")
@@ -248,8 +252,7 @@ def transaction(request):
             finally:
                 os.close(candidate)
     finally:
-        if lock_fd is not None:
-            os.close(lock_fd)
+        fences.close()
         os.close(directory)
 
 

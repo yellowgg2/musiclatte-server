@@ -1,6 +1,11 @@
+import {
+  mediaFenceRoot,
+  type createMediaPublicationLedger,
+  type PublicationFence,
+} from './media-fence.js';
 import { spawn } from 'node:child_process';
 import { lstatSync, realpathSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, sep } from 'node:path';
 import { createMetadataFileAccess, type MetadataFileAccessOptions } from './file-access.js';
 import { validateRelativeKey } from '../imports/policy.js';
 
@@ -91,8 +96,26 @@ function backup(value: unknown): asserts value is FileBackup {
 }
 /** One child and one OS lock span every fenced DB acknowledgement. */
 export function createMetadataFileStore(
-  options: MetadataFileAccessOptions & { privateRoot: string; ffmpeg: string; ffprobe: string },
+  options: MetadataFileAccessOptions & {
+    privateRoot: string;
+    ffmpeg: string;
+    ffprobe: string;
+    lockRoot?: string;
+    publications?: ReturnType<typeof createMediaPublicationLedger>;
+  },
 ) {
+  if (options.publications && !options.lockRoot) throw new Error('invalid_metadata_config');
+  if (
+    options.lockRoot &&
+    [options.musicRoot, options.privateRoot].some(
+      (root) =>
+        options.lockRoot === root ||
+        options.lockRoot!.startsWith(root + sep) ||
+        root.startsWith(options.lockRoot! + sep),
+    )
+  )
+    throw new Error('invalid_metadata_config');
+  const lockRootIdentity = options.lockRoot ? mediaFenceRoot(options.lockRoot) : undefined;
   const { rootIdentity } = createMetadataFileAccess(options);
   if (
     ![options.privateRoot, options.ffmpeg, options.ffprobe].every(isAbsolute) ||
@@ -109,6 +132,7 @@ export function createMetadataFileStore(
     hooks?: {
       onEvent(event: FileTransactionEvent, control: { kill(): void }): Promise<void>;
       signal?: AbortSignal;
+      onRecovered?(recovery: FileRecovery): Promise<void>;
     },
   ): Promise<FileSavedReceipt | FileRecovery> {
     validateRelativeKey(input.key);
@@ -128,6 +152,7 @@ export function createMetadataFileStore(
       rootIdentity,
       privateRoot: options.privateRoot,
       privateRootIdentity,
+      ...(options.lockRoot ? { lockRoot: options.lockRoot, lockRootIdentity } : {}),
       ffmpeg: options.ffmpeg,
       ffprobe: options.ffprobe,
       maxFileBytes: options.maxFileBytes,
@@ -140,6 +165,7 @@ export function createMetadataFileStore(
         detached: true,
         stdio: ['pipe', 'pipe', 'pipe'],
       });
+      let publication: PublicationFence | undefined;
       let error: Error | undefined;
       let result: FileSavedReceipt | FileRecovery | undefined;
       let buffer = '';
@@ -189,6 +215,18 @@ export function createMetadataFileStore(
                     ? value.error
                     : 'helper_unavailable',
                 );
+              if (value.stage === 'fence_acquired' && options.lockRoot) {
+                publication = options.publications?.begin(
+                  input.fileIdentity,
+                  `${input.itemId}:${input.generation}`,
+                );
+                if (publication && action === 'execute')
+                  options.publications!.dirty(publication, input.itemId);
+                child.stdin.write(
+                  JSON.stringify({ ack: 'fence_acquired', generation: input.generation }) + '\n',
+                );
+                return;
+              }
               if (action === 'recover') {
                 if (
                   value.stage !== 'recovered' ||
@@ -213,6 +251,13 @@ export function createMetadataFileStore(
                   digest: value.digest,
                   intent,
                 };
+                await hooks?.onRecovered?.(result);
+                if (publication && result.state === 'file_saved')
+                  options.publications!.recordMediaPublication(publication, result.digest);
+                if (options.lockRoot)
+                  child.stdin.write(
+                    JSON.stringify({ ack: 'recovered', generation: input.generation }) + '\n',
+                  );
                 return;
               }
               if (
@@ -226,6 +271,9 @@ export function createMetadataFileStore(
                 if (!hash(value.digest)) throw new Error('helper_unavailable');
                 validateRelativeKey(value.candidateKey as string);
               }
+              if (publication) options.publications!.validate(publication);
+              if (publication && value.stage === 'file_saved')
+                options.publications!.recordMediaPublication(publication, String(value.digest));
               await hooks!.onEvent(value as unknown as FileTransactionEvent, { kill });
               if (error) return;
               if (value.stage === 'file_saved') result = value as unknown as FileSavedReceipt;
@@ -256,6 +304,14 @@ export function createMetadataFileStore(
         signal?: AbortSignal;
       },
     ) => run('execute', input, hooks) as Promise<FileSavedReceipt>,
-    recover: (input: FileTransactionInput) => run('recover', input) as Promise<FileRecovery>,
+    recover: (
+      input: FileTransactionInput,
+      onRecovered?: (recovery: FileRecovery) => Promise<void>,
+    ) =>
+      run(
+        'recover',
+        input,
+        onRecovered ? { onEvent: async () => {}, onRecovered } : undefined,
+      ) as Promise<FileRecovery>,
   };
 }

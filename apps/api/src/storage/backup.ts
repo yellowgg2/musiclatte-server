@@ -153,7 +153,7 @@ export async function restoreBackup(source: string, destination: string): Promis
         .prepare('UPDATE curation_state SET claim_epoch=? WHERE singleton=1')
         .run(randomBytes(32).toString('hex'));
       restored.exec(
-        "UPDATE curation_tracks SET validation='stale'; UPDATE curation_inventory_runs SET status='stale'; DELETE FROM curation_snapshot_items; DELETE FROM curation_snapshots;",
+        "UPDATE media_publications SET generation=generation+1,dirty=1; UPDATE curation_tracks SET validation='stale'; UPDATE curation_inventory_runs SET status='stale'; DELETE FROM curation_snapshot_items; DELETE FROM curation_snapshots;",
       );
       restored.exec('COMMIT');
     } finally {

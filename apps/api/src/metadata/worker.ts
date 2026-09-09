@@ -57,40 +57,42 @@ export function createMetadataWorker(options: MetadataWorkerOptions) {
         ...(work.restore ? { restore: work.restore } : {}),
       };
       if (claim.recovering) {
-        const recovery = await options.fileStore.recover(input);
-        if (work.resultDigest && recovery.intent?.candidateDigest !== work.resultDigest) {
-          repo.transition({ ...claim, stage: 'recovery_required', errorCode: 'write_uncertain' });
-          return true;
-        }
-        const disposition = classifyMetadataRecovery(recovery);
-        if (disposition === 'receipt') {
-          const intent = recovery.intent!;
-          if (work.stage === 'preparing') {
-            repo.recordBackup({ ...claim, backup: intent.backup });
-            repo.transition({ ...claim, stage: 'backed_up' });
+        await options.fileStore.recover(input, async (recovery) => {
+          if (work.resultDigest && recovery.intent?.candidateDigest !== work.resultDigest) {
+            repo.transition({ ...claim, stage: 'recovery_required', errorCode: 'write_uncertain' });
+            return;
           }
-          work = repo.readWork(claim);
-          if (work.stage === 'backed_up')
+          const disposition = classifyMetadataRecovery(recovery);
+          if (disposition === 'receipt') {
+            const intent = recovery.intent!;
+            if (work.stage === 'preparing') {
+              repo.recordBackup({ ...claim, backup: intent.backup });
+              repo.transition({ ...claim, stage: 'backed_up' });
+            }
+            work = repo.readWork(claim);
+            if (work.stage === 'backed_up')
+              repo.transition({
+                ...claim,
+                stage: 'prepared',
+                candidateKey: intent.candidateKey,
+                resultDigest: recovery.digest,
+                resultRevision: options.revision(work, recovery.digest),
+              });
             repo.transition({
               ...claim,
-              stage: 'prepared',
-              candidateKey: intent.candidateKey,
+              stage: 'file_saved',
               resultDigest: recovery.digest,
               resultRevision: options.revision(work, recovery.digest),
             });
-          repo.transition({
-            ...claim,
-            stage: 'file_saved',
-            resultDigest: recovery.digest,
-            resultRevision: options.revision(work, recovery.digest),
-          });
+          } else
+            repo.transition({
+              ...claim,
+              stage: disposition === 'safe_failure' ? 'failed' : 'recovery_required',
+              errorCode: disposition === 'safe_failure' ? 'worker_interrupted' : 'write_uncertain',
+            });
+        });
+        if (repo.readWork(claim).stage === 'file_saved')
           await options.reflect?.(claim, repo.readWork(claim));
-        } else
-          repo.transition({
-            ...claim,
-            stage: disposition === 'safe_failure' ? 'failed' : 'recovery_required',
-            errorCode: disposition === 'safe_failure' ? 'worker_interrupted' : 'write_uncertain',
-          });
         return true;
       }
       if (work.bindingRevision !== work.currentBindingRevision)

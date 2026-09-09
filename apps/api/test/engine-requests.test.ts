@@ -205,12 +205,13 @@ describe('durable engine requests', () => {
       DROP TABLE curation_receipts;
       DROP TABLE curation_tracks;
       DROP TABLE curation_state;
+      DROP TABLE media_publications;
       DROP TABLE access_tokens;
       DROP TABLE automation_state;
       PRAGMA user_version=7;
     `);
     const migrated = s.c.open();
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 17 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 18 });
     expect(s.c.enginesFor(migrated).get()).toEqual(before);
     expect(s.c.sessionsFor(migrated).find(session.token)?.proof).toEqual(proof);
     const mailbox = createEngineRequestRepository({ ...s.options, database: migrated });

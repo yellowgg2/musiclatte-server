@@ -1,3 +1,8 @@
+import type {
+  createMediaFence,
+  createMediaPublicationLedger,
+  HeldMediaFence,
+} from '../metadata/media-fence.js';
 import { createRegistrationService, type RegistrationOptions } from './registration-service.js';
 import { randomUUID } from 'node:crypto';
 import { lstatSync, mkdirSync, realpathSync, rmSync } from 'node:fs';
@@ -13,7 +18,15 @@ import {
   syncMediaDirectory,
 } from './file-keys.js';
 
+export interface ImportPublicationProtection {
+  fence: ReturnType<typeof createMediaFence>;
+  publications: ReturnType<typeof createMediaPublicationLedger>;
+  fileIdentity(libraryId: string, key: string): string;
+  inspect(key: string): Promise<{ digest: string }>;
+}
 export interface WorkerOptions {
+  mediaProtection?: ImportPublicationProtection;
+
   database: ManagementDatabase;
   registration?: Omit<RegistrationOptions, 'database' | 'clock'>;
   clock: () => number;
@@ -71,6 +84,7 @@ export function createWorkerRunner(options: WorkerOptions) {
         ...options.registration,
         database: options.database,
         clock: options.clock,
+        ...(options.mediaProtection ? { mediaProtection: options.mediaProtection } : {}),
       })
     : undefined;
   let busy = false;
@@ -277,56 +291,99 @@ export function createWorkerRunner(options: WorkerOptions) {
         }
         checkpoint('intent');
       }
-      ledger.assertOwned(item.id);
-      const existingTarget = lstatSync(resolveFileKey(options.musicRoot, intent.fileKey), {
-        throwIfNoEntry: false,
-      });
-      const recovered =
-        job.accountDirectory !== undefined &&
-        existingTarget &&
-        ledger.ownsPublishedFile(item.id, existingTarget);
-      if (recovered) {
-        await downloader.validateFile(options.musicRoot, intent.fileKey, item.sourceId, signal);
-        syncMediaDirectory(options.musicRoot, intent.fileKey);
-      }
-      const result = recovered
-        ? 'published'
-        : await publishMediaFile({
-            replaceExisting: job.accountDirectory !== undefined,
-            commit: (publish) =>
-              options.database.transaction(() => {
-                const locked = options.database.connection
-                  .prepare(
-                    "SELECT 1 FROM metadata_items i JOIN media_links m ON m.id=i.media_link_id WHERE m.library_id=? AND m.relative_file_key=? AND (i.stage IN ('preparing','backed_up','prepared','recovery_required') OR EXISTS (SELECT 1 FROM metadata_file_locks l WHERE l.item_id=i.id)) LIMIT 1",
-                  )
-                  .get(job.libraryId, intent.fileKey);
-                if (locked) throw new Error('file_conflict');
-                publish();
-              }),
-            musicRoot: options.musicRoot,
-            stagingRoot: options.stagingRoot,
-            stagedFileKey: intent.stagingKey,
-            pendingToken: intent.eventId,
-            commitIdentity: (identity) => ledger.recordIdentity(item.id, identity),
-            checkpoint,
-            fileKey: intent.fileKey,
-            videoId: item.sourceId,
-            inspectAudio: (file) => downloader.inspectAudio(file, signal),
-            beforeCommit: () => {
-              ledger.assertOwned(item.id);
-              signal.throwIfAborted();
-            },
-          });
-      checkpoint('published');
-      ledger.assertOwned(item.id);
-      // New durable intent + verified exact file on recovery is the same publication receipt.
-      const identity = lstatSync(resolveFileKey(options.musicRoot, intent.fileKey));
-      const duplicate =
-        intent.disposition === 'duplicate' ||
-        (result === 'duplicate_candidate' && !ledger.ownsPublishedFile(item.id, identity));
-      ledger.complete(item.id, duplicate);
-      finalized = true;
-      checkpoint('recorded');
+      const finalIntent = intent;
+      const publishAndRecord = async (held?: HeldMediaFence) => {
+        const protection = options.mediaProtection;
+        const publicationFence =
+          held && protection
+            ? protection.publications.begin(held.fileIdentity, held.nonce)
+            : undefined;
+        if (publicationFence && protection)
+          protection.publications.assertAvailable(publicationFence.fileIdentity);
+        ledger.assertOwned(item.id);
+        const existingTarget = lstatSync(resolveFileKey(options.musicRoot, finalIntent.fileKey), {
+          throwIfNoEntry: false,
+        });
+        const recovered =
+          job.accountDirectory !== undefined &&
+          existingTarget &&
+          ledger.ownsPublishedFile(item.id, existingTarget);
+        if (recovered) {
+          await downloader.validateFile(
+            options.musicRoot,
+            finalIntent.fileKey,
+            item.sourceId,
+            signal,
+          );
+          syncMediaDirectory(options.musicRoot, finalIntent.fileKey);
+        }
+        const result = recovered
+          ? 'published'
+          : await publishMediaFile({
+              replaceExisting: job.accountDirectory !== undefined,
+              commit: (publish) => {
+                if (held && publicationFence && options.mediaProtection) {
+                  held.assertHeld();
+                  options.database.transaction(() => {
+                    options.mediaProtection!.publications.validate(publicationFence!);
+                    options.mediaProtection!.publications.assertAvailable(
+                      publicationFence!.fileIdentity,
+                    );
+                    options.mediaProtection!.publications.dirty(publicationFence!, item.id);
+                  });
+                  publish();
+                  return;
+                }
+                options.database.transaction(() => {
+                  const locked = options.database.connection
+                    .prepare(
+                      "SELECT 1 FROM metadata_items i JOIN media_links m ON m.id=i.media_link_id WHERE m.library_id=? AND m.relative_file_key=? AND (i.stage IN ('preparing','backed_up','prepared','recovery_required') OR EXISTS (SELECT 1 FROM metadata_file_locks l WHERE l.item_id=i.id)) LIMIT 1",
+                    )
+                    .get(job.libraryId, finalIntent.fileKey);
+                  if (locked) throw new Error('file_conflict');
+                  publish();
+                });
+              },
+              musicRoot: options.musicRoot,
+              stagingRoot: options.stagingRoot,
+              stagedFileKey: finalIntent.stagingKey,
+              pendingToken: finalIntent.eventId,
+              commitIdentity: (identity) => ledger.recordIdentity(item.id, identity),
+              checkpoint,
+              fileKey: finalIntent.fileKey,
+              videoId: item.sourceId,
+              inspectAudio: (file) => downloader.inspectAudio(file, signal),
+              beforeCommit: () => {
+                ledger.assertOwned(item.id);
+                signal.throwIfAborted();
+              },
+            });
+        if (held && publicationFence && options.mediaProtection) {
+          const observed = await options.mediaProtection.inspect(finalIntent.fileKey);
+          await held.validate();
+          options.mediaProtection.publications.recordMediaPublication(
+            publicationFence,
+            observed.digest,
+          );
+        }
+        checkpoint('published');
+        ledger.assertOwned(item.id);
+        // New durable intent + verified exact file on recovery is the same publication receipt.
+        const identity = lstatSync(resolveFileKey(options.musicRoot, finalIntent.fileKey));
+        const duplicate =
+          finalIntent.disposition === 'duplicate' ||
+          (result === 'duplicate_candidate' && !ledger.ownsPublishedFile(item.id, identity));
+        ledger.complete(item.id, duplicate);
+        finalized = true;
+        checkpoint('recorded');
+      };
+      if (options.mediaProtection) {
+        await options.mediaProtection.fence.withMediaFence(
+          options.mediaProtection.fileIdentity(job.libraryId, finalIntent.fileKey),
+          recovering ? 'recover' : 'publish',
+          publishAndRecord,
+        );
+      } else await publishAndRecord();
       return true;
     } catch (error) {
       if (crashed) throw error;

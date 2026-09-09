@@ -1,3 +1,4 @@
+import type { ImportPublicationProtection } from './worker-runner.js';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { ManagementDatabase } from '../storage/database.js';
@@ -7,6 +8,7 @@ import { createScanCoordinator } from '../subsonic/scan-coordinator.js';
 import { validateRelativeKey } from './policy.js';
 
 export interface RegistrationOptions {
+  mediaProtection?: ImportPublicationProtection;
   database: ManagementDatabase;
   /** Fixed worker-only token client, injected by the worker runtime, never a session client. */
   scanClient: Pick<
@@ -116,30 +118,44 @@ export function createRegistrationService(options: RegistrationOptions) {
     };
     const pending = new Map(items.map((item) => [item.id, item]));
     const failures = new Map<string, Failure>();
-    const complete = (item: PendingItem, songId: string) =>
-      database.transaction(() => {
-        owned();
-        const current = db
-          .prepare(
-            "SELECT 1 FROM import_items i JOIN media_links m ON m.id=i.media_link_id JOIN import_jobs j ON j.id=i.job_id WHERE i.id=? AND i.stage='registering' AND m.id=? AND m.relative_file_key=? AND m.library_id=? AND j.library_id=m.library_id",
-          )
-          .get(item.id, item.mediaId, item.fileKey, item.libraryId);
-        if (!current) throw new RegistrationFailure('registration_conflict');
-        const at = now();
-        db.prepare(
-          "UPDATE media_links SET gonic_song_id=?,availability='available',revision=revision+1,validated_at=? WHERE id=?",
-        ).run(songId, at, item.mediaId);
-        const event = db
-          .prepare(
-            'UPDATE download_events SET registered_at=? WHERE import_item_id=? AND registered_at IS NULL',
-          )
-          .run(at, item.id);
-        if (event.changes !== 1) throw new RegistrationFailure('registration_conflict');
-        db.prepare(
-          "UPDATE import_items SET stage='ready',ready_at=?,stage_changed_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=?",
-        ).run(at, at, item.id);
-        db.prepare('DELETE FROM registration_attempts WHERE item_id=?').run(item.id);
-      });
+    const complete = async (item: PendingItem, songId: string) => {
+      const commit = () =>
+        database.transaction(() => {
+          owned();
+          const current = db
+            .prepare(
+              "SELECT 1 FROM import_items i JOIN media_links m ON m.id=i.media_link_id JOIN import_jobs j ON j.id=i.job_id WHERE i.id=? AND i.stage='registering' AND m.id=? AND m.relative_file_key=? AND m.library_id=? AND j.library_id=m.library_id",
+            )
+            .get(item.id, item.mediaId, item.fileKey, item.libraryId);
+          if (!current) throw new RegistrationFailure('registration_conflict');
+          const at = now();
+          db.prepare(
+            "UPDATE media_links SET gonic_song_id=?,availability='available',revision=revision+1,validated_at=? WHERE id=?",
+          ).run(songId, at, item.mediaId);
+          const event = db
+            .prepare(
+              'UPDATE download_events SET registered_at=? WHERE import_item_id=? AND registered_at IS NULL',
+            )
+            .run(at, item.id);
+          if (event.changes !== 1) throw new RegistrationFailure('registration_conflict');
+          db.prepare(
+            "UPDATE import_items SET stage='ready',ready_at=?,stage_changed_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=?",
+          ).run(at, at, item.id);
+          db.prepare('DELETE FROM registration_attempts WHERE item_id=?').run(item.id);
+        });
+      if (options.mediaProtection) {
+        const protection = options.mediaProtection;
+        await protection.fence.withMediaFence(
+          protection.fileIdentity(item.libraryId, item.fileKey),
+          'verify',
+          async (held) => {
+            await held.validate();
+            held.assertHeld();
+            commit();
+          },
+        );
+      } else commit();
+    };
     try {
       owned();
       if (!(await scanClient.getScanStatus({ signal })).scanning) {
@@ -155,7 +171,7 @@ export function createRegistrationService(options: RegistrationOptions) {
               owned();
               const library = libraries.get(item.libraryId);
               if (!library) throw new RegistrationFailure('registration_path');
-              complete(item, await lookup(library, item.fileKey));
+              await complete(item, await lookup(library, item.fileKey));
               pending.delete(item.id);
             } catch (error) {
               failures.set(
