@@ -147,10 +147,16 @@ export async function restoreBackup(source: string, destination: string): Promis
       join(destination, 'credential.key'),
       constants.COPYFILE_EXCL,
     );
-    // Only the new offline copy is changed. Session restoration retains its existing contract.
+    // Only the new offline copy is changed; listening snapshots require fresh authentication.
     const restored = new DatabaseSync(path);
     try {
       restored.exec('BEGIN IMMEDIATE');
+      // Listening backups may predate a non-idempotent upstream submission. Never replay them.
+      if (restored.prepare('SELECT 1 FROM listening_events LIMIT 1').get()) {
+        restored.exec(
+          "UPDATE sessions SET encrypted_proof=NULL,revoked_at=coalesce(revoked_at,created_at); UPDATE listening_deliveries SET status='uncertain',finished_at=claimed_at WHERE status='dispatching'; UPDATE listening_deliveries SET status='skipped',finished_at=(SELECT received_at FROM listening_events WHERE sequence=event_sequence) WHERE status='not_sent';",
+        );
+      }
       restored.exec(
         'UPDATE access_tokens SET encrypted_proof=NULL,revoked_at=COALESCE(revoked_at,created_at)',
       );

@@ -26,6 +26,7 @@ export async function capabilities(
     permission: 'allowed',
     availability: 'available',
   };
+  if (service.options.listening) features['listening.history'] = { ...standard };
   features['music.browse'] = { ...standard };
   features['music.stream'] = { ...standard };
   features['playlists.read'] = { ...standard };

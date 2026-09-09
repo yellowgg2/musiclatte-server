@@ -21,3 +21,13 @@ export function readMixEnabled(env: Record<string, string | undefined>): boolean
     throw new Error('Invalid mix configuration');
   return env.MIXES_ENABLED === 'true';
 }
+/** Both switches are opt-in; forwarding never enables the local feature implicitly. */
+export function readListeningConfig(env: Record<string, string | undefined>) {
+  for (const name of ['LISTENING_ENABLED', 'LISTENING_SCROBBLE_ENABLED'])
+    if (env[name] !== undefined && !['true', 'false'].includes(env[name]!))
+      throw new Error('Invalid listening configuration');
+  return {
+    enabled: env.LISTENING_ENABLED === 'true',
+    scrobble: env.LISTENING_SCROBBLE_ENABLED === 'true',
+  };
+}

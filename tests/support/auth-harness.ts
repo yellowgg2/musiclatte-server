@@ -89,8 +89,13 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     songResponseGate: undefined as (() => Promise<void>) | undefined,
     songError: 0,
     songStatus: 0,
+    scrobbleDrop: false,
+    scrobbleStall: false,
+    scrobbleError: 0,
     songStall: false,
     songIdOverride: '',
+    songIdFromRequest: false,
+    songUnknownDuration: false,
     accountIdentityFromProof: false,
     identityResponseGate: undefined as (() => Promise<void>) | undefined,
     favoriteSongIdsByUsername: new Map<string, string[]>(),
@@ -322,6 +327,11 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       res.end(payload);
       return;
     }
+    if (operation === 'scrobble' && state.scrobbleDrop) {
+      res.destroy();
+      return;
+    }
+    if (operation === 'scrobble' && state.scrobbleStall) return;
     res.writeHead(
       operation === 'getSong' && state.songStatus
         ? state.songStatus
@@ -333,28 +343,30 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       },
     );
     const code =
-      operation === 'getSong' && state.songError
-        ? state.songError
-        : isFavoriteRead && state.favoriteWriteObserved && state.favoritePostwriteError
-          ? state.favoritePostwriteError
-          : isFavoriteRead && state.favoriteReadError
-            ? state.favoriteReadError
-            : isFavoriteWrite && state.favoriteWriteError
-              ? state.favoriteWriteError
-              : isCollectionRead && state.collectionError
-                ? state.collectionError
-                : isCollectionWrite && currentMutationError
-                  ? currentMutationError
-                  : isLibrary && state.libraryError
-                    ? state.libraryError
-                    : !valid
-                      ? 40
-                      : state.error ||
-                        (isRandom
-                          ? state.randomError
-                          : operation === 'startScan'
-                            ? state.scanError
-                            : 0);
+      operation === 'scrobble' && state.scrobbleError
+        ? state.scrobbleError
+        : operation === 'getSong' && state.songError
+          ? state.songError
+          : isFavoriteRead && state.favoriteWriteObserved && state.favoritePostwriteError
+            ? state.favoritePostwriteError
+            : isFavoriteRead && state.favoriteReadError
+              ? state.favoriteReadError
+              : isFavoriteWrite && state.favoriteWriteError
+                ? state.favoriteWriteError
+                : isCollectionRead && state.collectionError
+                  ? state.collectionError
+                  : isCollectionWrite && currentMutationError
+                    ? currentMutationError
+                    : isLibrary && state.libraryError
+                      ? state.libraryError
+                      : !valid
+                        ? 40
+                        : state.error ||
+                          (isRandom
+                            ? state.randomError
+                            : operation === 'startScan'
+                              ? state.scanError
+                              : 0);
     const body = code
       ? subsonicErrorFixture(code, 'synthetic-secret-upstream-message')
       : operation === 'getUser'
@@ -396,12 +408,29 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
                     : state.playlistEntryIds,
                   coverArt: state.playlistCoverArt,
                 })
-              : operation === 'getGenres'
+              : operation === 'getGenres' || operation === 'scrobble'
                 ? listeningFixture(operation)
                 : subsonicFixture(operation, state.emptyLibrary);
-    if (operation === 'getSong' && state.songIdOverride && 'song' in body['subsonic-response']) {
+    if (
+      operation === 'getSong' &&
+      (state.songIdOverride || state.songIdFromRequest) &&
+      'song' in body['subsonic-response']
+    ) {
       const song = body['subsonic-response'].song;
-      if (song && typeof song === 'object') Reflect.set(song, 'id', state.songIdOverride);
+      if (song && typeof song === 'object')
+        Reflect.set(
+          song,
+          'id',
+          state.songIdFromRequest ? url.searchParams.get('id') : state.songIdOverride,
+        );
+    }
+    if (
+      operation === 'getSong' &&
+      state.songUnknownDuration &&
+      'song' in body['subsonic-response']
+    ) {
+      const song = body['subsonic-response'].song;
+      if (song && typeof song === 'object') Reflect.deleteProperty(song, 'duration');
     }
     const payload = JSON.stringify(
       (isLibrary && state.malformedLibrary) || (isCollection && state.malformedCollections)

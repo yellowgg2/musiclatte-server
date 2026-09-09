@@ -1,3 +1,4 @@
+import { registerListeningRoutes } from './routes/listening.js';
 import { registerMixRoutes } from './routes/mixes.js';
 import { registerCurationRoutes } from './routes/curation.js';
 import { registerEngineRoutes } from './routes/engine.js';
@@ -106,6 +107,7 @@ export function createApp(options?: AuthOptions) {
     registerSongRoute(app, service);
     registerRandomRoute(app, service);
     registerMixRoutes(app, service);
+    registerListeningRoutes(app, service);
     registerStreamRoute(app, service);
     registerCoverRoute(app, service);
     registerPlaylistReadRoutes(app, service);

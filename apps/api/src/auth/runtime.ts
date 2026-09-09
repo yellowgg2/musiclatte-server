@@ -1,4 +1,6 @@
-import { readMixEnabled } from '../config/runtime.js';
+import { acquireListeningRuntime } from '../listening/runtime.js';
+import { createListeningRepository } from '../storage/listening-repository.js';
+import { readListeningConfig, readMixEnabled } from '../config/runtime.js';
 import { createMixRepository } from '../storage/mix-repository.js';
 import { configuredMediaFence, curationRuntimeReady } from '../curation/runtime.js';
 import { createSubsonicClient } from '../subsonic/client.js';
@@ -18,8 +20,10 @@ import { readAutomationConfig } from '../automation/config.js';
 
 /** Startup uses operator-owned paths and an already provisioned key; never rekeys an existing DB. */
 export function createConfiguredApp(env: Record<string, string | undefined>) {
+  let releaseListening: (() => void) | undefined;
   let database: ReturnType<typeof openDatabase> | undefined;
   try {
+    const listeningConfig = readListeningConfig(env);
     const mixesEnabled = readMixEnabled(env);
     const importConfig = readApiImportConfig(env);
     const required = (name: string) => {
@@ -54,6 +58,11 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
     const key = loadKey(keyPath);
     const vault = createCredentialVault(key);
     database = openDatabase(directory);
+    const listening = createListeningRepository({ database, clock: Date.now });
+    if (listeningConfig.enabled) {
+      releaseListening = acquireListeningRuntime(directory);
+      listening.recoverDispatching();
+    }
     const instances = createInstanceRepository(database, vault.keyId);
     const sessions = createSessionRepository({ database, vault, maxAgeMs, clock: Date.now });
     const playlistOperations = createPlaylistOperationRepository({ database, clock: Date.now });
@@ -63,6 +72,15 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
     if (automation.enabled && !metadata?.policy.enabled) throw new Error();
     if (importConfig.enabled && !isAbsolute(musicRoot)) throw new Error();
     const app = createApp({
+      ...(listeningConfig.enabled
+        ? {
+            listening: {
+              repository: listening,
+              scrobble: listeningConfig.scrobble,
+              clock: Date.now,
+            },
+          }
+        : {}),
       ...(mixesEnabled ? { mixes: createMixRepository({ database, clock: Date.now }) } : {}),
       ...(automation.enabled && metadata
         ? {
@@ -118,10 +136,12 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
     });
     app.addHook('onClose', async () => {
       ownedDatabase.close();
+      releaseListening?.();
     });
     return app;
   } catch {
     database?.close();
+    releaseListening?.();
     throw new Error('Invalid authentication configuration');
   }
 }

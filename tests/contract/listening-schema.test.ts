@@ -7,7 +7,8 @@ it('should strictly decode web listening events', async () => {
   expect(existsSync(path), 'listening contract is required').toBe(true);
   const { decodeListeningEvent } = await import(path);
   const event = {
-    eventId: '738cf965-b8e3-41a0-876c-87c1804f2e69',
+    eventId: 'A'.repeat(22),
+    listenedMs: 60000,
     songId: 'tr-1',
     startedAt: '2026-09-09T00:00:00.000Z',
     qualifiedAt: '2026-09-09T00:01:00.000Z',

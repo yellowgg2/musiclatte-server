@@ -17,6 +17,13 @@ import type { ImportOptions } from '../imports/import-service.js';
 import type { MetadataOptions } from '../metadata/provider.js';
 
 export interface AuthOptions {
+  listening?: {
+    repository: ReturnType<
+      typeof import('../storage/listening-repository.js').createListeningRepository
+    >;
+    scrobble: boolean;
+    clock(): number;
+  };
   mixes?: ReturnType<typeof import('../storage/mix-repository.js').createMixRepository>;
   automation?: import('../automation/config.js').AutomationOptions;
   scan?: import('../scan/scheduler.js').ScanOptions;

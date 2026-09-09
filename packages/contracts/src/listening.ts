@@ -11,6 +11,7 @@ export interface ListeningEventInput {
   songId: string;
   startedAt: string;
   qualifiedAt: string;
+  listenedMs: number;
 }
 export function decodeListeningEvent(value: unknown): ListeningEventInput {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -18,9 +19,9 @@ export function decodeListeningEvent(value: unknown): ListeningEventInput {
   const input = value as Record<string, unknown>;
   const fields = ['eventId', 'songId', 'startedAt', 'qualifiedAt'];
   if (
-    Object.keys(input).length !== fields.length ||
+    Object.keys(input).length !== fields.length + 1 ||
     fields.some((field) => typeof input[field] !== 'string') ||
-    Object.keys(input).some((key) => !fields.includes(key))
+    Object.keys(input).some((key) => ![...fields, 'listenedMs'].includes(key))
   )
     throw new Error('Invalid listening event');
   const event = input as unknown as ListeningEventInput;
@@ -29,9 +30,10 @@ export function decodeListeningEvent(value: unknown): ListeningEventInput {
     Number.isFinite(Date.parse(time)) &&
     new Date(time).toISOString() === time.replace(/Z$/, time.includes('.') ? 'Z' : '.000Z');
   if (
-    !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(
-      event.eventId,
-    ) ||
+    !/^[A-Za-z0-9_-]{22,128}$/.test(event.eventId) ||
+    !Number.isSafeInteger(event.listenedMs) ||
+    event.listenedMs <= 0 ||
+    event.listenedMs > Date.parse(event.qualifiedAt) - Date.parse(event.startedAt) ||
     !event.songId.trim() ||
     event.songId.length > 512 ||
     /[\u0000-\u001f\u007f]/.test(event.songId) ||
@@ -42,7 +44,8 @@ export function decodeListeningEvent(value: unknown): ListeningEventInput {
   )
     throw new Error('Invalid listening event');
   return {
-    eventId: event.eventId.toLowerCase(),
+    eventId: event.eventId,
+    listenedMs: event.listenedMs,
     songId: event.songId,
     startedAt: new Date(event.startedAt).toISOString(),
     qualifiedAt: new Date(event.qualifiedAt).toISOString(),
