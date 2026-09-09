@@ -95,3 +95,17 @@ export function replaceWithRandom(
   const playable = songs.filter((song) => !song.isDir);
   return playable.length === 0 ? queue : createQueue(playable, playable[0]!.id, 'random');
 }
+/** Appended songs are new occurrences, including IDs already present in the queue. */
+export function appendQueue(
+  queue: PlayerQueue | null,
+  songs: readonly MusicEntry[],
+): PlayerQueue | null {
+  const items = songs.filter((song) => !song.isDir);
+  if (!items.length) return queue;
+  if (!queue) return createQueue(items, items[0]!.id, 'mix');
+  return {
+    ...queue,
+    items: [...queue.items, ...items],
+    order: [...queue.order, ...items.map((_, index) => queue.items.length + index)],
+  };
+}

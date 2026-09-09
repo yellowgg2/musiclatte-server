@@ -8,9 +8,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { mediaRoutes } from '@musiclatte/contracts';
+import { mediaRoutes, type MusicEntry } from '@musiclatte/contracts';
 import { connectMediaSession } from './media-session';
 import {
+  appendQueue,
   advanceQueue,
   createQueue,
   currentSong,
@@ -47,6 +48,7 @@ export interface PlayerAudio extends EventTarget {
 interface PlayerContextValue {
   state: PlayerState;
   activate: SongActivation;
+  appendSongs: (songs: readonly MusicEntry[]) => void;
   pause: () => void;
   resume: () => void;
   previous: () => void;
@@ -169,9 +171,22 @@ export function PlayerProvider({
     [commit, startSong],
   );
 
+  const appendSongs = useCallback(
+    (songs: readonly MusicEntry[]) => {
+      const current = stateRef.current;
+      const queue = appendQueue(current.queue, songs);
+      if (queue && queue !== current.queue)
+        commit({ type: 'queue', queue, ...(current.queue ? {} : { status: 'paused' }) });
+    },
+    [commit],
+  );
   const pause = useCallback(() => audio.pause(), [audio]);
   const resume = useCallback(() => {
     if (!stateRef.current.current) return;
+    if (!audio.src) {
+      startSong(stateRef.current.current.id);
+      return;
+    }
     const shouldReload = stateRef.current.status === 'error';
     const generation = ++playGeneration.current;
     commit({ type: 'loading' });
@@ -180,7 +195,7 @@ export function PlayerProvider({
       if (generation === playGeneration.current)
         commit({ type: 'play-rejected', error: 'play_not_allowed' });
     });
-  }, [audio, commit]);
+  }, [audio, commit, startSong]);
 
   const move = useCallback(
     (direction: 'next' | 'previous', ended = false) => {
@@ -329,6 +344,7 @@ export function PlayerProvider({
     () => ({
       state,
       activate,
+      appendSongs,
       pause,
       resume,
       previous,
@@ -344,6 +360,7 @@ export function PlayerProvider({
     [
       state,
       activate,
+      appendSongs,
       pause,
       resume,
       previous,

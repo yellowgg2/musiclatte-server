@@ -15,7 +15,7 @@ export const clientFeatures = {
   'metadata.lyrics.write': true,
   'metadata.curation': true,
   'automation.tokens': true,
-  'mixes.saved': false,
+  'mixes.saved': true,
   'listening.history': false,
   'music.streamQuality': false,
   'music.artistInfo': false,

@@ -1,3 +1,5 @@
+import { MixesPage } from '../pages/music/MixesPage';
+import { mixRoute } from '../mixes/routes';
 import { CurationPage } from '../pages/music/CurationPage';
 import { isCurationPath } from '../curation/state';
 import { MetadataUIProvider } from '../metadata/MetadataUIProvider';
@@ -86,6 +88,8 @@ export function Router({
   const currentRecentPath = isRecentPath(location, base);
   const recentCapability = featureState(state.capabilities?.features['library.recentDownloads']);
   const canRecent = availableEntries(state.capabilities).includes('library.recentDownloads');
+  const currentMix = mixRoute(location, base);
+  const canMixes = availableEntries(state.capabilities).includes('mixes.saved');
   const copy = messages[locale];
   const metadataRoute = metadataPageRoute(location, base);
   const canEditMetadata = availableEntries(state.capabilities).includes('metadata.write');
@@ -166,6 +170,10 @@ export function Router({
     canReadPlaylists,
   ]);
   useEffect(() => {
+    if (state.status === 'signed-in' && currentMix) {
+      document.title = `${copy['mix.title']} · Musiclatte`;
+      return;
+    }
     if (state.status === 'signed-in' && currentCurationPath) {
       document.title = `${copy['curation.title']} · Musiclatte`;
       return;
@@ -195,6 +203,7 @@ export function Router({
     currentImportsPath,
     currentRecentPath,
     currentCurationPath,
+    currentMix,
     currentPlaylistRoute,
   ]);
   useEffect(() => {
@@ -535,6 +544,19 @@ export function Router({
                       {copy[canBrowse ? 'playlists.browseMusic' : 'status.back']}
                     </a>
                   </div>
+                ) : currentMix && canMixes ? (
+                  <MixesPage
+                    key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}:${currentMix.id ?? ''}`}
+                    {...currentMix}
+                    onLocale={onLocale}
+                    base={base}
+                    locale={locale}
+                    fetcher={fetcher}
+                    apiOrigin={apiOrigin}
+                    csrfToken={state.session.csrfToken}
+                    onUnauthenticated={store.expire}
+                    canStream={canStream}
+                  />
                 ) : musicRoute(location, base) && canBrowse ? (
                   <MusicPage
                     location={location}
@@ -548,6 +570,7 @@ export function Router({
                     canRandom={canRandom}
                     canRecent={canRecent}
                     canCuration={canCuration}
+                    canMixes={canMixes}
                     canWritePlaylists={canWritePlaylists}
                     canFavorites={canFavorites}
                     csrfToken={state.session.csrfToken}
