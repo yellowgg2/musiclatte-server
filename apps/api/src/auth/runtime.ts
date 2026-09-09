@@ -11,6 +11,7 @@ import { createPlaylistOperationRepository } from '../storage/playlist-operation
 import { loadKey } from '../security/key-store.js';
 import { createCredentialVault } from '../security/credential-vault.js';
 import { readSessionPolicy } from '../config/session-policy.js';
+import { readAutomationConfig } from '../automation/config.js';
 
 /** Startup uses operator-owned paths and an already provisioned key; never rekeys an existing DB. */
 export function createConfiguredApp(env: Record<string, string | undefined>) {
@@ -54,8 +55,21 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
     const playlistOperations = createPlaylistOperationRepository({ database, clock: Date.now });
     const musicRoot = env.IMPORT_MUSIC_ROOT ?? '/music';
     const metadata = readApiMetadataOptions(env, database, Date.now);
+    const automation = readAutomationConfig(env);
+    if (automation.enabled && !metadata?.policy.enabled) throw new Error();
     if (importConfig.enabled && !isAbsolute(musicRoot)) throw new Error();
     const app = createApp({
+      ...(automation.enabled && metadata
+        ? {
+            automation: {
+              database,
+              vault,
+              policy: metadata.policy,
+              clock: Date.now,
+              maxTokenAgeMs: automation.maxTokenAgeMs,
+            },
+          }
+        : {}),
       ...(metadata ? { metadata } : {}),
       ...(importConfig.enabled ? { recent: { musicRoot } } : {}),
       imports: { database, policy: importConfig.policy, clock: Date.now },

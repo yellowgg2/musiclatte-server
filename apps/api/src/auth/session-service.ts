@@ -16,6 +16,7 @@ import type { ImportOptions } from '../imports/import-service.js';
 import type { MetadataOptions } from '../metadata/provider.js';
 
 export interface AuthOptions {
+  automation?: import('../automation/config.js').AutomationOptions;
   scan?: import('../scan/scheduler.js').ScanOptions;
   metadata?: MetadataOptions;
   imports?: ImportOptions;
@@ -80,6 +81,7 @@ export function createSessionService(input: AuthOptions) {
     return left.length === right.length && timingSafeEqual(left, right);
   };
   function unwrap(value: string, scheme: AuthScheme): string {
+    if (value.startsWith('mlpat_')) throw new ApiError(403, 'forbidden');
     const parts = value.split('.');
     const raw = parts[1];
     const mac = parts[2];

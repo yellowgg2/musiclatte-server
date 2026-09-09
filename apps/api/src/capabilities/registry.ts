@@ -8,6 +8,7 @@ import {
   type FeatureCapability,
 } from '@musiclatte/contracts';
 import { upstreamError, type SessionService } from '../auth/session-service.js';
+import { createAccessTokenService } from '../auth/access-token-service.js';
 
 export async function capabilities(
   service: SessionService,
@@ -90,6 +91,27 @@ export async function capabilities(
         availability: 'temporarily_unavailable',
       };
   service.find(session.token, session.scheme);
+  if (service.options.automation) {
+    try {
+      const libraries = await createAccessTokenService(
+        service,
+        service.options.automation,
+      ).allowedLibraries(currentIdentity.username, upstream);
+      features['automation.tokens'] = {
+        supported: true,
+        permission: libraries.length ? 'allowed' : 'denied',
+        availability: 'available',
+      };
+    } catch (error) {
+      if (upstreamError(error).status === 401) service.rejectUpstream(error, session.raw);
+      features['automation.tokens'] = {
+        supported: true,
+        permission: 'unknown',
+        availability: 'temporarily_unavailable',
+      };
+    }
+    service.find(session.token, session.scheme);
+  }
   return {
     schemaVersion: 1,
     instanceId: session.instanceId,

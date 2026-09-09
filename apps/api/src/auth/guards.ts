@@ -12,6 +12,12 @@ export function credentials(
     .map((c) => c.trim())
     .filter((c) => c.startsWith(`${service.cookieName}=`));
   const authorization = request.headers.authorization;
+  if (
+    request.raw.rawHeaders.filter(
+      (_, index, headers) => index % 2 === 0 && headers[index]?.toLowerCase() === 'authorization',
+    ).length > 1
+  )
+    throw new ApiError(400, 'invalid_request');
   if (cookies.length > 1 || (cookies.length && authorization))
     throw new ApiError(400, 'invalid_request');
   if (authorization) {

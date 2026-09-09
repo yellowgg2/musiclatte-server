@@ -48,6 +48,7 @@ import-worker.json
 worker-staging/
 engine-data/
 metadata-policy.json
+automation-config.json
 metadata-worker.json
 metadata-probe.json
 metadata-runtime-probe.json

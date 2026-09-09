@@ -33,6 +33,7 @@ export function readConfig(env: Record<string, string | undefined>) {
   return { host, port: Number(rawPort), nodeEnv };
 }
 
+import { registerAccessTokenRoutes } from './routes/access-tokens.js';
 export function createApp(options?: AuthOptions) {
   const app = Fastify({
     logger: false,
@@ -87,6 +88,7 @@ export function createApp(options?: AuthOptions) {
   if (options) {
     service = createSessionService(options);
     registerSessionRoutes(app, service);
+    registerAccessTokenRoutes(app, service);
     registerDiscoveryRoute(app, service);
     registerCapabilitiesRoute(app, service);
     registerScanRoute(app, service);

@@ -5,6 +5,35 @@ export const accessTokenScopes = [
   'curation:write',
 ] as const;
 export type AccessTokenScope = (typeof accessTokenScopes)[number];
+export interface AccessTokenRequest {
+  name: string;
+  scopes: AccessTokenScope[];
+  libraryIds: string[];
+  expiresAt: number;
+}
+export const accessTokenRequestSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'scopes', 'libraryIds', 'expiresAt'],
+  properties: {
+    name: { type: 'string', minLength: 1 },
+    scopes: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 4,
+      uniqueItems: true,
+      items: { enum: accessTokenScopes },
+    },
+    libraryIds: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 100,
+      uniqueItems: true,
+      items: { type: 'string', minLength: 1, maxLength: 256 },
+    },
+    expiresAt: { type: 'integer', minimum: 1 },
+  },
+} as const;
 export interface AccessToken {
   id: string;
   name: string;
@@ -93,5 +122,55 @@ export function decodeAccessToken(value: unknown): AccessToken {
     expiresAt: row.expiresAt,
     revokedAt: row.revokedAt,
     lastUsedAt: row.lastUsedAt,
+  };
+}
+function responseRecord(value: unknown, keys: string[]): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid token response');
+  const record = value as Record<string, unknown>;
+  if (
+    Object.keys(record).length !== keys.length ||
+    keys.some((key) => !Object.hasOwn(record, key)) ||
+    record.schemaVersion !== 1
+  )
+    throw new Error('Invalid token response');
+  return record;
+}
+export function decodeAccessTokenCreated(value: unknown): {
+  schemaVersion: 1;
+  token: string;
+  accessToken: AccessToken;
+} {
+  const row = responseRecord(value, ['schemaVersion', 'token', 'accessToken']);
+  if (typeof row.token !== 'string' || !/^mlpat_[A-Za-z0-9_-]{43}$/.test(row.token))
+    throw new Error('Invalid token response');
+  return { schemaVersion: 1, token: row.token, accessToken: decodeAccessToken(row.accessToken) };
+}
+export function decodeAccessTokenList(value: unknown): {
+  schemaVersion: 1;
+  accessTokens: AccessToken[];
+  total: number;
+  nextCursor: string | null;
+} {
+  const row = responseRecord(value, ['schemaVersion', 'accessTokens', 'total', 'nextCursor']);
+  if (
+    !Array.isArray(row.accessTokens) ||
+    row.accessTokens.length > 100 ||
+    typeof row.total !== 'number' ||
+    !Number.isSafeInteger(row.total) ||
+    row.total < row.accessTokens.length ||
+    !(
+      row.nextCursor === null ||
+      (typeof row.nextCursor === 'string' &&
+        row.nextCursor.length > 0 &&
+        row.nextCursor.length <= 2048)
+    )
+  )
+    throw new Error('Invalid token response');
+  return {
+    schemaVersion: 1,
+    accessTokens: row.accessTokens.map(decodeAccessToken),
+    total: row.total,
+    nextCursor: row.nextCursor,
   };
 }
