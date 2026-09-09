@@ -31,7 +31,8 @@ RUN set -eu; case "$TARGETARCH" in \
 FROM node:24.20.0-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg python3-minimal && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg python3 && rm -rf /var/lib/apt/lists/*
+RUN python3 -I -B -c 'import json'
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/apps/api/package.json ./apps/api/package.json

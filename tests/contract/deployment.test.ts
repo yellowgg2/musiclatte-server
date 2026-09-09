@@ -224,6 +224,8 @@ it('should package a verified standalone seed and ownership-safe initializer', (
   const final = source.slice(source.lastIndexOf('\nFROM '));
   expect(final).not.toMatch(/COPY.*(?:test-support|tests|src|Gallery)/);
   expect(final).toContain('USER node');
+  expect(final).toContain("python3 -I -B -c 'import json'");
+  expect(final).not.toContain('python3-minimal');
   const init = read('deploy/initialize-worker-volumes.sh');
   expect(init).not.toMatch(/chown\s+-R|chmod\s+777/);
   expect(init).toContain('stat');
