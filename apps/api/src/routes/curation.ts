@@ -1,3 +1,7 @@
+import { createCurationClaimService } from '../curation/claim-service.js';
+import { requiredCredentials } from '../auth/guards.js';
+import { cookieMutation, requireJSON } from '../auth/csrf.js';
+import { metadataRequestSchemas, type CurationClaimRequest } from '@musiclatte/contracts';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { curationFields } from '@musiclatte/contracts';
 import { ApiError, type SessionService } from '../auth/session-service.js';
@@ -20,6 +24,81 @@ export const curationTrackParams = {
 } as const;
 export function registerCurationRoutes(app: FastifyInstance, service: SessionService) {
   let query: ReturnType<typeof createCurationQueryService> | undefined;
+  let claims: ReturnType<typeof createCurationClaimService> | undefined;
+  async function mutation(request: FastifyRequest) {
+    const auth = requiredCredentials(request, service);
+    if (auth.scheme === 'cookie') cookieMutation(request, service, auth.token);
+    else if (request.method !== 'DELETE') requireJSON(request);
+    const principal = await verifyMetadataPrincipal(request, service);
+    if (request.validationError) throw new ApiError(400, 'invalid_request');
+    return { principal, claims: (claims ??= createCurationClaimService(service)) };
+  }
+  app.post<{ Body: CurationClaimRequest }>(
+    '/api/v1/curation-claims',
+    {
+      attachValidation: true,
+      schema: {
+        querystring: metadataRequestSchemas.empty,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['operationId', 'purpose', 'fields', 'targets'],
+          properties: {
+            operationId: metadataRequestSchemas.create.properties.operationId,
+            purpose: { enum: ['required_review', 'optional_enrichment'] },
+            fields: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 5,
+              uniqueItems: true,
+              items: { enum: curationFields },
+            },
+            targets: metadataRequestSchemas.create.properties.targets,
+          },
+        },
+      },
+    },
+    async (request) => {
+      const m = await mutation(request);
+      return m.claims.claimTracks(m.principal, request.body);
+    },
+  );
+  app.post<{ Params: { id: string }; Body: { operationId: string; expectedGeneration: number } }>(
+    '/api/v1/curation-claims/:id/renew',
+    {
+      attachValidation: true,
+      schema: {
+        querystring: metadataRequestSchemas.empty,
+        params: curationTrackParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['operationId', 'expectedGeneration'],
+          properties: {
+            operationId: metadataRequestSchemas.create.properties.operationId,
+            expectedGeneration: { type: 'integer', minimum: 1 },
+          },
+        },
+      },
+    },
+    async (request) => {
+      const m = await mutation(request);
+      return m.claims.renewClaim(m.principal, request.params.id, request.body);
+    },
+  );
+  app.delete<{ Params: { id: string } }>(
+    '/api/v1/curation-claims/:id',
+    {
+      attachValidation: true,
+      schema: { querystring: metadataRequestSchemas.empty, params: curationTrackParams },
+    },
+    async (request, reply) => {
+      const m = await mutation(request);
+      await m.claims.releaseClaim(m.principal, request.params.id);
+      return reply.code(204).send();
+    },
+  );
+
   async function boundary<T>(
     request: FastifyRequest,
     work: (q: ReturnType<typeof createCurationQueryService>, scope: CurationScope) => T,

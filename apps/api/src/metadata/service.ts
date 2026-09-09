@@ -104,6 +104,15 @@ export function createMetadataService(service: SessionService) {
   };
   const resolved = async (v: Verified, target: MetadataTarget, mode: 'edit' | 'restore') => {
     const file = await p.resolver.resolve(v, target.trackId, mode);
+    if (
+      !isTokenPrincipal(v) &&
+      db
+        .prepare(
+          'SELECT 1 FROM curation_claim_items i JOIN curation_claims c ON c.id=i.claim_id JOIN curation_state s ON s.claim_epoch=c.claim_epoch WHERE i.file_identity=? AND c.released_at IS NULL AND c.created_at<=? AND c.lease_until>? LIMIT 1',
+        )
+        .get(file.fileIdentity, options.clock(), options.clock())
+    )
+      throw new ApiError(409, 'conflict');
     if (!service.matches(file.fileRevision, target.expectedRevision))
       throw new ApiError(409, 'conflict');
     available();
@@ -187,12 +196,19 @@ export function createMetadataService(service: SessionService) {
         };
       const snapshot = await p.helper.read({ key: file.relativeFileKey });
       if (snapshot.fullDigest !== file.inspection.digest) throw new ApiError(409, 'conflict');
-      const editable = file.editable && snapshot.editable;
+      const claimed =
+        !isTokenPrincipal(v) &&
+        db
+          .prepare(
+            'SELECT 1 FROM curation_claim_items i JOIN curation_claims c ON c.id=i.claim_id JOIN curation_state s ON s.claim_epoch=c.claim_epoch WHERE i.file_identity=? AND c.released_at IS NULL AND c.created_at<=? AND c.lease_until>? LIMIT 1',
+          )
+          .get(file.fileIdentity, options.clock(), options.clock());
+      const editable = file.editable && snapshot.editable && !claimed;
       return decodeMetadataSnapshot({
         schemaVersion: 1,
         trackId,
         editable,
-        reason: editable ? null : (file.reason ?? 'read_only'),
+        reason: claimed ? 'claimed_by_other' : editable ? null : (file.reason ?? 'read_only'),
         format: 'mp3',
         supportedFields: snapshot.editable ? [...metadataFields] : [],
         fileRevision: file.fileRevision,

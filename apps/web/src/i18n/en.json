@@ -478,6 +478,7 @@
   "metadata.backMusic": "Back to music",
   "metadata.error.revision_conflict": "The file changed elsewhere. Check current music information.",
   "metadata.error.file_unavailable": "The file is unavailable.",
+  "metadata.error.claimed_by_other": "Another task has reserved this track. Try again after its reservation ends.",
   "metadata.error.read_only": "This file is read-only.",
   "metadata.error.unsupported_format": "This format does not support editing.",
   "metadata.error.invalid_metadata": "Check the music information you entered.",

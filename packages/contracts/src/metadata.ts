@@ -111,6 +111,7 @@ export const metadataErrorCodes = [
   'revision_conflict',
   'file_unavailable',
   'read_only',
+  'claimed_by_other',
   'unsupported_format',
   'invalid_metadata',
   'ambiguous_selector',

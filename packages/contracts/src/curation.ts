@@ -364,3 +364,82 @@ export function decodeCurationDetail(value: unknown): CurationDetail {
   }
   return row as unknown as CurationDetail;
 }
+export interface CurationClaimRequest {
+  operationId: string;
+  purpose: ClaimPurpose;
+  fields: CurationField[];
+  targets: { trackId: string; expectedRevision: string }[];
+}
+export const claimResultStatuses = [
+  'granted',
+  'stale_revision',
+  'claimed_by_other',
+  'inventory_pending',
+  'file_busy',
+  'not_found',
+] as const;
+export interface CurationClaimResult {
+  schemaVersion: 1;
+  claimId: string | null;
+  leaseUntil: number | null;
+  generation: number | null;
+  results: { trackId: string; status: (typeof claimResultStatuses)[number] }[];
+}
+export function decodeCurationClaimResult(value: unknown): CurationClaimResult {
+  const row = curationRecord(value, [
+    'schemaVersion',
+    'claimId',
+    'leaseUntil',
+    'generation',
+    'results',
+  ]);
+  if (
+    row.schemaVersion !== 1 ||
+    !nullableText(row.claimId) ||
+    !(row.leaseUntil === null || time(row.leaseUntil)) ||
+    !(row.generation === null || time(row.generation)) ||
+    !Array.isArray(row.results) ||
+    !row.results.length ||
+    row.results.length > 100
+  )
+    throw new Error('Invalid claim result');
+  let granted = false;
+  for (const value of row.results) {
+    const result = curationRecord(value, ['trackId', 'status']);
+    if (
+      !text(result.trackId) ||
+      !claimResultStatuses.includes(result.status as (typeof claimResultStatuses)[number])
+    )
+      throw new Error('Invalid claim result');
+    if (result.status === 'granted') granted = true;
+  }
+  if (
+    granted !== (row.claimId !== null) ||
+    granted !== (row.leaseUntil !== null) ||
+    granted !== (row.generation !== null)
+  )
+    throw new Error('Invalid claim result');
+  return row as unknown as CurationClaimResult;
+}
+export function decodeCurationClaimRenewed(value: unknown): {
+  schemaVersion: 1;
+  claimId: string;
+  generation: number;
+  leaseUntil: number;
+} {
+  const row = curationRecord(value, ['schemaVersion', 'claimId', 'generation', 'leaseUntil']);
+  if (
+    row.schemaVersion !== 1 ||
+    !text(row.claimId) ||
+    !time(row.generation) ||
+    row.generation < 1 ||
+    !time(row.leaseUntil)
+  )
+    throw new Error('Invalid claim renewal');
+  return row as unknown as {
+    schemaVersion: 1;
+    claimId: string;
+    generation: number;
+    leaseUntil: number;
+  };
+}

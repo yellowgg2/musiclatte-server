@@ -97,6 +97,9 @@ export function createAccessTokenRepository(options: {
   if (!Number.isSafeInteger(maxAgeMs) || maxAgeMs <= 0) throw new Error('Invalid token max age');
   const instances = createInstanceRepository(database, vault.keyId);
   const db = database.connection;
+  function atomic<T>(work: () => T): T {
+    return db.isTransaction ? work() : database.transaction(work);
+  }
   function now(): number {
     const value = clock();
     if (!Number.isSafeInteger(value) || value < 0) throw new Error('Invalid token time');
@@ -189,7 +192,7 @@ export function createAccessTokenRepository(options: {
       proof: SubsonicTokenProof;
     } | null {
       if (!/^[a-f0-9]{64}$/.test(hash)) return null;
-      return database.transaction(() => {
+      return atomic(() => {
         const time = now();
         const raw = db.prepare('SELECT * FROM access_tokens WHERE token_hash=?').get(hash);
         if (!raw) return null;

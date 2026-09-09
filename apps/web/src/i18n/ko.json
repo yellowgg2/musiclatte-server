@@ -478,6 +478,7 @@
   "metadata.backMusic": "음악으로 돌아가기",
   "metadata.error.revision_conflict": "다른 변경이 있습니다. 현재 음악 정보를 다시 확인하세요.",
   "metadata.error.file_unavailable": "파일을 찾거나 읽을 수 없습니다.",
+  "metadata.error.claimed_by_other": "다른 작업이 이 곡을 수정 중입니다. 예약이 끝난 후 다시 시도하세요.",
   "metadata.error.read_only": "읽기 전용 파일입니다.",
   "metadata.error.unsupported_format": "이 형식은 편집을 지원하지 않습니다.",
   "metadata.error.invalid_metadata": "입력한 음악 정보를 확인하세요.",

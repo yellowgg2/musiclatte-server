@@ -60,7 +60,20 @@ export interface CurationCoverage {
   lastReconciledAt: number | null;
   lastErrorCode: string | null;
 }
-const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex');
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, entry]) => [key, canonical(entry)]),
+    );
+  return value;
+}
+const hash = (v: unknown) =>
+  createHash('sha256')
+    .update(JSON.stringify(canonical(v)))
+    .digest('hex');
 function parse(value: SQLOutputValue | undefined): unknown {
   return JSON.parse(String(value));
 }

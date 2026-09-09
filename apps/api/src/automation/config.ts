@@ -4,7 +4,10 @@ import type { MetadataPolicy } from '../metadata/policy.js';
 import type { ManagementDatabase } from '../storage/database.js';
 import type { CredentialVault } from '../security/credential-vault.js';
 export interface AutomationOptions {
-  curation?: { limits: import('../curation/policy.js').CurationLimits };
+  curation?: {
+    limits: import('../curation/policy.js').CurationLimits;
+    fence?: ReturnType<typeof import('../metadata/media-fence.js').createMediaFence>;
+  };
   database: ManagementDatabase;
   vault: CredentialVault;
   policy: MetadataPolicy;
