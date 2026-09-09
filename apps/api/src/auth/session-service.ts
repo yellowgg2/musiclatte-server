@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type {
   ApiErrorCode,
-  CurationFailureReason,
+  ApiFailureReason,
   AuthScheme,
   SessionExchange,
   SessionResponse,
@@ -17,6 +17,7 @@ import type { ImportOptions } from '../imports/import-service.js';
 import type { MetadataOptions } from '../metadata/provider.js';
 
 export interface AuthOptions {
+  mixes?: ReturnType<typeof import('../storage/mix-repository.js').createMixRepository>;
   automation?: import('../automation/config.js').AutomationOptions;
   scan?: import('../scan/scheduler.js').ScanOptions;
   metadata?: MetadataOptions;
@@ -36,7 +37,7 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: ApiErrorCode,
-    readonly reason?: CurationFailureReason,
+    readonly reason?: ApiFailureReason,
   ) {
     super(code);
   }

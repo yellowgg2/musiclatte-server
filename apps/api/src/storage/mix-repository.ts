@@ -141,6 +141,19 @@ export function createMixRepository({
   }
   return {
     get,
+    replay(
+      identityKey: string,
+      operationIdHash: string,
+      requestHash: string,
+    ): MixMutationResult | null {
+      key(identityKey);
+      const row = db
+        .prepare('SELECT * FROM mix_operations WHERE identity_key=? AND operation_id_hash=?')
+        .get(identityKey, operationIdHash);
+      if (!row) return null;
+      if (row.request_hash !== requestHash) throw new Error('Mix conflict');
+      return receipt(row, db);
+    },
     list(
       identityKey: string,
       options: { limit?: number; highWater?: number; anchor?: MixAnchor } = {},

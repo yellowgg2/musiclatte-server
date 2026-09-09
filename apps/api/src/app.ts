@@ -1,3 +1,4 @@
+import { registerMixRoutes } from './routes/mixes.js';
 import { registerCurationRoutes } from './routes/curation.js';
 import { registerEngineRoutes } from './routes/engine.js';
 import { registerMetadataRoutes } from './routes/metadata.js';
@@ -104,6 +105,7 @@ export function createApp(options?: AuthOptions) {
     registerAlbumRoute(app, service);
     registerSongRoute(app, service);
     registerRandomRoute(app, service);
+    registerMixRoutes(app, service);
     registerStreamRoute(app, service);
     registerCoverRoute(app, service);
     registerPlaylistReadRoutes(app, service);

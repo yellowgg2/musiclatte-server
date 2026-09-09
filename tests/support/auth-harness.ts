@@ -1,3 +1,4 @@
+import { listeningFixture } from '../../packages/test-support/src/listening-fixtures.js';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
@@ -161,6 +162,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     const isFavoriteRead = operation === 'getStarred2';
     const isFavoriteWrite = operation === 'star' || operation === 'unstar';
     const isLibrary = [
+      'getGenres',
       'getMusicFolders',
       'getIndexes',
       'getMusicDirectory',
@@ -394,7 +396,9 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
                     : state.playlistEntryIds,
                   coverArt: state.playlistCoverArt,
                 })
-              : subsonicFixture(operation, state.emptyLibrary);
+              : operation === 'getGenres'
+                ? listeningFixture(operation)
+                : subsonicFixture(operation, state.emptyLibrary);
     if (operation === 'getSong' && state.songIdOverride && 'song' in body['subsonic-response']) {
       const song = body['subsonic-response'].song;
       if (song && typeof song === 'object') Reflect.set(song, 'id', state.songIdOverride);

@@ -11,6 +11,8 @@ export const curationFailureReasons = [
   'identity_changed',
 ] as const;
 export type CurationFailureReason = (typeof curationFailureReasons)[number];
+export const mixFailureReasons = ['mix_scope_unavailable'] as const;
+export type ApiFailureReason = CurationFailureReason | (typeof mixFailureReasons)[number];
 export const apiErrorCodes = [
   'invalid_request',
   'unauthenticated',
@@ -31,7 +33,7 @@ export const apiErrorCodes = [
 export type ApiErrorCode = (typeof apiErrorCodes)[number];
 export interface ApiErrorResponse {
   schemaVersion: 1;
-  error: { code: ApiErrorCode; retryable: boolean; reason?: CurationFailureReason };
+  error: { code: ApiErrorCode; retryable: boolean; reason?: ApiFailureReason };
 }
 export const apiErrorSchema = {
   type: 'object',
@@ -46,7 +48,7 @@ export const apiErrorSchema = {
       properties: {
         code: { type: 'string', enum: apiErrorCodes },
         retryable: { type: 'boolean' },
-        reason: { type: 'string', enum: curationFailureReasons },
+        reason: { type: 'string', enum: [...curationFailureReasons, ...mixFailureReasons] },
       },
     },
   },

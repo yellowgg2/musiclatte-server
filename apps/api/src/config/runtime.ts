@@ -15,3 +15,9 @@ export function initializeContainerStorage(directory: string, keyPath: string): 
     throw new Error('Container storage initialization failed');
   }
 }
+
+export function readMixEnabled(env: Record<string, string | undefined>): boolean {
+  if (env.MIXES_ENABLED !== undefined && !['true', 'false'].includes(env.MIXES_ENABLED))
+    throw new Error('Invalid mix configuration');
+  return env.MIXES_ENABLED === 'true';
+}

@@ -44,22 +44,18 @@ export const createMixSchema = {
     operationId: { type: 'string', pattern: mixOperationIdPattern },
   },
 } as const;
+const expectedRevision = { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER } as const;
 export const updateMixSchema = {
   ...createMixSchema,
-  required: ['name', 'conditions', 'operationId', 'revision'],
-  properties: {
-    ...createMixSchema.properties,
-    revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
-  },
+  required: ['operationId', 'expectedRevision'],
+  anyOf: [{ required: ['name'] }, { required: ['conditions'] }],
+  properties: { ...createMixSchema.properties, expectedRevision },
 } as const;
 export const deleteMixSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['operationId', 'revision'],
-  properties: {
-    operationId: createMixSchema.properties.operationId,
-    revision: updateMixSchema.properties.revision,
-  },
+  required: ['operationId', 'expectedRevision'],
+  properties: { operationId: createMixSchema.properties.operationId, expectedRevision },
 } as const;
 export const savedMixSchema = {
   ...mixInputSchema,
@@ -67,7 +63,7 @@ export const savedMixSchema = {
   properties: {
     ...mixInputSchema.properties,
     id: { type: 'string', format: 'uuid' },
-    revision: updateMixSchema.properties.revision,
+    revision: expectedRevision,
     createdAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },
   },

@@ -1,3 +1,5 @@
+import { readMixEnabled } from '../config/runtime.js';
+import { createMixRepository } from '../storage/mix-repository.js';
 import { configuredMediaFence, curationRuntimeReady } from '../curation/runtime.js';
 import { createSubsonicClient } from '../subsonic/client.js';
 import { isAbsolute } from 'node:path';
@@ -18,6 +20,7 @@ import { readAutomationConfig } from '../automation/config.js';
 export function createConfiguredApp(env: Record<string, string | undefined>) {
   let database: ReturnType<typeof openDatabase> | undefined;
   try {
+    const mixesEnabled = readMixEnabled(env);
     const importConfig = readApiImportConfig(env);
     const required = (name: string) => {
       const value = env[name];
@@ -60,6 +63,7 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
     if (automation.enabled && !metadata?.policy.enabled) throw new Error();
     if (importConfig.enabled && !isAbsolute(musicRoot)) throw new Error();
     const app = createApp({
+      ...(mixesEnabled ? { mixes: createMixRepository({ database, clock: Date.now }) } : {}),
       ...(automation.enabled && metadata
         ? {
             automation: {

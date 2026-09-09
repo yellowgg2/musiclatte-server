@@ -48,6 +48,7 @@ export async function capabilities(
       availability: mapped.status === 403 ? 'available' : 'temporarily_unavailable',
     };
   }
+  if (service.options.mixes) features['mixes.saved'] = { ...features['library.randomSongs']! };
   features['library.recentDownloads'] = recentCapability(
     service.options.imports,
     identity.username,
