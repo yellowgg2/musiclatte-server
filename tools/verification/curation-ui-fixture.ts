@@ -29,7 +29,14 @@ export function createCurationUIFixture(mode: () => string = () => 'normal', aud
         trackId: id,
         libraryId: 'music',
         format: 'mp3',
-        title: i === 0 ? 'Evening in the studio' : 'Studio track ' + (i + 1),
+        title:
+          mode() === 'long' && i === 2
+            ? '긴 곡명 · A very long synthetic studio recording title with several movements '.repeat(
+                4,
+              )
+            : i === 0
+              ? 'Evening in the studio'
+              : 'Studio track ' + (i + 1),
         artist: ['Studio ensemble'],
         fileRevision: r,
         curationStatus: completed ? 'completed' : 'needs_review',
@@ -48,7 +55,12 @@ export function createCurationUIFixture(mode: () => string = () => 'normal', aud
               evidenceRevision: r,
               lastAttemptAt: field === 'lyrics' && i === 2 ? 1000 : null,
               lastUpdatedAt: 1000,
-              reason: field === 'lyrics' && i === 2 ? 'No authorized source was found.' : null,
+              reason:
+                field === 'lyrics' && i === 2
+                  ? mode() === 'long'
+                    ? '승인된 자료를 찾지 못했습니다. No authorized source was found. '.repeat(8)
+                    : 'No authorized source was found.'
+                  : null,
               sourceNotes: null,
               actorRef: field === 'lyrics' && i === 2 ? 'Synthetic reviewer' : null,
             },

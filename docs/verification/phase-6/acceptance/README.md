@@ -1,6 +1,6 @@
 # Phase 6 acceptance — design and automatic verification
 
-2026-09-09. Status: **pending**. Compact-list design approved; focused checks and token-focus fix verified. Full automatic matrix and actual Safari results remain pending. VoiceOver (P6-UA-004) is excluded by user request, not passed. The sections below retain the initial observations and subsequent changes.
+2026-09-09. Status: **passed for the required scope**. Required P6-UA-001/002/003/005/006 passed. VoiceOver004 remains excluded by user request (unexecuted); optional external-agent007 remains pending. Owned test runtime and tabs are cleaned up. The sections below preserve historical observations.
 
 ## Identity and coverage
 
@@ -58,3 +58,25 @@ User explicitly requested “VoiceOver는 skip해줘”. P6-UA-004 is `skipped_b
 - Fixture controls restored to normal; temporary viewport and native zoom restored. Retain only the token/curation harnesses and feedback tabs while remaining review work is pending. No real credentials, remote services or media were modified.
 
 Cleanup update: Gallery tab384350659 closed after its reuse review; token and curation tabs remain for handoff.
+
+## Resumed automatic acceptance and device handoff
+
+P6-UA-002/003 passed on the scoped combinations in [the resumed matrix](matrix-20260909.md). Product baseline04fd1d1, source-only fixture changes, no product/shared changes. Related14 tests, typecheck and build passed. P6-UA-001/005/006 require actual user results; VoiceOver remains excluded, optional007 pending. Old handoff processes/tabs were replaced by the explicitly owned device setup documented there. Final `npm run format:check` passed. No commit/push.
+
+## Both designs approved
+
+User replied “둘다 맘에 들어” to the token and curation handoff. Record user approval of both presented designs on product04fd1d1 / the documented compiled assets. The reply does not identify actual device, locale or keyboard/clipboard/playback/enrichment/conflict outcomes; P6-UA-001 remains partially approved, P6-UA-005/006 pending. Automatic002/003 passes remain valid. No product changes or additional Gallery approval. Keep the owned device setup available for the remaining results.
+
+## Safari interaction result and final status staging
+
+User replied “어 확인했어” to the explicit iPhone12Pro Safari keyboard, token copy/revoke and playback-through-route-change question. Together with both-design approval, P6-UA-001/005 now pass; P6-UA-006 playback/route portion is confirmed. Only006 enrichment/conflict interpretation remains required. This reply is not attributed to the unpresented enrichment/conflict results.
+
+Synthetic fixture staged job-4 (lyrics present with required completion and original receipt preserved), and job-5 (claimed_by_other conflict for another synthetic track). Mode restored normal. Actual compiled Chrome UI displays completed+lyrics present on the first track, and localized conflict/reservation guidance at `/metadata-jobs/job-5`. User can refresh `http://192.168.129.119:18728/music/curation` and open `http://192.168.129.119:18728/metadata-jobs/job-5`; these are synthetic browser-experience results, not real media writes.
+
+Old curation tab384350662 was already absent. Completed token tab384350666 closed. New tab384350668 and owned fixture/tunnel/gateway sessions remain for the final006 result. No product change, test invalidation or commit/push.
+
+## Required acceptance complete
+
+User “둘다 잘됨” confirms the final iPhone Safari enrichment and conflict results. P6-UA-006 now passed; required001/002/003/005/006 all passed, required pending/failed/stale0. VoiceOver004 is still user-excluded and optional007 still pending, neither counted as passed. Product04fd1d1 and recorded compiled asset hashes unchanged. Existing S00–S12 evidence plus the scoped final matrix covers the required Phase6 outcomes; no cross-Phase invalidation or new Gallery approval is needed.
+
+Owned local harnesses, SSH reverse tunnel and remote gateway stopped; no listeners remain on local18726/18727 or remote18728–18731. Remote orphan gateway1136799 was identified and terminated. Only the two documented temporary fixture roots were removed; final tab384350668 closed. Existing five application containers and gonic-demo continue running. The old device URLs are no longer live. Final format check passed; no product edits in this closing turn, commit or push.

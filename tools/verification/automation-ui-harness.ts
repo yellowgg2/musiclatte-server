@@ -57,6 +57,15 @@ export async function startAutomationUIHarness({
     return JSON.parse(Buffer.concat(chunks).toString() || '{}');
   }
   async function middleware(req: IncomingMessage, res: ServerResponse) {
+    const requestPath = new URL(req.url ?? '/', 'http://localhost').pathname;
+    while (
+      mode() === 'loading' &&
+      req.method === 'GET' &&
+      ['/api/v1/tracks', '/api/v1/access-tokens'].includes(requestPath)
+    ) {
+      if (res.destroyed) return;
+      await delay(100);
+    }
     if (scenario === 'curation') {
       const payload =
         req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(await body(req)) : undefined;
