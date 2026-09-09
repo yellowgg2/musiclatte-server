@@ -1,3 +1,4 @@
+import { decodeAutomationDiff } from '@musiclatte/contracts';
 import { isAbsolute } from 'node:path';
 import { createMetadataFileAccess, type MetadataFileAccessOptions } from './file-access.js';
 import { validateRelativeKey } from '../imports/policy.js';
@@ -213,8 +214,16 @@ export function createMetadataHelper(
         patch: input.patch,
         ...(input.cover ? { cover: input.cover } : {}),
       });
-      if (!result || typeof result !== 'object' || !('valid' in result) || result.valid !== true)
+      if (
+        !result ||
+        typeof result !== 'object' ||
+        !('valid' in result) ||
+        result.valid !== true ||
+        !('diff' in result) ||
+        !Array.isArray(result.diff)
+      )
         throw new Error('invalid_metadata');
+      return result.diff.map(decodeAutomationDiff);
     },
     async cover(input: { key: string; expectedDigest: string; frameId: string }) {
       const value = await invoke('cover', input.key, {

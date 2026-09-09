@@ -33,6 +33,7 @@ export interface ValidatedMetadataRequest {
   id: string;
   identityKey: string;
   libraryId: string;
+  curationAuthorization?: { actorKey: string; claimId: string; generation: number };
   operationIdHash: string;
   requestHash: string;
   items: ValidatedMetadataItem[];
@@ -383,9 +384,30 @@ export function createMetadataRepository({
         !hex(item.expectedDigest)
       )
         throw new Error('conflict');
+      if (input.curationAuthorization) {
+        const auth = input.curationAuthorization;
+        if (
+          !db
+            .prepare(
+              'SELECT 1 FROM curation_claims c JOIN curation_claim_items i ON i.claim_id=c.id JOIN curation_state s ON s.claim_epoch=c.claim_epoch WHERE c.id=? AND c.actor_key=? AND c.generation=? AND c.released_at IS NULL AND c.created_at<=? AND c.lease_until>? AND i.file_identity=? AND i.binding_revision=? AND i.expected_revision=?',
+            )
+            .get(
+              auth.claimId,
+              auth.actorKey,
+              auth.generation,
+              timestamp,
+              timestamp,
+              item.fileIdentity,
+              item.bindingRevision,
+              item.expectedRevision,
+            )
+        )
+          throw new Error('conflict');
+      }
       // Session editor requests cannot steal an active automation reservation.
       if (
         item.actorSessionId &&
+        !input.curationAuthorization &&
         db
           .prepare(
             'SELECT 1 FROM curation_claim_items i JOIN curation_claims c ON c.id=i.claim_id JOIN curation_state s ON s.claim_epoch=c.claim_epoch WHERE i.file_identity=? AND c.released_at IS NULL AND c.created_at<=? AND c.lease_until>? LIMIT 1',
@@ -618,6 +640,19 @@ export function createMetadataRepository({
           db.prepare(
             'UPDATE metadata_attempts SET finished_at=?,error_code=NULL WHERE item_id=? AND generation=?',
           ).run(timestamp, claim.itemId, claim.generation);
+          // Only this claim's accepted successful job can advance its revision baseline.
+          // External edits and track-ID rebinding never become an implicit approval.
+          if (row.original_track_id === row.current_track_id) {
+            db.prepare(
+              "UPDATE curation_claim_items SET expected_revision=? WHERE file_identity=? AND binding_revision=? AND expected_revision=? AND claim_id IN (SELECT json_extract(result_json,'$.claimId') FROM curation_operations WHERE route='write' AND json_extract(result_json,'$.jobId')=?)",
+            ).run(
+              row.result_revision!,
+              row.file_identity!,
+              row.binding_revision!,
+              row.expected_revision!,
+              row.job_id!,
+            );
+          }
           db.prepare('DELETE FROM metadata_file_locks WHERE item_id=?').run(claim.itemId);
         } else
           db.prepare('UPDATE metadata_items SET error_code=?,stage_changed_at=? WHERE id=?').run(
@@ -703,7 +738,7 @@ export function createMetadataRepository({
       };
     },
     createOrReplay(input: ValidatedMetadataRequest) {
-      return database.transaction(() => insert(input));
+      return db.isTransaction ? insert(input) : database.transaction(() => insert(input));
     },
     recordBackup(
       input: Pick<MetadataClaim, 'itemId' | 'workerId' | 'generation'> & {

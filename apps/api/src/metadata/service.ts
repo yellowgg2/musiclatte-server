@@ -285,7 +285,19 @@ export function createMetadataService(service: SessionService) {
       return { schemaVersion: 1 as const, job: await scopedJob(v, job.id) };
     },
     async detail(v: Verified, id: string) {
-      return { schemaVersion: 1 as const, job: await scopedJob(v, id) };
+      const job = await scopedJob(v, id);
+      const operation = db
+        .prepare(
+          "SELECT admission_results_json FROM curation_operations WHERE route='write' AND json_extract(result_json,'$.jobId')=? LIMIT 1",
+        )
+        .get(id);
+      return {
+        schemaVersion: 1 as const,
+        job,
+        ...(operation
+          ? { admissionResults: JSON.parse(String(operation.admission_results_json)) }
+          : {}),
+      };
     },
     async recheck(v: Verified, id: string, body: { operationId: string; itemIds: string[] }) {
       const parent = await scopedJob(v, id);

@@ -3,8 +3,11 @@ import {
   metadataRequestSchemas as schemas,
   metadataResponseSchemas as responses,
   type MetadataJobRequest,
+  type AutomationJobRequest,
+  automationJobRequestSchema,
 } from '@musiclatte/contracts';
-import { cookieMutation, cookieOriginMutation } from '../auth/csrf.js';
+import { createAutomationService } from '../curation/automation-service.js';
+import { cookieMutation, cookieOriginMutation, requireJSON } from '../auth/csrf.js';
 import { requiredCredentials } from '../auth/guards.js';
 import { ApiError, type SessionService } from '../auth/session-service.js';
 import { createMetadataService, type MetadataService } from '../metadata/service.js';
@@ -20,6 +23,7 @@ import {
 
 export function registerMetadataRoutes(app: FastifyInstance, service: SessionService) {
   let metadata: MetadataService | undefined;
+  let automation: ReturnType<typeof createAutomationService> | undefined;
   const getService = () => (metadata ??= createMetadataService(service));
   app.post<{ Params: { id: string }; Body: { operationId: string; itemIds: string[] } }>(
     '/api/v1/metadata-jobs/:id/rechecks',
@@ -177,19 +181,41 @@ export function registerMetadataRoutes(app: FastifyInstance, service: SessionSer
         m.restorePreview(v, request.params.id, request.params.itemId),
       ),
   );
-  app.post<{ Body: MetadataJobRequest }>(
+  app.post<{ Body: MetadataJobRequest | AutomationJobRequest }>(
     '/api/v1/metadata-jobs',
     {
       attachValidation: true,
       bodyLimit: 1024 * 1024,
       schema: {
         querystring: schemas.empty,
-        body: schemas.create,
-        response: { 202: responses.detail },
+        body: { oneOf: [schemas.create, automationJobRequestSchema] },
       },
     },
-    async (request, reply) =>
-      reply.code(202).send(await boundary(request, true, (m, v) => m.submit(v, request.body))),
+    async (request, reply) => {
+      const auth = requiredCredentials(request, service);
+      const auto =
+        !!request.body && typeof request.body === 'object' && 'automation' in request.body;
+      if (!auto) {
+        if (auth.scheme !== 'cookie') throw new ApiError(403, 'forbidden');
+        return reply
+          .code(202)
+          .send(await boundary(request, true, (m, v) => m.submit(v, request.body)));
+      }
+      if (auth.scheme === 'cookie') cookieMutation(request, service, auth.token);
+      else requireJSON(request);
+      const principal = await verifyMetadataPrincipal(request, service, [
+        'metadata:read',
+        'metadata:write',
+      ]);
+      if (request.validationError) throw new ApiError(400, 'invalid_request');
+      const result = await metadataErrors(() =>
+        (automation ??= createAutomationService(service)).submitAutomationJob(
+          principal,
+          request.body as AutomationJobRequest,
+        ),
+      );
+      return reply.code('dryRun' in result ? 200 : result.job ? 202 : 422).send(result);
+    },
   );
   app.get<{ Querystring: { cursor?: string; limit?: string } }>(
     '/api/v1/metadata-jobs',
@@ -206,7 +232,6 @@ export function registerMetadataRoutes(app: FastifyInstance, service: SessionSer
       schema: {
         params: schemas.params,
         querystring: schemas.empty,
-        response: { 200: responses.detail },
       },
     },
     (request) => boundary(request, false, (m, v) => m.detail(v, request.params.id)),

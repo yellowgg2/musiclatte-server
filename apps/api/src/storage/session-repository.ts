@@ -86,6 +86,9 @@ export function createSessionRepository(options: {
   const instances = createInstanceRepository(database, vault.keyId);
   const db = database.connection;
   const hash = (token: string) => createHash('sha256').update(token).digest('hex');
+  function atomic<T>(work: () => T): T {
+    return db.isTransaction ? work() : database.transaction(work);
+  }
   function now(): number {
     const value = clock();
     if (!Number.isSafeInteger(value) || value < 0) throw new Error('Invalid session time');
@@ -141,7 +144,7 @@ export function createSessionRepository(options: {
     findByIdHash(id: string): StoredSession | null {
       if (!/^[a-f0-9]{64}$/.test(id)) return null;
       try {
-        return database.transaction(() => {
+        return atomic(() => {
           const time = now();
           const raw = db.prepare('SELECT * FROM sessions WHERE id_hash=?').get(id);
           if (!raw) return null;

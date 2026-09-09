@@ -1,3 +1,5 @@
+import { createAutomationService } from '../curation/automation-service.js';
+import { metadataAttemptRequestSchema, type MetadataAttemptRequest } from '@musiclatte/contracts';
 import { createCurationClaimService } from '../curation/claim-service.js';
 import { requiredCredentials } from '../auth/guards.js';
 import { cookieMutation, requireJSON } from '../auth/csrf.js';
@@ -23,6 +25,7 @@ export const curationTrackParams = {
   properties: { id: { type: 'string', minLength: 1, maxLength: 2048 } },
 } as const;
 export function registerCurationRoutes(app: FastifyInstance, service: SessionService) {
+  let automation: ReturnType<typeof createAutomationService> | undefined;
   let query: ReturnType<typeof createCurationQueryService> | undefined;
   let claims: ReturnType<typeof createCurationClaimService> | undefined;
   async function mutation(request: FastifyRequest) {
@@ -33,6 +36,25 @@ export function registerCurationRoutes(app: FastifyInstance, service: SessionSer
     if (request.validationError) throw new ApiError(400, 'invalid_request');
     return { principal, claims: (claims ??= createCurationClaimService(service)) };
   }
+  app.post<{ Params: { id: string }; Body: MetadataAttemptRequest }>(
+    '/api/v1/tracks/:id/metadata-attempts',
+    {
+      attachValidation: true,
+      schema: {
+        params: curationTrackParams,
+        querystring: metadataRequestSchemas.empty,
+        body: metadataAttemptRequestSchema,
+      },
+    },
+    async (request) => {
+      const m = await mutation(request);
+      return (automation ??= createAutomationService(service)).recordMetadataAttempt(
+        m.principal,
+        request.params.id,
+        request.body,
+      );
+    },
+  );
   app.post<{ Body: CurationClaimRequest }>(
     '/api/v1/curation-claims',
     {

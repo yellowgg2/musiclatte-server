@@ -5,6 +5,7 @@ import {
   decodeMetadataRestorePreview,
   decodeMetadataCoverUpload,
   decodeMetadataJob,
+  decodeAutomationJobResponse,
   decodeMetadataPreview,
   decodeMetadataSnapshot,
   type MetadataJobRequest,
@@ -29,6 +30,11 @@ function object(value: unknown, keys: readonly string[]): Record<string, unknown
   return value as Record<string, unknown>;
 }
 function detail(value: unknown) {
+  if (value && typeof value === 'object' && 'admissionResults' in value) {
+    const result = decodeAutomationJobResponse(value);
+    if (!result.job) throw new Error('Invalid metadata job');
+    return result.job;
+  }
   const v = object(value, ['schemaVersion', 'job']);
   if (v.schemaVersion !== 1) throw new Error('Invalid metadata response');
   return decodeMetadataJob(v.job);

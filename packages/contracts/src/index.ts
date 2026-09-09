@@ -22,3 +22,5 @@ export * from './scan.js';
 export * from './access-tokens.js';
 
 export * from './curation.js';
+
+export * from './automation.js';

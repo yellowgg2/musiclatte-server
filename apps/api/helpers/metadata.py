@@ -280,6 +280,18 @@ def apply_patch(tags, major, patch, request):
     return touched
 
 
+def preview_values(tags, major, field, patch):
+    if field == "cover":
+        frames = sorted(tags.getall("APIC"), key=lambda f: f.HashKey)
+        return ([f.desc for f in frames], [(f.HashKey, hashlib.sha256(f.data).hexdigest()) for f in frames])
+    if field == "lyrics":
+        frames = sorted(tags.getall("USLT"), key=lambda f: f.HashKey)
+        return ([f.text for f in frames], [(f.HashKey, f.text) for f in frames])
+    name = ("TYER" if major == 3 else "TDRC") if field == "year" else FIELDS[field].__name__
+    values = [str(v) for f in tags.getall(name) for v in f.text]
+    return (values, values)
+
+
 def execute(request):
     if version_string != "1.48.1" or request.get("schemaVersion") != 1 or request.get("action") not in ("read", "prepare", "preview", "cover", "validate-cover"):
         fail("helper_unavailable")
@@ -319,12 +331,19 @@ def execute(request):
         major = before["id3Version"] or 4
         untouched = frame_values(tags)
         unknown = list(tags.unknown_frames)
+        preview_before = {field: preview_values(tags, major, field, patch) for field, patch in request["patch"].items()}
         touched = apply_patch(tags, major, request["patch"], request)
         if request["action"] == "preview":
             if digest_fd(fd, request["maxFileBytes"])[0] != before["fullDigest"]:
                 fail("read_unstable")
             verify()
-            return {"valid": True, "changedFields": list(request["patch"])}
+            diff = []
+            for field, patch in request["patch"].items():
+                previous, previous_identity = preview_before[field]
+                following, following_identity = preview_values(tags, major, field, patch)
+                diff.append({"field": field, "op": patch["op"], "before": previous, "after": following,
+                             "status": "no_change" if previous_identity == following_identity else "changed"})
+            return {"valid": True, "changedFields": list(request["patch"]), "diff": diff}
         expected = frame_values(tags)
         size = os.fstat(fd).st_size
         os.lseek(fd, max(0, size - 128), os.SEEK_SET)
