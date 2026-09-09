@@ -13,7 +13,7 @@ import { clientFeatures } from '../../apps/web/src/capabilities/client-features.
 
 describe('metadata API consumer-independent contract', () => {
   /** Future descriptors are optional; malformed known descriptors are never treated as permission. */
-  it('should preserve strict optional descriptors while exposing completed editors and keeping future consumers closed', () => {
+  it('should preserve strict optional descriptors while exposing completed editors and exposing implemented automation consumers', () => {
     const feature = {
       supported: true,
       permission: 'allowed',
@@ -43,8 +43,8 @@ describe('metadata API consumer-independent contract', () => {
       ).toThrow();
     expect(clientFeatures['metadata.write']).toBe(true);
     expect(clientFeatures['metadata.lyrics.write']).toBe(true);
-    expect(clientFeatures['metadata.curation']).toBe(false);
-    expect(clientFeatures['automation.tokens']).toBe(false);
+    expect(clientFeatures['metadata.curation']).toBe(true);
+    expect(clientFeatures['automation.tokens']).toBe(true);
   });
   /** Retry/restore/recheck intent has one closed wire representation and reuses P2 operation IDs. */
   it('should share P2 operation keys and reject unknown recovery intent independently of routes', async () => {

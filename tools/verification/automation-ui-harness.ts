@@ -1,6 +1,7 @@
+import { createCurationUIFixture } from './curation-ui-fixture.js';
 /** Source-only synthetic HTTP fixture around the normal production Router. */
 import { createServer, type ViteDevServer } from 'vite';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -12,18 +13,31 @@ export async function startAutomationUIHarness({
   port,
   scenario = 'tokens',
   controlFile,
+  audioFile,
 }: {
   port: number;
   scenario?: string;
   controlFile?: string;
+  audioFile?: string;
 }): Promise<ViteDevServer> {
-  if (scenario !== 'tokens' || (controlFile && !isAbsolute(controlFile)))
+  if (!['tokens', 'curation'].includes(scenario) || (controlFile && !isAbsolute(controlFile)))
     throw new Error('invalid_harness_config');
   const tokens = new Map<string, AccessToken[]>();
   const secrets = new Map<string, AccessToken>();
   let signedIn = true;
   let serial = 0;
   const mode = () => (controlFile ? readFileSync(controlFile, 'utf8').trim() : 'normal');
+  if (
+    audioFile &&
+    (!isAbsolute(audioFile) ||
+      !statSync(audioFile).isFile() ||
+      statSync(audioFile).size > 8 * 1024 * 1024)
+  )
+    throw new Error('invalid_audio_fixture');
+  const curationFixture = createCurationUIFixture(
+    mode,
+    audioFile ? readFileSync(audioFile) : undefined,
+  );
   const json = (res: ServerResponse, value: unknown, status = 200) => {
     res.statusCode = status;
     res.setHeader('Content-Type', 'application/json');
@@ -43,6 +57,21 @@ export async function startAutomationUIHarness({
     return JSON.parse(Buffer.concat(chunks).toString() || '{}');
   }
   async function middleware(req: IncomingMessage, res: ServerResponse) {
+    if (scenario === 'curation') {
+      const payload =
+        req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(await body(req)) : undefined;
+      const result = await curationFixture.fetcher('http://fixture' + req.url, {
+        method: req.method ?? 'GET',
+        headers: Object.fromEntries(
+          Object.entries(req.headers).filter(([, v]) => typeof v === 'string'),
+        ) as Record<string, string>,
+        ...(payload ? { body: payload } : {}),
+      });
+      res.statusCode = result.status;
+      result.headers.forEach((value, key) => res.setHeader(key, value));
+      res.end(Buffer.from(await result.arrayBuffer()));
+      return;
+    }
     const path = new URL(req.url ?? '/', 'http://localhost').pathname;
     const method = req.method ?? 'GET';
     const state = mode();
@@ -188,12 +217,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const port = Number(option('--port'));
   if (!Number.isInteger(port) || port < 1024 || port > 65535)
     throw new Error('unused_port_required');
+  const scenario = option('--scenario') ?? 'tokens';
   const server = await startAutomationUIHarness({
     port,
-    scenario: option('--scenario') ?? 'tokens',
+    scenario,
+    ...(args.includes('--audio-file') ? { audioFile: option('--audio-file')! } : {}),
     ...(args.includes('--control-file') ? { controlFile: option('--control-file')! } : {}),
   });
-  process.stdout.write(`Automation UI fixture: http://127.0.0.1:${port}/settings\n`);
+  process.stdout.write(
+    `Automation UI fixture: http://127.0.0.1:${port}/${scenario === 'curation' ? 'music/curation' : 'settings'}\n`,
+  );
   for (const signal of ['SIGINT', 'SIGTERM'] as const)
     process.once(signal, () => void server.close().then(() => process.exit(0)));
 }

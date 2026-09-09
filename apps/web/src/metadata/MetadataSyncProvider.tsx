@@ -1,3 +1,4 @@
+import { createCurationClient, type CurationClient } from '../curation/client';
 import {
   createContext,
   useCallback,
@@ -17,6 +18,7 @@ import { metadataRoutes } from './routes';
 interface MetadataContextValue {
   state: MetadataSyncState;
   client?: MetadataClient;
+  curationClient?: CurationClient;
   coverUrl(id: string): string;
   refresh(): void;
 }
@@ -49,6 +51,10 @@ export function MetadataSyncProvider({
         apiOrigin,
         isCurrent: () => current.current.active && current.current.scope === scope,
       }),
+    [scope, fetcher, apiOrigin],
+  );
+  const curationClient = useMemo(
+    () => createCurationClient({ fetcher, apiOrigin }),
     [scope, fetcher, apiOrigin],
   );
   const store = useMemo(
@@ -87,8 +93,8 @@ export function MetadataSyncProvider({
     [apiOrigin, state.coverVersions],
   );
   const value = useMemo(
-    () => ({ state, client, coverUrl, refresh: store.refresh }),
-    [state, client, coverUrl, store],
+    () => ({ state, client, curationClient, coverUrl, refresh: store.refresh }),
+    [state, client, curationClient, coverUrl, store],
   );
   return <MetadataContext.Provider value={value}>{children}</MetadataContext.Provider>;
 }

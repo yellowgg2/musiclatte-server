@@ -72,3 +72,16 @@ Completed backup artifacts are checkpointed and sealed in DELETE journal mode be
 so read-only restoration does not depend on WAL shared-memory sidecars. Only the new snapshot is
 changed. Restoration still preserves web/legacy sessions while invalidating automation credentials,
 claims and cursors; fresh file/index validation is required before work resumes.
+
+## Web consumers (S11–S12)
+
+Settings uses session-owner-only `/api/v1/access-tokens/options` for the current selectable libraries,
+scopes and configured maximum token age. The API rechecks permission at creation; the UI never derives
+access from unrelated import configuration. One-time secrets remain in component memory and uncertain
+issuance is resolved through metadata inspection/revocation, without an automatic creation retry.
+
+The Music area links to `/music/curation`. Frozen list counts/pagination and current detail are explicitly
+distinct; required review completion coexists with optional missing/unavailable fields. Existing metadata
+editor and change-feed consumers update current curation state. Scope/identity/filter changes discard
+obsolete responses, and a 409 cursor boundary restarts the list. Existing playback provider identity and
+selection ownership remain unchanged. Source-only browser fixtures are excluded from production builds.

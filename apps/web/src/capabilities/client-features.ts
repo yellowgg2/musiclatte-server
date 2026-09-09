@@ -13,7 +13,7 @@ export const clientFeatures = {
   'engine.manage': true,
   'metadata.write': true,
   'metadata.lyrics.write': true,
-  'metadata.curation': false,
+  'metadata.curation': true,
   'automation.tokens': true,
 } satisfies Record<FeatureKey, boolean>;
 export function featureState(feature: FeatureCapability | undefined) {

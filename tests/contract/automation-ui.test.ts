@@ -66,3 +66,32 @@ it('treats malformed or lost creation responses as uncertain and keeps API origi
   expect(path).toBe('https://api.example.test/api/v1/access-tokens');
   expect(attempts).toBe(1);
 });
+it('uses real session-scoped curation policy/list/detail with frozen pagination and expiry errors', async () => {
+  const { createCurationQueryContext } = await import('../support/curation-query-harness.js');
+  const { createCurationClient } = await import('../../apps/web/src/curation/client.js');
+  const c = await createCurationQueryContext();
+  const base = await c.app.listen({ host: '127.0.0.1', port: 0 });
+  const client = createCurationClient({
+    apiOrigin: base,
+    fetcher: (input, init) => fetch(input, { ...init, headers: c.headers }),
+  });
+  const signal = new AbortController().signal;
+  try {
+    expect((await client.policy(signal)).requiredFields).toEqual(['title', 'artist']);
+    const page = await client.list(
+      new URLSearchParams('curationStatus=completed&field=lyrics&fieldStatus=missing&limit=1'),
+      signal,
+    );
+    expect(page.total).toBe(1);
+    const detail = await client.detail(page.tracks[0]!.trackId, signal);
+    expect(detail.track.curationStatus).toBe('completed');
+    expect(detail.track.lyricsState).toBe('missing');
+    const first = await client.list(new URLSearchParams('limit=1'), signal);
+    c.setNow(1600);
+    await expect(
+      client.list(new URLSearchParams({ limit: '1', cursor: first.nextCursor! }), signal),
+    ).rejects.toMatchObject({ code: 'snapshot_expired' });
+  } finally {
+    await c.cleanup();
+  }
+});

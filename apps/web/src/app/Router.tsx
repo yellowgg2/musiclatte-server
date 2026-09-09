@@ -1,3 +1,5 @@
+import { CurationPage } from '../pages/music/CurationPage';
+import { isCurationPath } from '../curation/state';
 import { MetadataUIProvider } from '../metadata/MetadataUIProvider';
 import { metadataPageRoute } from '../metadata/routes';
 import { MetadataJobsPage } from '../pages/metadata/MetadataJobsPage';
@@ -78,6 +80,9 @@ export function Router({
   const currentFavoritesPath = isFavoritesPath(location, base);
   const playlistCapability = featureState(state.capabilities?.features['playlists.read']);
   const favoritesCapability = featureState(state.capabilities?.features['favorites.songs']);
+  const currentCurationPath = isCurationPath(location, base);
+  const canCuration = availableEntries(state.capabilities).includes('metadata.curation');
+  const curationCapability = featureState(state.capabilities?.features['metadata.curation']);
   const currentRecentPath = isRecentPath(location, base);
   const recentCapability = featureState(state.capabilities?.features['library.recentDownloads']);
   const canRecent = availableEntries(state.capabilities).includes('library.recentDownloads');
@@ -161,6 +166,10 @@ export function Router({
     canReadPlaylists,
   ]);
   useEffect(() => {
+    if (state.status === 'signed-in' && currentCurationPath) {
+      document.title = `${copy['curation.title']} · Musiclatte`;
+      return;
+    }
     if (state.status === 'signed-in' && metadataRoute) return;
     if (state.status === 'signed-in' && currentRecentPath) {
       document.title = `${copy['recent.title']} · Musiclatte`;
@@ -185,6 +194,7 @@ export function Router({
     currentFavoritesPath,
     currentImportsPath,
     currentRecentPath,
+    currentCurationPath,
     currentPlaylistRoute,
   ]);
   useEffect(() => {
@@ -295,6 +305,7 @@ export function Router({
               bulkFields={state.capabilities?.features['metadata.write']?.bulkFields ?? []}
               canEdit={canEditMetadata}
               canLyrics={canLyrics}
+              canCuration={canCuration}
               canHistory={canMetadataHistory}
               onUnauthenticated={store.expire}
             >
@@ -309,7 +320,54 @@ export function Router({
                   </>
                 }
               >
-                {metadataRoute ? (
+                {currentCurationPath ? (
+                  canCuration ? (
+                    <CurationPage
+                      key={JSON.stringify([
+                        state.capabilities?.instanceId,
+                        state.session.username,
+                        state.session.csrfToken,
+                        state.capabilities?.revision,
+                      ])}
+                      base={base}
+                      locale={locale}
+                      onLocale={onLocale}
+                      fetcher={fetcher}
+                      apiOrigin={apiOrigin}
+                      canStream={canStream}
+                      onUnauthenticated={store.expire}
+                    />
+                  ) : (
+                    <div className={styles.settings}>
+                      <h1 tabIndex={-1} data-page-heading>
+                        {copy['curation.title']}
+                      </h1>
+                      <StatusSurface
+                        state={
+                          curationCapability === 'unknown' && !state.capabilityUnavailable
+                            ? 'loading'
+                            : 'error'
+                        }
+                        title={
+                          copy[
+                            curationCapability === 'denied'
+                              ? 'status.denied'
+                              : curationCapability === 'unknown' && !state.capabilityUnavailable
+                                ? 'status.loading'
+                                : 'status.unavailable'
+                          ]
+                        }
+                        description={copy['curation.unavailableHelp']}
+                        action={
+                          <Action onClick={() => void store.restore()}>
+                            {copy['status.retry']}
+                          </Action>
+                        }
+                      />
+                      <a href={`${base}music`}>{copy['curation.back']}</a>
+                    </div>
+                  )
+                ) : metadataRoute ? (
                   metadataRoute.kind === 'list' ? (
                     <MetadataJobsPage />
                   ) : (
@@ -489,6 +547,7 @@ export function Router({
                     canStream={canStream}
                     canRandom={canRandom}
                     canRecent={canRecent}
+                    canCuration={canCuration}
                     canWritePlaylists={canWritePlaylists}
                     canFavorites={canFavorites}
                     csrfToken={state.session.csrfToken}

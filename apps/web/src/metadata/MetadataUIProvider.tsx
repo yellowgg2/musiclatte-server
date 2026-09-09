@@ -12,6 +12,7 @@ interface MetadataUIContext {
   csrfToken: string;
   canEdit: boolean;
   canLyrics: boolean;
+  canCuration?: boolean;
   canHistory: boolean;
   bulkFields?: readonly string[];
   accept(job: MetadataJob): void;

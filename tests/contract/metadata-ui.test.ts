@@ -4,11 +4,11 @@ import { safeReturnPath } from '../../apps/web/src/auth/guards';
 import { existsSync } from 'node:fs';
 
 describe('single metadata UI contract', () => {
-  /** Only implemented single-field consumers open; unrelated future product consumers stay closed. */
+  /** Only implemented single-field consumers open; implemented automation consumers open in Phase 6. */
   it('should enable metadata and lyrics consumers with source-only UI verification tools', () => {
     expect(clientFeatures['metadata.write']).toBe(true);
     expect(clientFeatures['metadata.lyrics.write']).toBe(true);
-    expect(clientFeatures['metadata.curation']).toBe(false);
+    expect(clientFeatures['metadata.curation']).toBe(true);
     expect(existsSync('tools/verification/metadata-ui-harness.ts')).toBe(true);
   });
   /** Safe post-login history re-entry preserves the SPA base and rejects ambiguous paths. */

@@ -1,3 +1,4 @@
+import { isCurationPath } from '../curation/state';
 import { metadataPageRoute } from '../metadata/routes';
 import { isRecentPath } from '../recent/routes';
 import { isImportsPath } from '../imports/routes';
@@ -13,6 +14,7 @@ export function safeReturnPath(
   const fallback = `${base}${fallbackPage}`;
   if (!value || !value.startsWith(base) || value.startsWith('//') || /[\\#\x00-\x1f]/.test(value))
     return fallback;
+  if (isCurationPath(value, base)) return value;
   if (metadataPageRoute(value, base)) return value;
   if (value === `${base}settings` || isImportsPath(value, base)) return value;
   if (isRecentPath(value, base)) return value;

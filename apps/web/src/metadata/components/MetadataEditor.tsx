@@ -1,3 +1,4 @@
+import { CurationInspector } from './CurationStatus';
 import { useEffect, useId, useRef, useState } from 'react';
 import type {
   MetadataJob,
@@ -345,6 +346,7 @@ export function MetadataEditor({
           ) : (
             <p>{snapshot.values.title || copy['metadata.empty']}</p>
           )}
+          {!bulk && <CurationInspector trackId={snapshot.trackId} />}
           {error && (
             <p role="alert" className={styles.error}>
               {error}

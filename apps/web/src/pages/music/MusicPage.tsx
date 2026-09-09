@@ -35,6 +35,7 @@ export function MusicPage({
   canWritePlaylists,
   canFavorites,
   canRecent = false,
+  canCuration = false,
   csrfToken,
 }: {
   location: string;
@@ -49,6 +50,7 @@ export function MusicPage({
   canWritePlaylists: boolean;
   canFavorites: boolean;
   canRecent?: boolean;
+  canCuration?: boolean;
   csrfToken: string;
 }) {
   const player = usePlayer();
@@ -293,6 +295,11 @@ export function MusicPage({
           {route.kind === 'folders' && (
             <a className={styles.favoriteLink} href={`${base}music`} aria-current="page">
               {copy['music.all']}
+            </a>
+          )}
+          {canCuration && (
+            <a className={styles.favoriteLink} href={`${base}music/curation`}>
+              {copy['curation.title']}
             </a>
           )}
           {canRecent && (
