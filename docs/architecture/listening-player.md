@@ -1,0 +1,11 @@
+# Web listening collection
+
+PlayerProvider owns one passive tracker per tab. New activation, queue occurrence movement, random replacement, repeat-ended and explicit replay after ended start fresh occurrences even for identical song IDs. Pause/resume, seeking, metadata updates and source loading retain the occurrence. Source adapters pass absolute media coordinates to the tracker; S09 owns offset translation.
+
+Only progress after playing contributes. Sorted interval union prevents replaying an already heard section from increasing its contribution. Forward media delta must fit monotonic elapsed times playbackRate plus100ms event precision allowance; large unannounced jumps are discarded. Seeking anchors reset, pause/waiting/stalled/error suspend collection, and no visibility-change handler discards background audio. Delayed timeupdate is accepted only with continuous playback and matching elapsed time. Qualification uses min(duration*500,240000), or240000 for unknown duration. The emitted integer listenedMs is also capped by wall elapsed to satisfy the API admission contract; clock discontinuity cannot forge a valid payload.
+
+The first threshold crossing freezes eventId, song, timestamps and listenedMs. The sender posts immediately, then at most3 retries with1/3/10-second delays, always byte-identical JSON. submitted/uncertain/skipped terminate observation;400/403/409 stop without retry;401 invokes the authentication boundary. Repeated dispatching/not_sent receipts only recheck the local API; they never trigger upstream resubmission.
+
+Pending work is memory-only, at most50 items and younger than24h at admission/retry. Overflow evicts/aborts the oldest; exhausted retries are reported failed. Disposal on logout or instance/account/CSRF generation change aborts requests and clears pending work; late responses are ignored. Browser closure, prolonged offline/throttling, capacity and retry exhaustion may lose records. No history or credentials are persisted in browser storage.
+
+Observer state exposes pending/failed/dropped counts, last receipt status and revision. A musiclatte:listening-recorded event lets S07 refresh visible history after confirmed local receipt. Recording never calls pause/load/queue mutation. UI entry remains closed until S07; collection uses the server capability directly when available.

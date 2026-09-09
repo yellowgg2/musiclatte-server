@@ -300,6 +300,16 @@ export function Router({
         onUnauthenticated={store.expire}
       >
         <PlayerProvider
+          listening={{
+            enabled:
+              featureState(state.capabilities?.features['listening.history']) === 'available',
+            scope: JSON.stringify([
+              state.capabilities?.instanceId,
+              state.session.username,
+              state.session.csrfToken,
+            ]),
+            csrfToken: state.session.csrfToken,
+          }}
           fetcher={fetcher}
           apiOrigin={apiOrigin}
           onUnauthenticated={store.expire}

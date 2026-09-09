@@ -1,3 +1,9 @@
+import { createListeningTracker } from '../listening/tracker';
+import {
+  createListeningSender,
+  initialListeningObserver,
+  type ListeningObserverState,
+} from '../listening/client';
 import {
   createContext,
   useCallback,
@@ -36,6 +42,8 @@ export interface PlayerAudio extends EventTarget {
   src: string;
   currentTime: number;
   readonly duration: number;
+  readonly playbackRate?: number;
+  readonly seeking?: boolean;
   volume: number;
   readonly paused: boolean;
   readonly ended: boolean;
@@ -47,6 +55,7 @@ export interface PlayerAudio extends EventTarget {
 
 interface PlayerContextValue {
   state: PlayerState;
+  listening: ListeningObserverState;
   activate: SongActivation;
   appendSongs: (songs: readonly MusicEntry[]) => void;
   pause: () => void;
@@ -74,7 +83,9 @@ export function PlayerProvider({
   apiOrigin,
   audioFactory = () => new Audio(),
   onUnauthenticated,
+  listening,
 }: {
+  listening?: { enabled: boolean; scope: string; csrfToken: string };
   children: ReactNode;
   fetcher: typeof fetch;
   apiOrigin: string;
@@ -82,6 +93,49 @@ export function PlayerProvider({
   onUnauthenticated: () => void;
 }) {
   const [audio] = useState(audioFactory);
+  const [listeningState, setListeningState] = useState(initialListeningObserver);
+  const sender = useRef<ReturnType<typeof createListeningSender> | null>(null);
+  const [tracker] = useState(() =>
+    createListeningTracker({ emit: (event) => sender.current?.enqueue(event) }),
+  );
+  const observeListening = useCallback(
+    (type: string) =>
+      tracker.observe(type, {
+        time: audio.currentTime,
+        duration: audio.duration,
+        rate: audio.playbackRate ?? 1,
+        paused: audio.paused,
+        seeking: audio.seeking ?? false,
+      }),
+    [audio, tracker],
+  );
+  useEffect(() => {
+    tracker.clear();
+    setListeningState(initialListeningObserver);
+    if (!listening?.enabled) return;
+    const owned = createListeningSender({
+      fetcher,
+      apiOrigin,
+      csrfToken: listening.csrfToken,
+      onUnauthenticated,
+      onChange: setListeningState,
+      onRecorded: () => window.dispatchEvent(new Event('musiclatte:listening-recorded')),
+    });
+    sender.current = owned;
+    return () => {
+      owned.dispose();
+      if (sender.current === owned) sender.current = null;
+      tracker.clear();
+    };
+  }, [
+    listening?.enabled,
+    listening?.scope,
+    listening?.csrfToken,
+    fetcher,
+    apiOrigin,
+    onUnauthenticated,
+    tracker,
+  ]);
   const [state, setState] = useState(initialPlayerState);
   const stateRef = useRef(state);
   const playGeneration = useRef(0);
@@ -132,9 +186,10 @@ export function PlayerProvider({
   }, [refreshKey, musicClient, commit, onUnauthenticated, metadata.client]);
 
   const startSong = useCallback(
-    (songId: string) => {
+    (song: MusicEntry) => {
+      if (sender.current) tracker.start(song.id, song.duration);
       const generation = ++playGeneration.current;
-      const route = mediaRoutes.songStream(songId);
+      const route = mediaRoutes.songStream(song.id);
       audio.src = apiOrigin ? `${apiOrigin}${route}` : route;
       audio.currentTime = 0;
       audio.load();
@@ -143,7 +198,7 @@ export function PlayerProvider({
           commit({ type: 'play-rejected', error: 'play_not_allowed' });
       });
     },
-    [apiOrigin, audio, commit],
+    [apiOrigin, audio, commit, tracker],
   );
 
   const startQueue = useCallback(
@@ -151,7 +206,7 @@ export function PlayerProvider({
       const song = currentSong(queue);
       if (!song) return;
       commit({ type: 'queue', queue, status: 'loading' });
-      startSong(song.id);
+      startSong(song);
     },
     [commit, startSong],
   );
@@ -166,7 +221,7 @@ export function PlayerProvider({
         source,
         ...(position === undefined ? {} : { position }),
       });
-      startSong(currentSong(queue)!.id);
+      startSong(currentSong(queue)!);
     },
     [commit, startSong],
   );
@@ -183,8 +238,8 @@ export function PlayerProvider({
   const pause = useCallback(() => audio.pause(), [audio]);
   const resume = useCallback(() => {
     if (!stateRef.current.current) return;
-    if (!audio.src) {
-      startSong(stateRef.current.current.id);
+    if (!audio.src || audio.ended || stateRef.current.status === 'ended') {
+      startSong(stateRef.current.current);
       return;
     }
     const shouldReload = stateRef.current.status === 'error';
@@ -217,18 +272,20 @@ export function PlayerProvider({
   const next = useCallback(() => move('next'), [move]);
   const previous = useCallback(() => {
     if (audio.currentTime > 3) {
+      observeListening('seeking');
       audio.currentTime = 0;
       commit({ type: 'time', currentTime: 0, duration: audio.duration });
     } else move('previous');
-  }, [audio, commit, move]);
+  }, [audio, commit, move, observeListening]);
   const seek = useCallback(
     (seconds: number) => {
+      observeListening('seeking');
       const duration = Number.isFinite(audio.duration) ? audio.duration : stateRef.current.duration;
       audio.currentTime = Math.min(Math.max(0, seconds), duration || Number.MAX_SAFE_INTEGER);
       commit({ type: 'time', currentTime: audio.currentTime, duration });
       commit({ type: 'seeking' });
     },
-    [audio, commit],
+    [audio, commit, observeListening],
   );
   const setVolume = useCallback(
     (volume: number) => {
@@ -295,14 +352,36 @@ export function PlayerProvider({
         () => commit({ type: 'time', currentTime: audio.currentTime, duration: audio.duration }),
       ],
       ['volumechange', () => commit({ type: 'volume', volume: audio.volume })],
-      ['ended', () => move('next', true)],
+      [
+        'ended',
+        () => {
+          observeListening('ended');
+          move('next', true);
+        },
+      ],
       ['error', () => commit({ type: 'media-error', error: 'media_unavailable' })],
     ];
+    const trackedEvents = [
+      'playing',
+      'pause',
+      'waiting',
+      'stalled',
+      'seeking',
+      'seeked',
+      'timeupdate',
+      'durationchange',
+      'error',
+      'loadstart',
+      'emptied',
+      'ratechange',
+    ].map((type) => [type, () => observeListening(type)] as const);
+    for (const [type, listener] of trackedEvents) audio.addEventListener(type, listener);
     for (const [type, listener] of events) audio.addEventListener(type, listener);
     return () => {
       for (const [type, listener] of events) audio.removeEventListener(type, listener);
+      for (const [type, listener] of trackedEvents) audio.removeEventListener(type, listener);
     };
-  }, [audio, commit, move]);
+  }, [audio, commit, move, observeListening]);
 
   const coverUrl = useCallback(
     (id: string) => {
@@ -343,6 +422,7 @@ export function PlayerProvider({
   const value = useMemo<PlayerContextValue>(
     () => ({
       state,
+      listening: listeningState,
       activate,
       appendSongs,
       pause,
@@ -358,6 +438,7 @@ export function PlayerProvider({
       coverUrl,
     }),
     [
+      listeningState,
       state,
       activate,
       appendSongs,
