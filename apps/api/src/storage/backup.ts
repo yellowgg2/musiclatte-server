@@ -1,3 +1,4 @@
+import { validateMixStorage } from './mix-repository.js';
 import {
   closeSync,
   constants,
@@ -29,6 +30,7 @@ function verifySnapshot(path: string, key: Uint8Array): void {
   const db = new DatabaseSync(path, { readOnly: true });
   try {
     validateSchema(db);
+    validateMixStorage(db);
     validateMetadataStorage(db);
     validateCurationStorage(db);
     validatePlaylistOperationReceipts(db);

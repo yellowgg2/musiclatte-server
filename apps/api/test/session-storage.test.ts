@@ -25,7 +25,7 @@ describe('session and instance storage', () => {
     c.db.close();
     const reopened = c.open();
     expect(c.createInstanceRepository(reopened, c.vault.keyId).get()).toEqual(instance);
-    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 19 });
+    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 20 });
     const tables = reopened.connection
       .prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
       .all()
@@ -67,9 +67,11 @@ describe('session and instance storage', () => {
       'metadata_jobs',
       'metadata_rechecks',
       'metadata_worker_state',
+      'mix_operations',
       'playlist_operations',
       'registration_attempts',
       'registration_cycle',
+      'saved_mixes',
       'scan_schedule',
       'sessions',
       'sqlite_sequence',
@@ -94,7 +96,7 @@ describe('session and instance storage', () => {
     raw.close();
 
     const migrated = c.open(legacy);
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 19 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 20 });
     expect(
       migrated.connection.prepare('SELECT id,policy_revision,key_id FROM instance').get(),
     ).toEqual({ id: 'legacy-instance', policy_revision: 7, key_id: c.vault.keyId });
