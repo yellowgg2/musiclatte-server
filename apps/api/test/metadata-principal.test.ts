@@ -87,7 +87,7 @@ describe('metadata principal compatibility', () => {
           migrated.connection.prepare(`SELECT ${snapshot.columns} FROM ${snapshot.table}`).all(),
         ).toEqual(snapshot.rows);
       expect(migrated.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-      expect(migrated.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(16);
+      expect(migrated.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(17);
       expect(
         migrated.connection
           .prepare(
@@ -194,7 +194,7 @@ describe('metadata principal compatibility', () => {
   it('should establish separate PAT actors with the existing FK graph intact', async () => {
     const c = await createTestContext();
     try {
-      expect(c.db.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(16);
+      expect(c.db.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(17);
       const columns = c.db.connection.prepare('PRAGMA table_info(metadata_items)').all();
       expect(columns.find((row) => row.name === 'actor_session_id')?.notnull).toBe(0);
       expect(columns.some((row) => row.name === 'actor_token_id')).toBe(true);

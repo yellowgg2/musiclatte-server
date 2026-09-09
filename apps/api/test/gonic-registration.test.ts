@@ -401,7 +401,7 @@ it('should migrate an existing v4 pending mapping to v5 without rewriting it', a
     db.close();
   }
   const migrated = s.c.open(legacy);
-  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 16 });
+  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 17 });
   expect(s.c.mediaLinksFor(migrated).get('pending')).toMatchObject({
     relativeFileKey: 'user/channel/a.mp3',
     gonicSongId: null,

@@ -20,6 +20,7 @@ import { validateImportStorage } from './import-repository.js';
 import { validateMediaLinks } from './media-link-repository.js';
 import { validateEngineState } from './engine-repository.js';
 import { validateWorkerState } from './worker-state-repository.js';
+import { validateCurationStorage } from './curation-repository.js';
 import { validateAccessTokens } from './access-token-repository.js';
 import { validateMetadataJobGrants } from '../auth/metadata-job-authorizer.js';
 
@@ -29,6 +30,7 @@ function verifySnapshot(path: string, key: Uint8Array): void {
   try {
     validateSchema(db);
     validateMetadataStorage(db);
+    validateCurationStorage(db);
     validatePlaylistOperationReceipts(db);
     validateImportStorage(db);
     validateMediaLinks(db);
@@ -147,6 +149,12 @@ export async function restoreBackup(source: string, destination: string): Promis
       restored
         .prepare('UPDATE automation_state SET credential_epoch=? WHERE singleton=1')
         .run(randomBytes(32).toString('hex'));
+      restored
+        .prepare('UPDATE curation_state SET claim_epoch=? WHERE singleton=1')
+        .run(randomBytes(32).toString('hex'));
+      restored.exec(
+        "UPDATE curation_tracks SET validation='stale'; UPDATE curation_inventory_runs SET status='stale'; DELETE FROM curation_snapshot_items; DELETE FROM curation_snapshots;",
+      );
       restored.exec('COMMIT');
     } finally {
       restored.close();

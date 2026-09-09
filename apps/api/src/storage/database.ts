@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -21,6 +21,7 @@ const MIGRATIONS = [
   new URL('./migrations/014-scan-schedule.sql', import.meta.url),
   new URL('./migrations/015-access-tokens.sql', import.meta.url),
   new URL('./migrations/016-metadata-principals.sql', import.meta.url),
+  new URL('./migrations/017-curation.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -35,6 +36,21 @@ export function validateSchema(db: DatabaseSync): void {
   ) {
     throw new Error('Unsupported storage schema');
   }
+  for (const table of [
+    'curation_state',
+    'curation_tracks',
+    'curation_field_states',
+    'curation_receipts',
+    'curation_events',
+    'curation_claims',
+    'curation_claim_items',
+    'curation_operations',
+    'curation_inventory_runs',
+    'curation_inventory_queue',
+    'curation_snapshots',
+    'curation_snapshot_items',
+  ])
+    db.prepare(`SELECT * FROM ${table} LIMIT 0`);
   const automation = db
     .prepare('SELECT credential_epoch FROM automation_state WHERE singleton=1')
     .get();
