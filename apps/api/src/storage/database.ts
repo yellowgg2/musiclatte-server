@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -25,6 +25,7 @@ const MIGRATIONS = [
   new URL('./migrations/018-media-publications.sql', import.meta.url),
   new URL('./migrations/019-curation-inventory.sql', import.meta.url),
   new URL('./migrations/020-saved-mixes.sql', import.meta.url),
+  new URL('./migrations/021-listening-history.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -44,6 +45,12 @@ export function validateSchema(db: DatabaseSync): void {
   );
   db.prepare(
     'SELECT identity_key,operation_id_hash,request_hash,kind,resource_id,result_json,created_at FROM mix_operations LIMIT 0',
+  );
+  db.prepare(
+    'SELECT sequence,identity_key,event_id_hash,request_hash,song_id,source,started_at,qualified_at,received_at FROM listening_events LIMIT 0',
+  );
+  db.prepare(
+    'SELECT event_sequence,status,claimed_at,finished_at FROM listening_deliveries LIMIT 0',
   );
   for (const table of [
     'curation_source_events',

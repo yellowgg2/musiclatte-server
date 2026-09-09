@@ -1,3 +1,4 @@
+import { validateListeningStorage } from './listening-repository.js';
 import { validateMixStorage } from './mix-repository.js';
 import {
   closeSync,
@@ -31,6 +32,7 @@ function verifySnapshot(path: string, key: Uint8Array): void {
   try {
     validateSchema(db);
     validateMixStorage(db);
+    validateListeningStorage(db);
     validateMetadataStorage(db);
     validateCurationStorage(db);
     validatePlaylistOperationReceipts(db);

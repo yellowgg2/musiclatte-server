@@ -101,20 +101,25 @@ it('should validate mix rows and receipts during backup and restore', async () =
   );
 });
 /** Existing v12 and current v19 databases migrate additively and reopen idempotently. */
-it.each([12, 19])('should migrate version %i without changing the instance', async (version) => {
-  const c = await makeSUT();
-  const dir = join(c.root, `v${version}`);
-  mkdirSync(dir);
-  const raw = new DatabaseSync(join(dir, 'management.sqlite'));
-  const migrations = resolve('apps/api/src/storage/migrations');
-  for (const file of readdirSync(migrations).sort().slice(0, version))
-    raw.exec(readFileSync(join(migrations, file), 'utf8'));
-  raw.close();
-  const one = c.open(dir);
-  const two = c.open(dir);
-  expect(one.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(20);
-  expect(two.connection.prepare('SELECT count(*) AS count FROM saved_mixes').get()?.count).toBe(0);
-});
+it.each([12, 19, 20])(
+  'should migrate version %i without changing the instance',
+  async (version) => {
+    const c = await makeSUT();
+    const dir = join(c.root, `v${version}`);
+    mkdirSync(dir);
+    const raw = new DatabaseSync(join(dir, 'management.sqlite'));
+    const migrations = resolve('apps/api/src/storage/migrations');
+    for (const file of readdirSync(migrations).sort().slice(0, version))
+      raw.exec(readFileSync(join(migrations, file), 'utf8'));
+    raw.close();
+    const one = c.open(dir);
+    const two = c.open(dir);
+    expect(one.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(21);
+    expect(two.connection.prepare('SELECT count(*) AS count FROM saved_mixes').get()?.count).toBe(
+      0,
+    );
+  },
+);
 
 /** Receipt write failure rolls back the resource, so retry can safely create exactly one mix. */
 it('should rollback a failed receipt transaction', async () => {
