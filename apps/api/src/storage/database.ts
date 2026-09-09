@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -19,6 +19,7 @@ const MIGRATIONS = [
   new URL('./migrations/012-metadata-backup-previews.sql', import.meta.url),
   new URL('./migrations/013-import-account.sql', import.meta.url),
   new URL('./migrations/014-scan-schedule.sql', import.meta.url),
+  new URL('./migrations/015-access-tokens.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -33,6 +34,17 @@ export function validateSchema(db: DatabaseSync): void {
   ) {
     throw new Error('Unsupported storage schema');
   }
+  const automation = db
+    .prepare('SELECT credential_epoch FROM automation_state WHERE singleton=1')
+    .get();
+  if (
+    typeof automation?.credential_epoch !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(automation.credential_epoch)
+  )
+    throw new Error('Unsupported storage schema');
+  db.prepare(
+    'SELECT id,instance_id,owner_username,name,scopes_json,library_ids_json,token_hash,created_at,expires_at,revoked_at,last_used_at,policy_revision,encrypted_proof FROM access_tokens LIMIT 0',
+  );
   db.prepare(
     'SELECT enabled,interval_minutes,next_run_at,last_started_at,last_error,encrypted_proof,policy_revision,generation,lease_until FROM scan_schedule LIMIT 0',
   );

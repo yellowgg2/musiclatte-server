@@ -41,6 +41,9 @@ export function createInstanceRepository(database: ManagementDatabase, keyId: st
         db.exec(
           'UPDATE sessions SET encrypted_proof=NULL, revoked_at=COALESCE(revoked_at,created_at)',
         );
+        db.exec(
+          'UPDATE access_tokens SET encrypted_proof=NULL, revoked_at=COALESCE(revoked_at,created_at)',
+        );
         return get();
       });
     },

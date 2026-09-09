@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { backup, DatabaseSync } from 'node:sqlite';
 import { createCredentialVault } from '../security/credential-vault.js';
 import { loadKey } from '../security/key-store.js';
@@ -19,6 +20,7 @@ import { validateImportStorage } from './import-repository.js';
 import { validateMediaLinks } from './media-link-repository.js';
 import { validateEngineState } from './engine-repository.js';
 import { validateWorkerState } from './worker-state-repository.js';
+import { validateAccessTokens } from './access-token-repository.js';
 
 /** Read-only verification: never initialize a missing instance or migrate a recovery artifact. */
 function verifySnapshot(path: string, key: Uint8Array): void {
@@ -37,6 +39,7 @@ function verifySnapshot(path: string, key: Uint8Array): void {
     )
       throw new Error();
     const vault = createCredentialVault(key);
+    validateAccessTokens(db, vault);
     const instance = db
       .prepare('SELECT id,policy_revision,key_id FROM instance WHERE singleton=1')
       .get();
@@ -129,6 +132,20 @@ export async function restoreBackup(source: string, destination: string): Promis
       join(destination, 'credential.key'),
       constants.COPYFILE_EXCL,
     );
+    // Only the new offline copy is changed. Session restoration retains its existing contract.
+    const restored = new DatabaseSync(path);
+    try {
+      restored.exec('BEGIN IMMEDIATE');
+      restored.exec(
+        'UPDATE access_tokens SET encrypted_proof=NULL,revoked_at=COALESCE(revoked_at,created_at)',
+      );
+      restored
+        .prepare('UPDATE automation_state SET credential_epoch=? WHERE singleton=1')
+        .run(randomBytes(32).toString('hex'));
+      restored.exec('COMMIT');
+    } finally {
+      restored.close();
+    }
     verifySnapshot(path, loadKey(join(destination, 'credential.key')));
     syncFile(path);
     syncFile(join(destination, 'credential.key'));

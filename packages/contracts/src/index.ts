@@ -19,3 +19,4 @@ export * from './engine.js';
 export * from './metadata.js';
 
 export * from './scan.js';
+export * from './access-tokens.js';
