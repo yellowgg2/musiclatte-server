@@ -47,3 +47,7 @@ Definitive terminal jobs discard grant envelopes. Offline restore and global aut
 ## Curation storage (S03)
 
 Schema 017 stores review state separately from optional field evidence and immutable completion receipts. Snapshot selection is frozen and credential-bound with explicit TTL/capacity errors. Offline restore preserves receipt history and ordinary sessions while rotating claim authority and marking file verification stale. These primitives are not HTTP mutation authorization; subsequent services must hold the common publication fence and verify current permissions/revision.
+
+## Curation read API (S06)
+
+Configured curation reads use `/api/v1/metadata-policy`, `/api/v1/tracks` and `/api/v1/tracks/:id/curation`. Policy is read-only `required-v1`; lists contain an `asOf` snapshot and coverage, not a live filesystem guarantee. `missingField=lyrics` equals `field=lyrics&fieldStatus=missing` and combines independently with `curationStatus=completed`. Supported filters are curationStatus, missingField or field/fieldStatus, format and libraryId. Limit defaults to 25, max 100. Opaque cursors bind the current credential, libraries and filter. A 409 snapshot_expired/snapshot_scope_changed requires a fresh list; 503 snapshot_capacity permits retry later. P4 metadata preview remains the source for fresh editable file values.

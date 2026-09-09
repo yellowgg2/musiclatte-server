@@ -9,6 +9,9 @@ export const apiErrorCodes = [
   'storage_unavailable',
   'not_found',
   'conflict',
+  'snapshot_expired',
+  'snapshot_scope_changed',
+  'snapshot_capacity',
   'outcome_unknown',
   'internal_error',
 ] as const;

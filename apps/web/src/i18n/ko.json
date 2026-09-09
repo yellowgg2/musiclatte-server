@@ -556,5 +556,8 @@
   "scan.saved": "설정을 저장했어요.",
   "scan.requested": "미디어 스캔을 요청했어요.",
   "scan.retry": "다시 시도",
-  "scan.adminOnly": "미디어 스캔과 자동 스캔 설정은 관리자 계정에서 사용할 수 있어요."
+  "scan.adminOnly": "미디어 스캔과 자동 스캔 설정은 관리자 계정에서 사용할 수 있어요.",
+  "error.snapshot_expired": "목록이 만료됐어요. 새로고침해 주세요.",
+  "error.snapshot_scope_changed": "접근 권한이 바뀌었어요. 목록을 새로 불러와 주세요.",
+  "error.snapshot_capacity": "지금은 새 목록을 만들 수 없어요. 잠시 후 다시 시도해 주세요."
 }

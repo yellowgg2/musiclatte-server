@@ -556,5 +556,8 @@
   "scan.saved": "Settings saved.",
   "scan.requested": "Media scan requested.",
   "scan.retry": "Retry",
-  "scan.adminOnly": "Media scanning and automatic scan settings are available to administrator accounts."
+  "scan.adminOnly": "Media scanning and automatic scan settings are available to administrator accounts.",
+  "error.snapshot_expired": "This list has expired. Refresh to start a new list.",
+  "error.snapshot_scope_changed": "Your access has changed. Reload the list.",
+  "error.snapshot_capacity": "A new list is unavailable right now. Try again shortly."
 }

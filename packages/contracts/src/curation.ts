@@ -200,3 +200,167 @@ export function decodeCurationPolicy(value: unknown): CurationPolicy {
     throw new Error('Invalid curation policy');
   return row as unknown as CurationPolicy;
 }
+export interface CurationCoverage {
+  libraryId: string;
+  status: 'discovering' | 'partial' | 'ready' | 'stale' | 'error';
+  discoveredCount: number;
+  verifiedCount: number;
+  unknownCount: number;
+  lastDiscoveryAt: number | null;
+  lastReconciledAt: number | null;
+  lastErrorCode: string | null;
+}
+export interface CurationList {
+  schemaVersion: 1;
+  snapshotId: string;
+  asOf: number;
+  expiresAt: number;
+  total: number;
+  nextCursor: string | null;
+  coverage: CurationCoverage[];
+  tracks: CurationTrack[];
+}
+export interface CurationClaimSummary {
+  id: string;
+  purpose: ClaimPurpose;
+  fields: CurationField[];
+  generation: number;
+  leaseUntil: number;
+}
+export interface CurationDetail {
+  schemaVersion: 1;
+  track: CurationTrack;
+  coverage: CurationCoverage[];
+  activeClaim: CurationClaimSummary | null;
+  activeWork: { itemId: string; jobId: string; stage: string }[];
+  history: { sequence: number; kind: string; createdAt: number }[];
+  nextCursor: string | null;
+}
+export function decodeCurationCoverage(value: unknown): CurationCoverage {
+  const row = curationRecord(value, [
+    'libraryId',
+    'status',
+    'discoveredCount',
+    'verifiedCount',
+    'unknownCount',
+    'lastDiscoveryAt',
+    'lastReconciledAt',
+    'lastErrorCode',
+  ]);
+  if (
+    !text(row.libraryId) ||
+    !['discovering', 'partial', 'ready', 'stale', 'error'].includes(String(row.status)) ||
+    !time(row.discoveredCount) ||
+    !time(row.verifiedCount) ||
+    !time(row.unknownCount) ||
+    row.verifiedCount + row.unknownCount > row.discoveredCount ||
+    !(row.lastDiscoveryAt === null || time(row.lastDiscoveryAt)) ||
+    !(row.lastReconciledAt === null || time(row.lastReconciledAt)) ||
+    !nullableText(row.lastErrorCode)
+  )
+    throw new Error('Invalid curation coverage');
+  return row as unknown as CurationCoverage;
+}
+export function decodeCurationList(value: unknown): CurationList {
+  const row = curationRecord(value, [
+    'schemaVersion',
+    'snapshotId',
+    'asOf',
+    'expiresAt',
+    'total',
+    'nextCursor',
+    'coverage',
+    'tracks',
+  ]);
+  if (
+    row.schemaVersion !== 1 ||
+    !text(row.snapshotId) ||
+    !time(row.asOf) ||
+    !time(row.expiresAt) ||
+    row.expiresAt <= row.asOf ||
+    !time(row.total) ||
+    !nullableText(row.nextCursor) ||
+    !Array.isArray(row.coverage) ||
+    !Array.isArray(row.tracks) ||
+    row.tracks.length > 100 ||
+    row.tracks.length > row.total
+  )
+    throw new Error('Invalid curation list');
+  row.coverage.forEach(decodeCurationCoverage);
+  row.tracks.forEach(decodeCurationTrack);
+  return row as unknown as CurationList;
+}
+export function decodeCurationDetail(value: unknown): CurationDetail {
+  const row = curationRecord(value, [
+    'schemaVersion',
+    'track',
+    'coverage',
+    'activeClaim',
+    'activeWork',
+    'history',
+    'nextCursor',
+  ]);
+  if (
+    row.schemaVersion !== 1 ||
+    !Array.isArray(row.coverage) ||
+    !Array.isArray(row.activeWork) ||
+    row.activeWork.length > 100 ||
+    !Array.isArray(row.history) ||
+    row.history.length > 100 ||
+    !nullableText(row.nextCursor)
+  )
+    throw new Error('Invalid curation detail');
+  decodeCurationTrack(row.track);
+  row.coverage.forEach(decodeCurationCoverage);
+  if (row.activeClaim !== null) {
+    const claim = curationRecord(row.activeClaim, [
+      'id',
+      'purpose',
+      'fields',
+      'generation',
+      'leaseUntil',
+    ]);
+    if (
+      !text(claim.id) ||
+      !['required_review', 'optional_enrichment'].includes(String(claim.purpose)) ||
+      !Array.isArray(claim.fields) ||
+      !claim.fields.length ||
+      !claim.fields.every((field) => curationFields.includes(field)) ||
+      new Set(claim.fields).size !== claim.fields.length ||
+      !time(claim.generation) ||
+      claim.generation < 1 ||
+      !time(claim.leaseUntil)
+    )
+      throw new Error('Invalid curation claim');
+  }
+  for (const value of row.activeWork) {
+    const item = curationRecord(value, ['itemId', 'jobId', 'stage']);
+    if (
+      !text(item.itemId) ||
+      !text(item.jobId) ||
+      ![
+        'queued',
+        'preparing',
+        'backed_up',
+        'prepared',
+        'file_saved',
+        'reflecting',
+        'recovery_required',
+      ].includes(String(item.stage))
+    )
+      throw new Error('Invalid active work');
+  }
+  let previous = -1;
+  for (const value of row.history) {
+    const event = curationRecord(value, ['sequence', 'kind', 'createdAt']);
+    if (
+      !time(event.sequence) ||
+      event.sequence <= previous ||
+      !text(event.kind) ||
+      !time(event.createdAt)
+    )
+      throw new Error('Invalid curation history');
+    previous = event.sequence;
+  }
+  return row as unknown as CurationDetail;
+}
