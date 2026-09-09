@@ -1,0 +1,59 @@
+.page {
+  display: grid;
+  gap: var(--space-5);
+  max-width: 68rem;
+  margin: auto;
+  padding: var(--space-5);
+}
+.page h1 {
+  font-size: var(--text-display);
+  margin-block: var(--space-3);
+  overflow-wrap: anywhere;
+}
+.page p,
+.detail {
+  color: var(--color-secondary);
+}
+.page a {
+  color: var(--color-accent);
+}
+.page nav,
+.actions,
+.detail,
+.missing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.actions label {
+  display: grid;
+  gap: var(--space-2);
+}
+.actions select {
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-control);
+  padding: var(--space-3);
+  min-height: var(--control-size);
+}
+.list,
+.song {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.list > li {
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+.detail {
+  font-size: var(--text-small);
+  margin-bottom: var(--space-2);
+}
+.page summary {
+  cursor: pointer;
+  padding-block: var(--space-3);
+}

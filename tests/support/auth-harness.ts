@@ -96,6 +96,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     songIdOverride: '',
     songIdFromRequest: false,
     songUnknownDuration: false,
+    songDurationOverride: undefined as number | undefined,
     accountIdentityFromProof: false,
     identityResponseGate: undefined as (() => Promise<void>) | undefined,
     favoriteSongIdsByUsername: new Map<string, string[]>(),
@@ -436,6 +437,10 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       (isLibrary && state.malformedLibrary) || (isCollection && state.malformedCollections)
         ? { 'subsonic-response': { status: 'ok', version: '1.15.0' } }
         : body,
+      (key, value: unknown) =>
+        key === 'duration' && state.songDurationOverride !== undefined
+          ? state.songDurationOverride
+          : value,
     );
     const delayMs =
       isFavoriteRead || isFavoriteWrite

@@ -16,7 +16,7 @@ export const clientFeatures = {
   'metadata.curation': true,
   'automation.tokens': true,
   'mixes.saved': true,
-  'listening.history': false,
+  'listening.history': true,
   'music.streamQuality': false,
   'music.artistInfo': false,
 } satisfies Record<FeatureKey, boolean>;

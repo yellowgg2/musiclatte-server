@@ -1,3 +1,5 @@
+import { ListeningHistoryPage } from '../pages/music/ListeningHistoryPage';
+import { listeningRoute } from '../listening/routes';
 import { MixesPage } from '../pages/music/MixesPage';
 import { mixRoute } from '../mixes/routes';
 import { CurationPage } from '../pages/music/CurationPage';
@@ -70,6 +72,8 @@ export function Router({
   const [location, setLocation] = useState(window.location.pathname + window.location.search);
   const path = location.split('?')[0]!;
   const canBrowse = availableEntries(state.capabilities).includes('music.browse');
+  const canListening = availableEntries(state.capabilities).includes('listening.history');
+  const currentListening = listeningRoute(location, base);
   const canStream = availableEntries(state.capabilities).includes('music.stream');
   const canRandom = availableEntries(state.capabilities).includes('library.randomSongs');
   const canReadPlaylists = availableEntries(state.capabilities).includes('playlists.read');
@@ -170,6 +174,10 @@ export function Router({
     canReadPlaylists,
   ]);
   useEffect(() => {
+    if (state.status === 'signed-in' && currentListening) {
+      document.title = `${copy[currentListening === 'history' ? 'listening.history' : 'listening.top']} - Musiclatte`;
+      return;
+    }
     if (state.status === 'signed-in' && currentMix) {
       document.title = `${copy['mix.title']} · Musiclatte`;
       return;
@@ -204,6 +212,7 @@ export function Router({
     currentRecentPath,
     currentCurationPath,
     currentMix,
+    currentListening,
     currentPlaylistRoute,
   ]);
   useEffect(() => {
@@ -554,6 +563,18 @@ export function Router({
                       {copy[canBrowse ? 'playlists.browseMusic' : 'status.back']}
                     </a>
                   </div>
+                ) : currentListening && canListening ? (
+                  <ListeningHistoryPage
+                    key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}:${currentListening}`}
+                    kind={currentListening}
+                    locale={locale}
+                    base={base}
+                    fetcher={fetcher}
+                    apiOrigin={apiOrigin}
+                    onUnauthenticated={store.expire}
+                    onLocale={onLocale}
+                    canStream={canStream}
+                  />
                 ) : currentMix && canMixes ? (
                   <MixesPage
                     key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}:${currentMix.id ?? ''}`}
@@ -581,6 +602,7 @@ export function Router({
                     canRecent={canRecent}
                     canCuration={canCuration}
                     canMixes={canMixes}
+                    canListening={canListening}
                     canWritePlaylists={canWritePlaylists}
                     canFavorites={canFavorites}
                     csrfToken={state.session.csrfToken}
