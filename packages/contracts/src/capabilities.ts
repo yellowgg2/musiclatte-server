@@ -13,6 +13,10 @@ export const featureKeys = [
   'metadata.lyrics.write',
   'metadata.curation',
   'automation.tokens',
+  'mixes.saved',
+  'listening.history',
+  'music.streamQuality',
+  'music.artistInfo',
 ] as const;
 export type FeatureKey = (typeof featureKeys)[number];
 export interface FeatureCapability {

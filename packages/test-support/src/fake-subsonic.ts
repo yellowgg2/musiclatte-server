@@ -1,3 +1,4 @@
+import { listeningFixture } from './listening-fixtures.js';
 import { createServer } from 'node:http';
 import {
   registrationFixture,
@@ -15,8 +16,12 @@ export interface SubsonicScenario {
   disconnect?: boolean;
   empty?: boolean;
   collections?: boolean;
+  listening?: boolean;
 }
 const reads = new Set([
+  'getGenres',
+  'getArtistInfo2',
+  'getOpenSubsonicExtensions',
   'getScanStatus',
   'getSong',
   'ping',
@@ -53,6 +58,7 @@ export async function createFakeSubsonic(scenario: SubsonicScenario = {}) {
     const operation = url.pathname.replace(/^\/rest\//, '');
     const allowed =
       reads.has(operation) ||
+      (scenario.listening && operation === 'scrobble') ||
       (Boolean(scenario.registration) && operation === 'startScan') ||
       (scenario.collections && collectionOperations.has(operation));
     if (request.method !== 'GET' || !url.pathname.startsWith('/rest/') || !allowed) {
@@ -84,7 +90,11 @@ export async function createFakeSubsonic(scenario: SubsonicScenario = {}) {
           ? registrationFixture(operation, url, scenario.registration)
           : scenario.collections && collectionOperations.has(operation)
             ? collectionFixture(operation, scenario.empty)
-            : subsonicFixture(operation, scenario.empty)
+            : ['getGenres', 'getArtistInfo2', 'getOpenSubsonicExtensions', 'scrobble'].includes(
+                  operation,
+                )
+              ? listeningFixture(operation)
+              : subsonicFixture(operation, scenario.empty)
         : scenario.body;
     response.end(typeof body === 'string' ? body : JSON.stringify(body));
   });

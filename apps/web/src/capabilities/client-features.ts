@@ -15,6 +15,10 @@ export const clientFeatures = {
   'metadata.lyrics.write': true,
   'metadata.curation': true,
   'automation.tokens': true,
+  'mixes.saved': false,
+  'listening.history': false,
+  'music.streamQuality': false,
+  'music.artistInfo': false,
 } satisfies Record<FeatureKey, boolean>;
 export function featureState(feature: FeatureCapability | undefined) {
   if (feature?.supported === false) return 'unsupported';

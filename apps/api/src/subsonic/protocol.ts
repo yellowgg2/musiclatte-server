@@ -263,3 +263,57 @@ export function decodeInventoryIndexes(value: unknown): InventoryIndexes {
     ],
   };
 }
+
+export interface Genre {
+  value: string;
+  songCount: number;
+  albumCount: number;
+}
+export interface ArtistInfo {
+  biography?: string;
+  musicBrainzId?: string;
+  similarArtist: { id: string; name: string }[];
+}
+export interface StreamMetadata {
+  id: string;
+  bitRate?: number;
+  duration?: number;
+  suffix?: string;
+}
+export function decodeGenres(value: unknown): Genre[] {
+  return list(record(value).genre, (item) => {
+    const source = record(item);
+    return {
+      value: string(source.value),
+      songCount: integer(source.songCount),
+      albumCount: integer(source.albumCount),
+    };
+  });
+}
+export function decodeArtistInfo(value: unknown): ArtistInfo {
+  const source = record(value);
+  return {
+    ...optional(source, 'biography', string),
+    ...optional(source, 'musicBrainzId', string),
+    similarArtist: list(source.similarArtist, (item) => {
+      const artist = record(item);
+      return { id: id(artist.id), name: string(artist.name) };
+    }),
+  };
+}
+export function decodeStreamMetadata(value: unknown): StreamMetadata {
+  const source = record(value);
+  return {
+    id: id(source.id),
+    ...optional(source, 'bitRate', number),
+    ...optional(source, 'duration', number),
+    ...optional(source, 'suffix', string),
+  };
+}
+export function decodeExtensions(value: unknown): { name: string; versions: number[] }[] {
+  return list(value, (item) => {
+    const source = record(item);
+    if (!Array.isArray(source.versions)) return invalid();
+    return { name: id(source.name), versions: source.versions.map(integer) };
+  });
+}

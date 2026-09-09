@@ -1,3 +1,12 @@
+import {
+  decodeGenres,
+  decodeArtistInfo,
+  decodeStreamMetadata,
+  decodeExtensions,
+  type Genre,
+  type ArtistInfo,
+  type StreamMetadata,
+} from './protocol.js';
 import { decodeInventoryIndexes, type InventoryIndexes } from './protocol.js';
 import type {
   ScanStatus,
@@ -73,6 +82,12 @@ export interface UpdatePlaylistOptions extends RequestOptions {
   songIndexesToRemove?: readonly number[];
 }
 export interface SubsonicClient {
+  genres(options?: RequestOptions): Promise<Genre[]>;
+  artistInfo(id: string, options?: RequestOptions): Promise<ArtistInfo>;
+  streamMetadata(id: string, options?: RequestOptions): Promise<StreamMetadata>;
+  extensions(options?: RequestOptions): Promise<{ name: string; versions: number[] }[]>;
+  /** One qualified song only. Never retry an uncertain submission. */
+  scrobble(id: string, time: number, options?: RequestOptions): Promise<void>;
   inventoryIndexes(folderId?: string, options?: RequestOptions): Promise<InventoryIndexes>;
   getScanStatus(options?: RequestOptions): Promise<ScanStatus>;
   getSong(id: string, options?: RequestOptions): Promise<MusicEntry>;
@@ -110,6 +125,10 @@ export interface SubsonicClientOptions {
   logger?: (event: Readonly<Record<string, unknown>>) => void;
 }
 type Operation =
+  | 'getGenres'
+  | 'getArtistInfo2'
+  | 'getOpenSubsonicExtensions'
+  | 'scrobble'
   | 'getScanStatus'
   | 'getSong'
   | 'startScan'
@@ -262,6 +281,43 @@ export function createSubsonicClient(options: SubsonicClientOptions): SubsonicCl
     }
   }
   return {
+    async genres(opts) {
+      return decodeGenres((await request('getGenres', [], opts)).genres);
+    },
+    async artistInfo(id, opts) {
+      return decodeArtistInfo(
+        (
+          await request(
+            'getArtistInfo2',
+            [
+              ['id', required(id)],
+              ['count', '20'],
+              ['includeNotPresent', 'false'],
+            ],
+            opts,
+          )
+        ).artistInfo2,
+      );
+    },
+    async streamMetadata(id, opts) {
+      return decodeStreamMetadata((await request('getSong', [['id', required(id)]], opts)).song);
+    },
+    async extensions(opts) {
+      return decodeExtensions(
+        (await request('getOpenSubsonicExtensions', [], opts)).openSubsonicExtensions,
+      );
+    },
+    async scrobble(id, time, opts) {
+      await request(
+        'scrobble',
+        [
+          ['id', required(id)],
+          ['time', numeric(time)],
+          ['submission', 'true'],
+        ],
+        opts,
+      );
+    },
     async getScanStatus(opts) {
       return decodeScanStatus((await request('getScanStatus', [], opts)).scanStatus);
     },

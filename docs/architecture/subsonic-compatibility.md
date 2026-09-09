@@ -84,3 +84,16 @@ Playlist summaries require nonempty opaque `id` and `owner`, a string `name`, RF
 Mutation parameters are owned by explicit method options. New create encodes `name` followed by ordered repeated `songId`. Existing replacement encodes `playlistId`, `name`, then ordered repeated `songId`. Incremental update encodes `playlistId`, optional `name`, ordered repeated `songIdToAdd`, then ordered nonnegative `songIndexToRemove`. Delete and song star/unstar send exactly one opaque `id`. Every call continues to use GET, fixed origin/token proof, manual redirect handling, timeout/caller cancellation, and sanitized `SubsonicError`; no generic operation or credential-bearing URL is exposed.
 
 `packages/test-support/src/collection-fixtures.ts` is synthetic and source-shaped. Collection reads/writes are enabled only by the explicit test scenario; the default Phase 1 fake still rejects arbitrary collection writes. No live playlist or star mutation was performed. See `../verification/phase-2/step-01.md`.
+
+## Phase 7 adapter extension
+
+`SubsonicClient` exposes `genres`, `artistInfo`, `streamMetadata`, `extensions`, and
+single-song `scrobble(id, epochMilliseconds)`. Separate strict decoders preserve the
+existing song DTO. Artist enrichment projects biography, MusicBrainz ID, and local
+similar artist identity/name only. Extension discovery is observational.
+
+Scrobble always submits `submission=true` once with no automatic retry, including
+transport uncertainty. Later delivery storage owns claim/receipt semantics. Existing
+media request behavior is unchanged. The four optional Phase 7 capability keys are
+false in both the registry and web consumer map until their implementation owners
+enable them. S00 evidence: `docs/verification/phase-7/step-00/README.md`.
