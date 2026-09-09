@@ -1,3 +1,16 @@
+export const curationFailureReasons = [
+  'required_fields_missing',
+  'revision_conflict',
+  'policy_changed',
+  'claim_expired',
+  'claimed_by_other',
+  'pending_job',
+  'failed_job',
+  'reflection_pending',
+  'file_unavailable',
+  'identity_changed',
+] as const;
+export type CurationFailureReason = (typeof curationFailureReasons)[number];
 export const apiErrorCodes = [
   'invalid_request',
   'unauthenticated',
@@ -18,7 +31,7 @@ export const apiErrorCodes = [
 export type ApiErrorCode = (typeof apiErrorCodes)[number];
 export interface ApiErrorResponse {
   schemaVersion: 1;
-  error: { code: ApiErrorCode; retryable: boolean };
+  error: { code: ApiErrorCode; retryable: boolean; reason?: CurationFailureReason };
 }
 export const apiErrorSchema = {
   type: 'object',
@@ -30,7 +43,11 @@ export const apiErrorSchema = {
       type: 'object',
       required: ['code', 'retryable'],
       additionalProperties: false,
-      properties: { code: { type: 'string', enum: apiErrorCodes }, retryable: { type: 'boolean' } },
+      properties: {
+        code: { type: 'string', enum: apiErrorCodes },
+        retryable: { type: 'boolean' },
+        reason: { type: 'string', enum: curationFailureReasons },
+      },
     },
   },
 } as const;

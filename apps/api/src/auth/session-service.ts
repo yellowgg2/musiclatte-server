@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type {
   ApiErrorCode,
+  CurationFailureReason,
   AuthScheme,
   SessionExchange,
   SessionResponse,
@@ -35,6 +36,7 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: ApiErrorCode,
+    readonly reason?: CurationFailureReason,
   ) {
     super(code);
   }

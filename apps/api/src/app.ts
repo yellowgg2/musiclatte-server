@@ -69,9 +69,14 @@ export function createApp(options?: AuthOptions) {
         .some((cookie) => cookie.trim().startsWith(`${activeService.cookieName}=`))
     )
       reply.header('Set-Cookie', activeService.cookie(''));
-    reply
-      .code(safe.status)
-      .send({ schemaVersion: 1, error: { code: safe.code, retryable: safe.status >= 500 } });
+    reply.code(safe.status).send({
+      schemaVersion: 1,
+      error: {
+        code: safe.code,
+        retryable: safe.status >= 500,
+        ...(safe.reason ? { reason: safe.reason } : {}),
+      },
+    });
   });
   app.setNotFoundHandler(async (_request, reply) =>
     reply.code(404).send({ schemaVersion: 1, error: { code: 'not_found', retryable: false } }),

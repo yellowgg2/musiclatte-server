@@ -1,3 +1,4 @@
+import { metadataRequestSchemas } from './metadata.js';
 export const curationFields = ['title', 'artist', 'album', 'cover', 'lyrics'] as const;
 export type CurationField = (typeof curationFields)[number];
 export type OptionalCurationField = 'album' | 'cover' | 'lyrics';
@@ -442,4 +443,78 @@ export function decodeCurationClaimRenewed(value: unknown): {
     generation: number;
     leaseUntil: number;
   };
+}
+
+export interface CurationCompletionRequest {
+  operationId: string;
+  claimId: string;
+  claimGeneration: number;
+  expectedRevision: string;
+  policyVersion: string;
+  sourceNotes: string | null;
+}
+export interface CurationReopenRequest {
+  operationId: string;
+  expectedRevision: string;
+  reason: string;
+}
+const completionProps = {
+  operationId: metadataRequestSchemas.create.properties.operationId,
+  expectedRevision:
+    metadataRequestSchemas.create.properties.targets.items.properties.expectedRevision,
+};
+export const curationCompletionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'operationId',
+    'claimId',
+    'claimGeneration',
+    'expectedRevision',
+    'policyVersion',
+    'sourceNotes',
+  ],
+  properties: {
+    ...completionProps,
+    claimId: { type: 'string', minLength: 1, maxLength: 1024 },
+    claimGeneration: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+    policyVersion: { type: 'string', minLength: 1, maxLength: 128 },
+    sourceNotes: { anyOf: [{ type: 'string', maxLength: 4096 }, { type: 'null' }] },
+  },
+} as const;
+export const curationReopenSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['operationId', 'expectedRevision', 'reason'],
+  properties: {
+    ...completionProps,
+    reason: { type: 'string', minLength: 1, maxLength: 4096, pattern: '\\S' },
+  },
+} as const;
+export function decodeCurationCompletion(value: unknown): {
+  schemaVersion: 1;
+  curation: CurationTrack;
+  receipt: CompletionReceipt;
+} {
+  const v = curationRecord(value, ['schemaVersion', 'curation', 'receipt']);
+  const curation = decodeCurationTrack(v.curation);
+  const receipt = decodeCompletionReceipt(v.receipt);
+  if (
+    v.schemaVersion !== 1 ||
+    curation.curationStatus !== 'completed' ||
+    curation.receipt?.id !== receipt.id ||
+    curation.trackId !== receipt.trackId
+  )
+    throw new Error('Invalid curation completion');
+  return { schemaVersion: 1, curation, receipt };
+}
+export function decodeCurationReopen(value: unknown): {
+  schemaVersion: 1;
+  curation: CurationTrack;
+} {
+  const v = curationRecord(value, ['schemaVersion', 'curation']);
+  const curation = decodeCurationTrack(v.curation);
+  if (v.schemaVersion !== 1 || curation.curationStatus !== 'needs_review')
+    throw new Error('Invalid curation reopen');
+  return { schemaVersion: 1, curation };
 }

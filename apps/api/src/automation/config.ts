@@ -5,6 +5,7 @@ import type { ManagementDatabase } from '../storage/database.js';
 import type { CredentialVault } from '../security/credential-vault.js';
 export interface AutomationOptions {
   curation?: {
+    ready?: () => boolean;
     limits: import('../curation/policy.js').CurationLimits;
     fence?: ReturnType<typeof import('../metadata/media-fence.js').createMediaFence>;
   };

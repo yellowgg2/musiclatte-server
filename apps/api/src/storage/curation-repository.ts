@@ -49,6 +49,7 @@ export interface CurationObservation {
   artist: string[];
   fields: Record<CurationField, boolean>;
   changedFields: readonly CurationField[];
+  fingerprints?: Record<CurationField, string>;
 }
 export interface CurationCoverage {
   libraryId: string;
@@ -180,7 +181,9 @@ export function createCurationRepository(options: {
       artist: parse(row.artist_json),
       fileRevision: row.revision,
       curationStatus: effectiveCurationStatus(
-        state(row),
+        row.policy_version === 'required-v1'
+          ? state(row)
+          : { ...state(row), baseStatus: 'needs_review' },
         claim
           ? {
               purpose: claim.purpose as 'required_review' | 'optional_enrichment',
@@ -191,7 +194,7 @@ export function createCurationRepository(options: {
       ),
       fieldStates: fields,
       lyricsState: fields.lyrics.status,
-      validation: row.validation,
+      validation: row.policy_version === 'required-v1' ? row.validation : 'stale',
       lastVerifiedAt: row.last_verified_at,
       receipt: receiptRow ? receipt(receiptRow, String(row.track_id)) : null,
     });
@@ -341,9 +344,16 @@ export function createCurationRepository(options: {
                 .prepare('SELECT * FROM curation_field_states WHERE track_ref=? AND field=?')
                 .get(id, field)!,
             );
+            const previousFingerprint = db
+              .prepare(
+                'SELECT value_fingerprint FROM curation_field_states WHERE track_ref=? AND field=?',
+              )
+              .get(id, field)?.value_fingerprint;
             const keepAttempt =
               !observation.fields[field] &&
               !observation.changedFields.includes(field) &&
+              (!observation.fingerprints ||
+                previousFingerprint === observation.fingerprints[field]) &&
               ['unavailable', 'not_applicable'].includes(previous.status);
             db.prepare(
               'UPDATE curation_field_states SET status=?,evidence_revision=?,last_attempt_at=?,last_updated_at=?,reason=?,source_notes=?,actor_ref=? WHERE track_ref=? AND field=?',
@@ -358,6 +368,10 @@ export function createCurationRepository(options: {
               id,
               field,
             );
+            if (observation.fingerprints)
+              db.prepare(
+                'UPDATE curation_field_states SET value_fingerprint=? WHERE track_ref=? AND field=?',
+              ).run(observation.fingerprints[field], id, field);
           }
         }
         event(

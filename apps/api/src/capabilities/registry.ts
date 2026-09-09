@@ -1,5 +1,5 @@
 import { engineCapability } from '../engine/engine-service.js';
-import { metadataCapability } from '../metadata/provider.js';
+import { metadataReady, metadataCapability } from '../metadata/provider.js';
 import { recentCapability } from '../imports/recent-service.js';
 import { importCapability } from '../imports/import-service.js';
 import {
@@ -90,6 +90,27 @@ export async function capabilities(
         permission: 'unknown',
         availability: 'temporarily_unavailable',
       };
+  const curation = service.options.automation?.curation;
+  if (curation?.fence && service.options.metadata?.policy.enabled) {
+    let ready = false;
+    try {
+      ready = metadataReady(service.options.metadata) && curation.ready?.() === true;
+      service.options
+        .automation!.database.connection.prepare(
+          'SELECT claim_epoch FROM curation_state WHERE singleton=1',
+        )
+        .get();
+    } catch {
+      ready = false;
+    }
+    features['metadata.curation'] = {
+      permission: features['metadata.write']!.permission,
+      supported: true,
+      availability: ready && !metadataScopeUnknown ? 'available' : 'temporarily_unavailable',
+      fields: ['title', 'artist', 'album', 'cover', 'lyrics'],
+      formats: ['mp3'],
+    };
+  }
   service.find(session.token, session.scheme);
   if (service.options.automation) {
     try {

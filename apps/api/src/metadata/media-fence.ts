@@ -259,6 +259,17 @@ export function createMediaPublicationLedger(database: ManagementDatabase, clock
       });
     },
     assertAvailable(fileIdentity: string, actorKey?: string) {
+      // Curation must wait for an interrupted P3 publication to classify its journal.
+      // The P3 owner itself (no curation actor) must still be able to recover it.
+      if (
+        actorKey &&
+        db
+          .prepare(
+            "SELECT 1 FROM media_publications p JOIN import_items i ON i.id=p.publication_id WHERE p.file_identity=? AND i.stage='publishing'",
+          )
+          .get(fileIdentity)
+      )
+        throw new Error('file_busy');
       if (
         db
           .prepare(

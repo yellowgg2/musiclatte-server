@@ -1,3 +1,10 @@
+import { createCurationCompletionService } from '../curation/completion-service.js';
+import {
+  curationCompletionSchema,
+  curationReopenSchema,
+  type CurationCompletionRequest,
+  type CurationReopenRequest,
+} from '@musiclatte/contracts';
 import { createAutomationService } from '../curation/automation-service.js';
 import { metadataAttemptRequestSchema, type MetadataAttemptRequest } from '@musiclatte/contracts';
 import { createCurationClaimService } from '../curation/claim-service.js';
@@ -25,6 +32,7 @@ export const curationTrackParams = {
   properties: { id: { type: 'string', minLength: 1, maxLength: 2048 } },
 } as const;
 export function registerCurationRoutes(app: FastifyInstance, service: SessionService) {
+  let completion: ReturnType<typeof createCurationCompletionService> | undefined;
   let automation: ReturnType<typeof createAutomationService> | undefined;
   let query: ReturnType<typeof createCurationQueryService> | undefined;
   let claims: ReturnType<typeof createCurationClaimService> | undefined;
@@ -36,6 +44,44 @@ export function registerCurationRoutes(app: FastifyInstance, service: SessionSer
     if (request.validationError) throw new ApiError(400, 'invalid_request');
     return { principal, claims: (claims ??= createCurationClaimService(service)) };
   }
+  app.post<{ Params: { id: string }; Body: CurationCompletionRequest }>(
+    '/api/v1/tracks/:id/curation/complete',
+    {
+      attachValidation: true,
+      schema: {
+        params: curationTrackParams,
+        querystring: metadataRequestSchemas.empty,
+        body: curationCompletionSchema,
+      },
+    },
+    async (request) => {
+      const m = await mutation(request);
+      return (completion ??= createCurationCompletionService(service)).completeTrack(
+        m.principal,
+        request.params.id,
+        request.body,
+      );
+    },
+  );
+  app.post<{ Params: { id: string }; Body: CurationReopenRequest }>(
+    '/api/v1/tracks/:id/curation/reopen',
+    {
+      attachValidation: true,
+      schema: {
+        params: curationTrackParams,
+        querystring: metadataRequestSchemas.empty,
+        body: curationReopenSchema,
+      },
+    },
+    async (request) => {
+      const m = await mutation(request);
+      return (completion ??= createCurationCompletionService(service)).reopenTrack(
+        m.principal,
+        request.params.id,
+        request.body,
+      );
+    },
+  );
   app.post<{ Params: { id: string }; Body: MetadataAttemptRequest }>(
     '/api/v1/tracks/:id/metadata-attempts',
     {
