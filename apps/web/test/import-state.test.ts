@@ -157,19 +157,20 @@ describe('route-scoped import polling', () => {
       'https://youtu.be/abcdefghijk',
       'https://www.youtube.com/watch?v=abcdefghijk&t=12s',
       'https://youtube.com/shorts/abcdefghijk',
+      'https://www.youtube.com/watch?v=s3_uirvnSdI&list=RDVf2PhH7d7j0&index=20',
     ];
     for (const url of valid)
       expect(parseImportInput(url)).toEqual([parseYouTubeSource(url).canonicalUrl]);
     for (const url of [
       'http://youtu.be/abcdefghijk',
       'https://youtu.be:443/abcdefghijk',
-      'https://youtube.com/watch?v=abcdefghijk&list=playlist',
+      'https://youtube.com/playlist?list=playlist',
       'https://youtu.be/abcdefghijk#fragment',
       'https://youtu.be/abcdefghijk?unknown=x',
       'https://youtube.com/@channel',
     ])
       expect(() => parseImportInput(url)).toThrow();
-    expect(parseImportInput(valid.join('\n'))).toHaveLength(3);
+    expect(parseImportInput(valid.join('\n'))).toHaveLength(valid.length);
   });
 });
 

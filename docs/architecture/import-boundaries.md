@@ -10,7 +10,7 @@ worker entry, import HTTP route or capability producer is connected yet. P3 capa
 `https://www.youtube.com/watch?v=ID` URL. Accepted spellings are HTTPS watch URLs on youtube.com,
 www.youtube.com, music.youtube.com and m.youtube.com; those hosts' `/shorts/ID`; and youtu.be/ID.
 Only one video selector is allowed. Optional bounded `t` and `si` values are discarded. Unknown or
-duplicate parameters, playlist/index selectors, channel/search/redirect routes, fragments (including
+duplicate parameters, malformed playlist context, playlist-only/channel/search/redirect routes, fragments (including
 empty fragments), ports (including explicit 443), userinfo, encoded paths, dot segments, backslashes,
 whitespace and arbitrary hosts fail with `invalid_source`. Short URLs are parsed locally, never
 followed over the network. The later worker must pass the reconstructed canonical URL, never raw input.
@@ -132,3 +132,5 @@ The bot repository was read only. No gonic/iOS/bot code, media volume or deploym
 
 Technical references: [Node 24 filesystem API](https://nodejs.org/docs/latest-v24.x/api/fs.html),
 [Node child process API](https://nodejs.org/api/child_process.html).
+
+Individual video links may include a bounded `list` and positive `index` context. Both are discarded before canonical identity, duplicate detection, and downloader execution; a `/playlist` URL without an explicit video remains unsupported.

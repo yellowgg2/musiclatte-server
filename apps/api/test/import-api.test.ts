@@ -122,6 +122,19 @@ describe('imports API', () => {
     );
   });
 
+  it('should admit a radio watch URL as one video and replay its canonical link', async () => {
+    const c = await makeSUT();
+    const result = await c.create(1, {
+      urls: ['https://www.youtube.com/watch?v=s3_uirvnSdI&list=RDVf2PhH7d7j0&index=20'],
+    });
+    expect(result.statusCode).toBe(202);
+    expect(result.json().job.items).toHaveLength(1);
+    expect(result.json().job.items[0].sourceId).toBe('s3_uirvnSdI');
+    expect((await c.create(1, { urls: ['https://youtu.be/s3_uirvnSdI'] })).json()).toEqual(
+      result.json(),
+    );
+  });
+
   /** Every input surface rejects forged body/query and browser mutation proofs. */
   it('should reject invalid schema, source, library, authentication and CSRF inputs', async () => {
     const c = await makeSUT();

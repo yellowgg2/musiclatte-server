@@ -115,6 +115,18 @@ describe('YouTube source boundary', () => {
         canonicalUrl: `https://www.youtube.com/watch?v=${videoId}`,
       });
   });
+  it('should import only the selected video from playlist and radio share links', async () => {
+    const { parseYouTubeSource } = await import('../src/imports/source-url.js');
+    for (const url of [
+      'https://www.youtube.com/watch?v=s3_uirvnSdI&list=RDVf2PhH7d7j0&index=20',
+      'https://music.youtube.com/watch?v=s3_uirvnSdI&list=PL123',
+      'https://youtu.be/s3_uirvnSdI?list=RD123&index=2',
+    ])
+      expect(parseYouTubeSource(url)).toEqual({
+        videoId: 's3_uirvnSdI',
+        canonicalUrl: 'https://www.youtube.com/watch?v=s3_uirvnSdI',
+      });
+  });
   /** URL parser normalization and extra selectors cannot broaden the downloader target. */
   it('should reject unsafe and ambiguous selectors with a safe error', async () => {
     const { parseYouTubeSource } = await makeSUT<{
@@ -127,7 +139,9 @@ describe('YouTube source boundary', () => {
       `https://youtu.be/${videoId}#fragment`,
       `https://youtu.be/${videoId}#`,
       `https://youtu.be/${videoId}/extra`,
-      `https://www.youtube.com/watch?v=${videoId}&list=PL123`,
+      `https://www.youtube.com/watch?v=${videoId}&list=`,
+      `https://www.youtube.com/watch?v=${videoId}&list=PL123&index=-1`,
+      `https://www.youtube.com/watch?v=${videoId}&list=PL123&list=RD123`,
       `https://www.youtube.com/watch?v=${videoId}&v=${videoId}`,
       `https://www.youtube.com/watch?v=${videoId}&index=2`,
       `https://www.youtube.com/watch?v=${videoId}&url=https://evil.invalid`,

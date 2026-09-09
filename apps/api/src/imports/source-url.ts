@@ -21,6 +21,9 @@ export function parseYouTubeSource(input: string): { videoId: string; canonicalU
       continue;
     if (key === 't' && /^(?:\d{1,6}|(?:\d{1,3}h)?(?:\d{1,3}m)?\d{1,3}s)$/.test(value)) continue;
     if (key === 'si' && /^[A-Za-z0-9_-]{1,128}$/.test(value)) continue;
+    // Playlist context never reaches the downloader: the explicit video ID owns this import.
+    if (key === 'list' && /^[A-Za-z0-9_-]{1,128}$/.test(value)) continue;
+    if (key === 'index' && params.has('list') && /^[1-9][0-9]{0,5}$/.test(value)) continue;
     throw invalid();
   }
   return { videoId, canonicalUrl: `https://www.youtube.com/watch?v=${videoId}` };

@@ -175,6 +175,20 @@ describe('imports route and durable job UI', () => {
     expect(c.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
     expect(window.location.href).not.toContain('example.invalid');
   });
+  it('should submit the selected video from a radio link without playlist context', async () => {
+    const c = makeSUT();
+    const field = await screen.findByRole('textbox', { name: 'YouTube links' });
+    await c.user.type(
+      field,
+      'https://www.youtube.com/watch?v=s3_uirvnSdI&list=RDVf2PhH7d7j0&index=20',
+    );
+    await c.user.click(screen.getByRole('button', { name: 'Import links' }));
+    await screen.findByText('Queued');
+    const writes = c.calls.filter((call) => call.method === 'POST');
+    expect(writes).toHaveLength(1);
+    expect(writes[0]!.body.urls).toEqual(['https://www.youtube.com/watch?v=s3_uirvnSdI']);
+    expect(field.getAttribute('aria-invalid')).not.toBe('true');
+  });
   /** One or multiple links share a body-only operation, and network retries replay its exact identity. */
   it('should replay submission and keep queued distinct from ready', async () => {
     const c = makeSUT();
