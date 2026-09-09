@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -23,6 +23,7 @@ const MIGRATIONS = [
   new URL('./migrations/016-metadata-principals.sql', import.meta.url),
   new URL('./migrations/017-curation.sql', import.meta.url),
   new URL('./migrations/018-media-publications.sql', import.meta.url),
+  new URL('./migrations/019-curation-inventory.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -38,6 +39,7 @@ export function validateSchema(db: DatabaseSync): void {
     throw new Error('Unsupported storage schema');
   }
   for (const table of [
+    'curation_source_events',
     'media_publications',
     'curation_state',
     'curation_tracks',

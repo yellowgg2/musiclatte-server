@@ -105,6 +105,11 @@ describe('durable download worker', () => {
     expect(await s.worker.runOnce()).toBe(true);
     expect(s.item()).toMatchObject({ stage: 'registering', engineVersion: 'seed-1' });
     expect(s.events()).toHaveLength(1);
+    expect(
+      s.c.db.connection
+        .prepare("SELECT kind FROM curation_source_events WHERE kind='import_published'")
+        .all(),
+    ).toHaveLength(1);
     expect(s.files()).toHaveLength(1);
     expect(s.c.mediaLinks.get(s.item().mediaLinkId!)).toMatchObject({
       gonicSongId: null,
@@ -464,7 +469,7 @@ it('should migrate existing v3 links without changing their gonic mapping', asyn
   });
   expect(c.importsFor(migrated).getJob('legacy-job')!.items[0]!.mediaLinkId).toBe('legacy');
   expect(migrated.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 18 });
+  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 19 });
 });
 
 /** Backup restores pending publication receipts and rejects unsafe recovery paths before activation. */

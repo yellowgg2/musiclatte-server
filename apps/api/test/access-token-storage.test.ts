@@ -125,7 +125,7 @@ describe('personal access token storage', () => {
       const migrated = c.open(good.directory);
       expect(c.sessionsFor(migrated).find(good.source.token)?.proof).toEqual(proof);
       expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({
-        user_version: 18,
+        user_version: 19,
       });
       const broken = legacy('v14-conflict', true);
       expect(() => c.open(broken.directory)).toThrow();
@@ -146,7 +146,7 @@ describe('personal access token storage', () => {
   it('should migrate to the token ledger and preserve existing session tables', async () => {
     const c = await createTestContext();
     try {
-      expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 18 });
+      expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 19 });
       const tables = c.db.connection
         .prepare("SELECT name FROM sqlite_schema WHERE type='table'")
         .all()

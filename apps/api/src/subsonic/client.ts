@@ -1,3 +1,4 @@
+import { decodeInventoryIndexes, type InventoryIndexes } from './protocol.js';
 import type {
   ScanStatus,
   MusicAlbum,
@@ -72,6 +73,7 @@ export interface UpdatePlaylistOptions extends RequestOptions {
   songIndexesToRemove?: readonly number[];
 }
 export interface SubsonicClient {
+  inventoryIndexes(folderId?: string, options?: RequestOptions): Promise<InventoryIndexes>;
   getScanStatus(options?: RequestOptions): Promise<ScanStatus>;
   getSong(id: string, options?: RequestOptions): Promise<MusicEntry>;
   recentSong(
@@ -291,6 +293,11 @@ export function createSubsonicClient(options: SubsonicClientOptions): SubsonicCl
     },
     async folders(opts) {
       return decodeFolders((await request('getMusicFolders', [], opts)).musicFolders);
+    },
+    async inventoryIndexes(folderId, opts) {
+      return decodeInventoryIndexes(
+        (await request('getIndexes', folderPair(folderId), opts)).indexes,
+      );
     },
     async indexes(folderId, opts) {
       return decodeIndexes((await request('getIndexes', folderPair(folderId), opts)).indexes);

@@ -240,3 +240,26 @@ export function decodeRegistrationDirectory(value: unknown): RegistrationDirecto
     }),
   };
 }
+
+/** Server-only discovery projection includes root child and shortcut entries omitted by legacy indexes UI. */
+export interface InventoryIndexes {
+  lastModified?: number;
+  roots: { id: string; isDir: boolean }[];
+}
+export function decodeInventoryIndexes(value: unknown): InventoryIndexes {
+  const source = record(value);
+  const indexes = decodeIndexes(value);
+  return {
+    ...optional(source, 'lastModified', number),
+    roots: [
+      ...indexes.index.flatMap((group) =>
+        group.artist.map((artist) => ({ id: artist.id, isDir: true })),
+      ),
+      ...list(source.shortcut, (value) => ({ id: id(record(value).id), isDir: true })),
+      ...list(source.child, (value) => ({
+        id: id(record(value).id),
+        isDir: boolean(record(value).isDir),
+      })),
+    ],
+  };
+}

@@ -179,6 +179,9 @@ describe('durable engine requests', () => {
     const before = s.c.engines.get();
     // Remove only the empty newer ledgers to recreate the historical v7 fixture.
     s.c.db.connection.exec(`
+      DROP TRIGGER curation_import_published;
+      DROP TRIGGER curation_import_registered;
+      DROP TRIGGER curation_metadata_stage;
       DROP TABLE metadata_rechecks;
       DROP TABLE metadata_item_evidence;
       DROP TABLE metadata_worker_state;
@@ -193,6 +196,7 @@ describe('durable engine requests', () => {
       DROP TABLE engine_requests;
       ALTER TABLE import_jobs DROP COLUMN account_directory;
       DROP TABLE scan_schedule;
+      DROP TABLE curation_source_events;
       DROP TABLE curation_snapshot_items;
       DROP TABLE curation_snapshots;
       DROP TABLE curation_inventory_queue;
@@ -211,7 +215,7 @@ describe('durable engine requests', () => {
       PRAGMA user_version=7;
     `);
     const migrated = s.c.open();
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 18 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 19 });
     expect(s.c.enginesFor(migrated).get()).toEqual(before);
     expect(s.c.sessionsFor(migrated).find(session.token)?.proof).toEqual(proof);
     const mailbox = createEngineRequestRepository({ ...s.options, database: migrated });

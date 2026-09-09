@@ -213,7 +213,7 @@ export function createCurationRepository(options: {
         .get(libraryId);
       const count = db
         .prepare(
-          "SELECT count(*) AS total,COALESCE(sum(validation='verified'),0) AS verified,COALESCE(sum(validation='unknown'),0) AS unknown_count FROM curation_tracks WHERE library_id=?",
+          "SELECT count(*) AS total,COALESCE(sum(validation='verified'),0) AS verified,COALESCE(sum(validation='unknown'),0) AS unknown_count FROM curation_tracks WHERE library_id=? AND tombstoned=0",
         )
         .get(libraryId)!;
       return {
@@ -264,7 +264,9 @@ export function createCurationRepository(options: {
     }): string {
       return atomic(() => {
         const existing = db
-          .prepare('SELECT id FROM curation_tracks WHERE library_id=? AND track_id=?')
+          .prepare(
+            'SELECT id FROM curation_tracks WHERE library_id=? AND tombstoned=0 AND track_id=?',
+          )
           .get(input.libraryId, input.trackId);
         if (existing) return String(existing.id);
         const id = randomUUID();
@@ -513,7 +515,7 @@ export function createCurationRepository(options: {
           // Iterate bounded storage directly: no unbounded in-memory materialization of the library.
           for (const row of db
             .prepare(
-              'SELECT id,library_id FROM curation_tracks ORDER BY library_id COLLATE BINARY,track_id COLLATE BINARY',
+              'SELECT id,library_id FROM curation_tracks WHERE tombstoned=0 ORDER BY library_id COLLATE BINARY,track_id COLLATE BINARY',
             )
             .iterate()) {
             if (!scope.libraryIds.includes(String(row.library_id))) continue;

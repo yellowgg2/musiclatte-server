@@ -121,7 +121,7 @@ export function createMediaLinkRepository(options: {
         !text(input.gonicSongId)
       )
         throw new Error('Invalid media link');
-      return database.transaction(() => {
+      const bind = () => {
         const byFile = decode(
           db
             .prepare('SELECT * FROM media_links WHERE library_id=? AND relative_file_key=?')
@@ -156,7 +156,8 @@ export function createMediaLinkRepository(options: {
           timestamp,
         );
         return get(input.id)!;
-      });
+      };
+      return db.isTransaction ? bind() : database.transaction(bind);
     },
     findByFileKey(libraryId: string, relativeFileKey: string) {
       if (!text(libraryId) || !validKey(relativeFileKey)) throw new Error('Invalid media link');
