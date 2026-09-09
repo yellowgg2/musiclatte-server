@@ -1,3 +1,11 @@
+import { fetchPlaybackPlan } from './playback-plan';
+import {
+  initialQualityState,
+  offsetTarget,
+  type QualityState,
+  type QualitySelection,
+} from './quality';
+import type { PlaybackPlan, PlaybackQuality } from '@musiclatte/contracts';
 import { createListeningTracker } from '../listening/tracker';
 import {
   createListeningSender,
@@ -55,6 +63,8 @@ export interface PlayerAudio extends EventTarget {
 
 interface PlayerContextValue {
   state: PlayerState;
+  quality: QualityState;
+  retryOriginal: () => void;
   listening: ListeningObserverState;
   activate: SongActivation;
   appendSongs: (songs: readonly MusicEntry[]) => void;
@@ -84,7 +94,9 @@ export function PlayerProvider({
   audioFactory = () => new Audio(),
   onUnauthenticated,
   listening,
+  quality,
 }: {
+  quality?: QualitySelection;
   listening?: { enabled: boolean; scope: string; csrfToken: string };
   children: ReactNode;
   fetcher: typeof fetch;
@@ -93,6 +105,30 @@ export function PlayerProvider({
   onUnauthenticated: () => void;
 }) {
   const [audio] = useState(audioFactory);
+  const [qualityState, setQualityState] = useState(initialQualityState);
+  const activeSource = useRef<{
+    plan: PlaybackPlan | null;
+    offset: number;
+    ready: boolean;
+    restore: number | null;
+  }>({ plan: null, offset: 0, ready: true, restore: null });
+  const selection = useRef(quality);
+  selection.current = quality;
+  const wantsPlayback = useRef(false);
+  const streamProbe = useRef<AbortController | null>(null);
+  const planRequest = useRef<AbortController | null>(null);
+  const requestGeneration = useRef(0);
+  const recovery = useRef<{
+    song: MusicEntry;
+    action?: PlayerAction;
+    newInstance: boolean;
+    position: number;
+  } | null>(null);
+  const logicalTime = useCallback(() => activeSource.current.offset + audio.currentTime, [audio]);
+  const logicalDuration = useCallback(
+    () => activeSource.current.plan?.durationSeconds ?? audio.duration,
+    [audio],
+  );
   const [listeningState, setListeningState] = useState(initialListeningObserver);
   const sender = useRef<ReturnType<typeof createListeningSender> | null>(null);
   const [tracker] = useState(() =>
@@ -101,13 +137,13 @@ export function PlayerProvider({
   const observeListening = useCallback(
     (type: string) =>
       tracker.observe(type, {
-        time: audio.currentTime,
-        duration: audio.duration,
+        time: logicalTime(),
+        duration: logicalDuration(),
         rate: audio.playbackRate ?? 1,
         paused: audio.paused,
         seeking: audio.seeking ?? false,
       }),
-    [audio, tracker],
+    [audio, tracker, logicalTime, logicalDuration],
   );
   useEffect(() => {
     tracker.clear();
@@ -152,11 +188,9 @@ export function PlayerProvider({
   );
 
   const commit = useCallback((action: PlayerAction) => {
-    setState((previous) => {
-      const next = reducePlayerState(previous, action);
-      stateRef.current = next;
-      return next;
-    });
+    const next = reducePlayerState(stateRef.current, action);
+    stateRef.current = next;
+    setState(next);
   }, []);
 
   useEffect(() => {
@@ -185,46 +219,150 @@ export function PlayerProvider({
     return () => controller.abort();
   }, [refreshKey, musicClient, commit, onUnauthenticated, metadata.client]);
 
-  const startSong = useCallback(
-    (song: MusicEntry) => {
-      if (sender.current) tracker.start(song.id, song.duration);
+  const loadSource = useCallback(
+    (
+      song: MusicEntry,
+      plan: PlaybackPlan | null,
+      position: number,
+      newInstance: boolean,
+      action?: PlayerAction,
+      autoplay = true,
+    ) => {
+      observeListening('seeking');
+      streamProbe.current?.abort();
+      wantsPlayback.current = autoplay;
       const generation = ++playGeneration.current;
-      const route = mediaRoutes.songStream(song.id);
-      audio.src = apiOrigin ? `${apiOrigin}${route}` : route;
-      audio.currentTime = 0;
+      audio.pause();
+      const offset =
+        plan?.seekMode === 'offset' ? offsetTarget(position, plan.durationSeconds!) : 0;
+      activeSource.current = {
+        plan,
+        offset,
+        ready: false,
+        restore: plan?.seekMode === 'offset' ? null : position,
+      };
+      if (action) commit(action);
+      if (newInstance && sender.current)
+        tracker.start(song.id, plan?.durationSeconds ?? song.duration);
+      const route = plan
+        ? plan.seekMode === 'offset' && position > 0
+          ? mediaRoutes.songStream(song.id, plan.effectiveQuality, offset)
+          : plan.streamPath
+        : mediaRoutes.songStream(song.id);
+      audio.src = apiOrigin + route;
       audio.load();
-      void audio.play().catch(() => {
-        if (generation === playGeneration.current)
-          commit({ type: 'play-rejected', error: 'play_not_allowed' });
+      try {
+        audio.currentTime = plan?.seekMode === 'offset' ? 0 : position;
+      } catch {
+        /* Restore after metadata. */
+      }
+      commit({
+        type: 'time',
+        currentTime: plan?.seekMode === 'offset' ? offset : position,
+        duration: plan?.durationSeconds ?? song.duration ?? 0,
       });
+      commit({ type: autoplay ? 'loading' : 'pause' });
+      setQualityState({
+        active: plan,
+        resolving: false,
+        reason: plan?.reason ?? null,
+        error: false,
+        canRetryOriginal: false,
+      });
+      if (autoplay)
+        void audio.play().catch(() => {
+          if (generation === playGeneration.current)
+            commit({ type: 'play-rejected', error: 'play_not_allowed' });
+        });
     },
-    [apiOrigin, audio, commit, tracker],
+    [apiOrigin, audio, commit, tracker, observeListening],
+  );
+
+  const startSong = useCallback(
+    (
+      song: MusicEntry,
+      action?: PlayerAction,
+      newInstance = true,
+      forced?: PlaybackQuality,
+      position = 0,
+    ) => {
+      planRequest.current?.abort();
+      const generation = ++requestGeneration.current;
+      recovery.current = { song, ...(action ? { action } : {}), newInstance, position };
+      if (!selection.current?.enabled && !forced) {
+        loadSource(song, null, position, newInstance, action);
+        return;
+      }
+      const controller = new AbortController();
+      planRequest.current = controller;
+      const requested = forced ?? selection.current!.value;
+      setQualityState((p) => ({
+        ...p,
+        resolving: true,
+        error: false,
+        reason: null,
+        canRetryOriginal: false,
+      }));
+      void fetchPlaybackPlan(fetcher, apiOrigin, song.id, requested, controller.signal)
+        .then((plan) => {
+          if (controller.signal.aborted || generation !== requestGeneration.current) return;
+          if (plan.reason && plan.reason !== 'already_small') {
+            setQualityState((p) => ({
+              ...p,
+              resolving: false,
+              reason: plan.reason!,
+              canRetryOriginal: true,
+            }));
+            return;
+          }
+          recovery.current = null;
+          loadSource(song, plan, position, newInstance, action);
+        })
+        .catch((error) => {
+          if (controller.signal.aborted || generation !== requestGeneration.current) return;
+          if (error instanceof ApiError && error.code === 'unauthenticated') {
+            onUnauthenticated();
+            return;
+          }
+          setQualityState((p) => ({
+            ...p,
+            resolving: false,
+            error: true,
+            canRetryOriginal: requested === 'economy',
+          }));
+        });
+    },
+    [apiOrigin, fetcher, loadSource, onUnauthenticated],
   );
 
   const startQueue = useCallback(
     (queue: NonNullable<PlayerState['queue']>) => {
       const song = currentSong(queue);
-      if (!song) return;
-      commit({ type: 'queue', queue, status: 'loading' });
-      startSong(song);
+      if (song) startSong(song, { type: 'queue', queue, status: 'loading' });
     },
-    [commit, startSong],
+    [startSong],
   );
-
   const activate = useCallback<SongActivation>(
     ({ song, songs, source, position }) => {
       const queue = createQueue(songs, song.id, source, position);
-      commit({
+      startSong(currentSong(queue)!, {
         type: 'activate',
         song,
         songs,
         source,
         ...(position === undefined ? {} : { position }),
       });
-      startSong(currentSong(queue)!);
     },
-    [commit, startSong],
+    [startSong],
   );
+  const retryOriginal = useCallback(() => {
+    const pending = recovery.current;
+    const current = stateRef.current.current;
+    if (pending)
+      startSong(pending.song, pending.action, pending.newInstance, 'original', pending.position);
+    else if (current)
+      startSong(current, undefined, false, 'original', stateRef.current.currentTime);
+  }, [startSong]);
 
   const appendSongs = useCallback(
     (songs: readonly MusicEntry[]) => {
@@ -235,22 +373,35 @@ export function PlayerProvider({
     },
     [commit],
   );
-  const pause = useCallback(() => audio.pause(), [audio]);
+  const pause = useCallback(() => {
+    wantsPlayback.current = false;
+    audio.pause();
+  }, [audio]);
   const resume = useCallback(() => {
     if (!stateRef.current.current) return;
     if (!audio.src || audio.ended || stateRef.current.status === 'ended') {
       startSong(stateRef.current.current);
       return;
     }
+    wantsPlayback.current = true;
     const shouldReload = stateRef.current.status === 'error';
     const generation = ++playGeneration.current;
     commit({ type: 'loading' });
+    if (shouldReload && activeSource.current.plan) {
+      loadSource(
+        stateRef.current.current,
+        activeSource.current.plan,
+        stateRef.current.currentTime,
+        false,
+      );
+      return;
+    }
     if (shouldReload) audio.load();
     void audio.play().catch(() => {
       if (generation === playGeneration.current)
         commit({ type: 'play-rejected', error: 'play_not_allowed' });
     });
-  }, [audio, commit, startSong]);
+  }, [audio, commit, startSong, loadSource]);
 
   const move = useCallback(
     (direction: 'next' | 'previous', ended = false) => {
@@ -270,23 +421,36 @@ export function PlayerProvider({
     [audio, commit, startQueue],
   );
   const next = useCallback(() => move('next'), [move]);
-  const previous = useCallback(() => {
-    if (audio.currentTime > 3) {
-      observeListening('seeking');
-      audio.currentTime = 0;
-      commit({ type: 'time', currentTime: 0, duration: audio.duration });
-    } else move('previous');
-  }, [audio, commit, move, observeListening]);
   const seek = useCallback(
     (seconds: number) => {
+      if (!Number.isFinite(seconds) || !stateRef.current.current) return;
+      planRequest.current?.abort();
+      requestGeneration.current++;
+      recovery.current = null;
+      const plan = activeSource.current.plan;
+      if (plan?.seekMode === 'offset') {
+        loadSource(
+          stateRef.current.current,
+          plan,
+          seconds,
+          false,
+          undefined,
+          wantsPlayback.current,
+        );
+        return;
+      }
       observeListening('seeking');
-      const duration = Number.isFinite(audio.duration) ? audio.duration : stateRef.current.duration;
+      const duration = logicalDuration();
       audio.currentTime = Math.min(Math.max(0, seconds), duration || Number.MAX_SAFE_INTEGER);
       commit({ type: 'time', currentTime: audio.currentTime, duration });
       commit({ type: 'seeking' });
     },
-    [audio, commit, observeListening],
+    [audio, commit, observeListening, logicalDuration, loadSource],
   );
+  const previous = useCallback(() => {
+    if (stateRef.current.currentTime > 3) seek(0);
+    else move('previous');
+  }, [move, seek]);
   const setVolume = useCallback(
     (volume: number) => {
       audio.volume = Math.min(1, Math.max(0, volume));
@@ -337,7 +501,27 @@ export function PlayerProvider({
 
   useEffect(() => {
     const events: [string, EventListener][] = [
-      ['playing', () => commit({ type: 'playing' })],
+      [
+        'loadedmetadata',
+        () => {
+          if (activeSource.current.restore !== null) {
+            try {
+              audio.currentTime = activeSource.current.restore;
+              activeSource.current.restore = null;
+            } catch {
+              /* Native seek unavailable. */
+            }
+          }
+          activeSource.current.ready = true;
+        },
+      ],
+      [
+        'playing',
+        () => {
+          activeSource.current.ready = true;
+          commit({ type: 'playing' });
+        },
+      ],
       ['pause', () => commit({ type: 'pause' })],
       ['waiting', () => commit({ type: 'loading' })],
       ['stalled', () => commit({ type: 'loading' })],
@@ -345,21 +529,77 @@ export function PlayerProvider({
       ['seeked', () => commit({ type: 'seeked', paused: audio.paused })],
       [
         'timeupdate',
-        () => commit({ type: 'time', currentTime: audio.currentTime, duration: audio.duration }),
+        () => {
+          if (activeSource.current.ready)
+            commit({ type: 'time', currentTime: logicalTime(), duration: logicalDuration() });
+        },
       ],
       [
         'durationchange',
-        () => commit({ type: 'time', currentTime: audio.currentTime, duration: audio.duration }),
+        () => {
+          if (activeSource.current.ready)
+            commit({ type: 'time', currentTime: logicalTime(), duration: logicalDuration() });
+        },
       ],
       ['volumechange', () => commit({ type: 'volume', volume: audio.volume })],
       [
         'ended',
         () => {
           observeListening('ended');
-          move('next', true);
+          if (
+            activeSource.current.plan?.seekMode === 'offset' &&
+            logicalTime() < logicalDuration() - 1
+          ) {
+            commit({ type: 'media-error', error: 'media_unavailable' });
+            setQualityState((p) => ({ ...p, error: true, canRetryOriginal: true }));
+          } else move('next', true);
         },
       ],
-      ['error', () => commit({ type: 'media-error', error: 'media_unavailable' })],
+      [
+        'error',
+        () => {
+          commit({ type: 'media-error', error: 'media_unavailable' });
+          const song = stateRef.current.current;
+          const plan = activeSource.current.plan;
+          if (song && plan) {
+            const generation = playGeneration.current;
+            streamProbe.current?.abort();
+            const controller = new AbortController();
+            streamProbe.current = controller;
+            void fetchPlaybackPlan(
+              fetcher,
+              apiOrigin,
+              song.id,
+              plan.effectiveQuality,
+              controller.signal,
+            )
+              .then((fresh) => {
+                if (
+                  !controller.signal.aborted &&
+                  generation === playGeneration.current &&
+                  fresh.reason
+                )
+                  setQualityState((p) => ({
+                    ...p,
+                    reason: fresh.reason!,
+                    error: true,
+                    canRetryOriginal: true,
+                  }));
+              })
+              .catch((error) => {
+                if (
+                  !controller.signal.aborted &&
+                  generation === playGeneration.current &&
+                  error instanceof ApiError &&
+                  error.code === 'unauthenticated'
+                )
+                  onUnauthenticated();
+              });
+          }
+          if (activeSource.current.plan?.effectiveQuality === 'economy')
+            setQualityState((p) => ({ ...p, error: true, canRetryOriginal: true }));
+        },
+      ],
     ];
     const trackedEvents = [
       'playing',
@@ -381,7 +621,41 @@ export function PlayerProvider({
       for (const [type, listener] of events) audio.removeEventListener(type, listener);
       for (const [type, listener] of trackedEvents) audio.removeEventListener(type, listener);
     };
-  }, [audio, commit, move, observeListening]);
+  }, [
+    audio,
+    commit,
+    move,
+    observeListening,
+    logicalTime,
+    logicalDuration,
+    fetcher,
+    apiOrigin,
+    onUnauthenticated,
+  ]);
+
+  useEffect(
+    () => () => {
+      planRequest.current?.abort();
+      requestGeneration.current++;
+    },
+    [quality?.scope],
+  );
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.setPositionState(
+        state.duration > 0
+          ? {
+              duration: state.duration,
+              position: Math.min(state.currentTime, state.duration),
+              playbackRate: audio.playbackRate ?? 1,
+            }
+          : undefined,
+      );
+    } catch {
+      /* Partial browser implementation. */
+    }
+  }, [state.currentTime, state.duration, audio]);
 
   const coverUrl = useCallback(
     (id: string) => {
@@ -410,6 +684,9 @@ export function PlayerProvider({
   useEffect(
     () => () => {
       randomRequest.current?.abort();
+      planRequest.current?.abort();
+      streamProbe.current?.abort();
+      requestGeneration.current++;
       playGeneration.current++;
       audio.pause();
       audio.src = '';
@@ -422,6 +699,8 @@ export function PlayerProvider({
   const value = useMemo<PlayerContextValue>(
     () => ({
       state,
+      quality: qualityState,
+      retryOriginal,
       listening: listeningState,
       activate,
       appendSongs,
@@ -439,6 +718,8 @@ export function PlayerProvider({
     }),
     [
       listeningState,
+      qualityState,
+      retryOriginal,
       state,
       activate,
       appendSongs,
