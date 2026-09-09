@@ -644,6 +644,7 @@
   "curation.emptyHelp": "필터를 바꾸거나 목록을 새로고침하세요.",
   "curation.tracks": "정리 대상 곡",
   "curation.details": "{title} 정리 상세",
+  "curation.detailsShort": "정리 상세",
   "curation.more": "더 보기",
   "curation.unavailableHelp": "정리 기능을 사용할 수 없습니다. 일반 음악 탐색은 계속 이용할 수 있어요.",
   "curation.state.unreviewed": "검토 전",

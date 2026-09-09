@@ -644,6 +644,7 @@
   "curation.emptyHelp": "Change the filters or refresh the list.",
   "curation.tracks": "Curation tracks",
   "curation.details": "Curation details for {title}",
+  "curation.detailsShort": "Curation details",
   "curation.more": "Load more",
   "curation.unavailableHelp": "Curation is unavailable. You can continue browsing your music.",
   "curation.state.unreviewed": "Unreviewed",

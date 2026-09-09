@@ -292,18 +292,23 @@ export function CurationPage({
                     actions={<MetadataAction song={song} />}
                   />
                   <li className={styles.rowStatus}>
-                    <p>
-                      {copy[`curation.state.${track.curationStatus}`]} · {copy['metadata.lyrics']}:{' '}
-                      {copy[`curation.field.${track.lyricsState}`]} ·{' '}
-                      {copy[`curation.validation.${track.validation}`]}
-                    </p>
-                    <Action
-                      variant="quiet"
-                      aria-expanded={expanded === track.trackId}
-                      onClick={() => setExpanded(expanded === track.trackId ? null : track.trackId)}
-                    >
-                      {copy['curation.details'].replace('{title}', song.title)}
-                    </Action>
+                    <div className={styles.rowSummary}>
+                      <p>
+                        {copy[`curation.state.${track.curationStatus}`]} · {copy['metadata.lyrics']}
+                        : {copy[`curation.field.${track.lyricsState}`]} ·{' '}
+                        {copy[`curation.validation.${track.validation}`]}
+                      </p>
+                      <Action
+                        variant="quiet"
+                        aria-label={copy['curation.details'].replace('{title}', song.title)}
+                        aria-expanded={expanded === track.trackId}
+                        onClick={() =>
+                          setExpanded(expanded === track.trackId ? null : track.trackId)
+                        }
+                      >
+                        {copy['curation.detailsShort']}
+                      </Action>
+                    </div>
                     {expanded === track.trackId && <CurationInspector trackId={track.trackId} />}
                   </li>
                 </Fragment>

@@ -125,3 +125,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Keep focused controls above the fixed navigation and persistent player. */
+:is(.form, .secret, .token, .actions) :is(input, select, textarea, button) {
+  scroll-margin-block: 12rem;
+}
