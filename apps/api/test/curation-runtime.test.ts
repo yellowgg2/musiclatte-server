@@ -130,3 +130,25 @@ it('resumes inventory checkpoints, re-verifies stale restores immediately and st
     await c.cleanup();
   }
 });
+it('accepts existing long metadata jobs while bounding the separate fence protocol timeout', async () => {
+  const { realpathSync } = await import('node:fs');
+  const { configuredMediaFence } = await import('../src/curation/runtime.js');
+  const c = await createTestContext();
+  try {
+    const root = join(realpathSync(c.root), 'fence');
+    mkdirSync(root, { mode: 0o700 });
+    expect(() =>
+      configuredMediaFence(
+        { MEDIA_FENCE_ROOT: root },
+        {
+          python: '/usr/bin/python3',
+          helperPath: '/app/helpers/metadata.py',
+          musicRoot: '/music',
+          timeoutMs: 120000,
+        },
+      ),
+    ).not.toThrow();
+  } finally {
+    c.cleanup();
+  }
+});

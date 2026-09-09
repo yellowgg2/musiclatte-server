@@ -1,0 +1,9 @@
+# Devserver deployment — 2026-09-09
+
+User authorized replacement of the existing devserver stack with its current ports. Deployed Phase 6 S00–S12 plus the radio-context YouTube URL fix to the existing `musiclatte-p5-acceptance` Compose project. Gateway loopback 18516, LAN 18517 and upstream loopback 18515 are unchanged. Existing volumes, keys, music and credentials are preserved; the separate gonic demo was not restarted.
+
+Built images before stopping services, retained the old images, and created an offline consistent archive of all existing named volumes plus the matching music and private configuration. Backup remains private on devserver as `backup-before-d317287`. The new source directory is `source-d317287` with the fence compatibility fix below. No backup, credentials, media or private configuration is in Git.
+
+The actual previous metadata policy permits 120-second file jobs. Initial startup uncovered that this timeout was passed into the separately bounded fence protocol (maximum 60 seconds), preventing API startup. `configuredMediaFence` now caps only its own protocol timeout at 60 seconds without reducing the existing metadata job limit. A 120-second-runtime regression failed before the fix and passed afterward. Focused runtime/fence tests: 5 passed; typecheck/build/format check passed.
+
+Final deployment checks: all five application services healthy; original session still returns 200; music browse/stream, imports, tokens and curation capabilities available; token options, curation list/policy and imports list return 200. Inventory reports ready, 3/3 verified. The running API canonicalizes the user's URL to its single video ID. The served web bundle includes the new token/curation interface. Existing engine/runtime storage is preserved. No new music was imported merely for deployment verification.

@@ -27,7 +27,8 @@ export function configuredMediaFence(
     root,
     python: runtime.python,
     helperPath: join(dirname(runtime.helperPath), 'media_fence.py'),
-    timeoutMs: runtime.timeoutMs,
+    // Fence IPC has its own bound; legacy metadata jobs may allow longer file work.
+    timeoutMs: Math.min(runtime.timeoutMs, 60000),
   });
 }
 export function curationRuntimeReady(
