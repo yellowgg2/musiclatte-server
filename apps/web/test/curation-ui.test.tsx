@@ -47,7 +47,7 @@ afterEach(() => {
 it('renders completed with missing lyrics, pages a frozen list, filters independently and opens current editor status', async () => {
   const c = setup();
   await screen.findByText(/Showing 25 of 27/);
-  const navigation = screen.getByRole('navigation', { name: 'Current location' });
+  const navigation = screen.getByRole('navigation', { name: 'Music' });
   expect(
     within(navigation).getByRole('link', { name: 'Music curation' }).getAttribute('aria-current'),
   ).toBe('page');

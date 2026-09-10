@@ -12,8 +12,8 @@ import { useMetadataSelectionRebase } from '../../metadata/selection';
 import { SelectionBar } from '../../selection/components/SelectionBar';
 import { selectionScopeKey } from '../../selection/model';
 import { LanguagePicker } from '../../app/LanguagePicker';
-import { SectionNav } from '../../design/components/SectionNav';
 import styles from './FavoritesPage.module.css';
+import { MusicSectionNav, type MusicSectionAvailability } from './MusicSectionNav';
 
 export function FavoritesPage({
   base,
@@ -25,6 +25,7 @@ export function FavoritesPage({
   canStream,
   canWritePlaylists,
   csrfToken,
+  sections,
 }: {
   base: string;
   locale: Locale;
@@ -35,6 +36,7 @@ export function FavoritesPage({
   canStream: boolean;
   canWritePlaylists: boolean;
   csrfToken: string;
+  sections: MusicSectionAvailability;
 }) {
   const { store, state } = useFavorites();
   const player = usePlayer();
@@ -62,25 +64,15 @@ export function FavoritesPage({
   return (
     <div className={styles.page}>
       <div className={styles.topline}>
-        <SectionNav
-          label={copy['music.breadcrumb']}
-          items={[
-            { label: copy['music.all'], href: `${base}music` },
-            {
-              label: copy['favorites.title'],
-              href: `${base}music/favorites`,
-              current: true,
-            },
-          ]}
-        />
+        <header className={styles.heading}>
+          <h1 tabIndex={-1} data-page-heading>
+            {copy['favorites.title']}
+          </h1>
+          <p>{copy['favorites.description']}</p>
+        </header>
         <LanguagePicker locale={locale} onChange={onLocale} />
       </div>
-      <header className={styles.heading}>
-        <h1 tabIndex={-1} data-page-heading>
-          {copy['favorites.title']}
-        </h1>
-        <p>{copy['favorites.description']}</p>
-      </header>
+      <MusicSectionNav base={base} locale={locale} current="favorites" available={sections} />
       <section className={styles.headingActions} aria-label={copy['favorites.actions']}>
         {state.songs.length > 0 && canStream && (
           <Action

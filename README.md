@@ -76,7 +76,7 @@ VS Code workspace settings enable format-on-save when the recommended Prettier e
 
 ## Optional YouTube imports
 
-The base command remains `docker compose up -d --build`; imports are disabled by default. After initial gonic admin setup, create a dedicated scan-capable worker account. Keep its JSON credential and the import policy outside the repository; `.env` contains only their absolute file paths (`IMPORT_CREDENTIAL_FILE`, `IMPORT_POLICY_FILE`). Follow the [private setup and policy format](docs/architecture/import-deployment.md). Use UID/GID 1000:1000 to share the API's private SQLite volume, and grant that worker narrowly scoped write access to the host music directory; API/gonic read it only. Never use root, recursive chown or world-writable music to fix permissions.
+The base command remains `docker compose up -d --build`; imports are disabled by default. After initial gonic admin setup, create a dedicated scan-capable worker account. Start from the secret-free [`deploy/import-policy.example.json`](deploy/import-policy.example.json), which defaults `relativeRoot` to `jojo-music`, replace its placeholders and keep the resulting policy with the JSON credential outside the repository. `.env` contains only their absolute file paths (`IMPORT_CREDENTIAL_FILE`, `IMPORT_POLICY_FILE`). Follow the [private setup and policy format](docs/architecture/import-deployment.md). Use UID/GID 1000:1000 to share the API's private SQLite volume, and grant that worker narrowly scoped write access to the host music directory; API/gonic read it only. Never use root, recursive chown or world-writable music to fix permissions.
 
 ```sh
 docker compose -f compose.yaml -f deploy/compose.imports.yaml config --quiet

@@ -50,5 +50,42 @@ replace pending P8-UA-003 final visual approval or P8-UA-004 actual iPhone Safar
 
 ## Rulebook
 
-Postflight reconciliation is `skipped(no_new_lesson)`: the implementation reused the planned
+The original Step postflight was `skipped(no_new_lesson)`: the implementation reused the planned
 canonical reconstruction and allow-list boundaries without producing a distinct shared lesson.
+The deployment follow-up candidate about retaining resolved ancestors had no exact match, but the
+central prepare gate classified it as `related`; its outcome is `ambiguous`, with no canonical
+write or Rulebook sync.
+
+## Post-deployment music navigation follow-up
+
+The first devserver review exposed two related presentation regressions. Folder traversal fetched
+the complete parent chain with one rejecting promise; gonic's virtual-root lookup returns 400, so
+the already resolved `jojo-music > … > current folder` ancestors were discarded. Other music
+feature pages also owned partial two- or three-item navigation arrays and rendered those arrays
+before their page heading, while All music owned the complete capability-derived set below its
+heading.
+
+- RED: a focused folder test failed to find the already resolved `Jazz` ancestor after the final
+  synthetic root lookup failed. A Recent downloads test received only `All music, Recent downloads`
+  instead of the seven available music destinations and found the navigation before the heading.
+- GREEN: `loadFolderTrail` now retains every resolved ancestor and stops only the unavailable
+  parent lookup; unauthenticated lookup still expires the session. `MusicSectionNav` is the single
+  feature-local capability-derived navigation composite consumed by All music, Recent listening,
+  Frequently played, Saved mixes, Music curation, Recent downloads and Favorites. Each feature
+  heading precedes the tabs; mix detail routes retain a separate breadcrumb.
+- Affected unit verification passed 63/63. Typecheck and the production build passed. The complete
+  contract suite passed 219/219. The complete unit suite still has 11 pre-existing storage-schema
+  expectation failures because those tests expect schema 19/20 while the current migration set
+  opens schema 21; none are in the changed web surfaces.
+- Normal-Router Chrome verification showed
+  `All music > jojo-music > Jazz > Late night`, then clicking `Jazz` rendered the exact ancestor
+  route. Recent downloads exposed the ordered seven-item navigation below the focused heading;
+  `aria-current=page` was on Recent downloads. At 320×844 the same order remained, document width
+  stayed 320px and browser console errors/warnings were empty.
+- The devserver web image was rebuilt from the same local source and recreated at
+  `http://192.168.129.119:18740`; live, ready and root probes returned 200. gonic remains bound at
+  `http://192.168.129.119:4747`, and the existing Docker volumes were retained.
+- The private devserver import policy now uses `relativeRoot: jojo-music`. The disposable test
+  import ledger was cleared and the old `imports` directory was moved out of the music root to the
+  recoverable deployment work area. A secret-free deployment template and contract test now keep
+  `jojo-music` as the default for future private policies.

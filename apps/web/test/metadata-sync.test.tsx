@@ -291,6 +291,13 @@ describe('metadata player integration', () => {
               canRandom={false}
               canWritePlaylists={false}
               canFavorites={false}
+              sections={{
+                listening: false,
+                mixes: false,
+                curation: false,
+                recent: false,
+                favorites: false,
+              }}
               csrfToken="synthetic"
             />
           </SelectionProvider>

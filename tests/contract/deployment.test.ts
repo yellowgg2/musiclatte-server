@@ -305,6 +305,24 @@ it('should compose an isolated imports worker without changing base service beha
     [...Object.keys(base.volumes), 'engine-data', 'worker-staging'].sort(),
   );
 });
+
+/** New private policies start under the product import folder unless an operator overrides it. */
+it('should provide a secret-free import policy template rooted at jojo-music', () => {
+  const policy = JSON.parse(read('deploy/import-policy.example.json'));
+  expect(policy).toEqual({
+    schemaVersion: 1,
+    libraries: [
+      {
+        id: 'music',
+        musicFolderId: 'replace-with-gonic-folder-id',
+        relativeRoot: 'jojo-music',
+        allowedUsers: ['replace-with-gonic-username'],
+      },
+    ],
+    engineManagers: ['replace-with-gonic-manager-username'],
+  });
+});
+
 /** The seed is checked against an exact official digest and the final worker has no source/test tree. */
 it('should package a verified standalone seed and ownership-safe initializer', () => {
   const source = read('deploy/worker.Dockerfile');

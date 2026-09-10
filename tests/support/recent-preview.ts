@@ -63,6 +63,18 @@ app.get('/api/v1/capabilities', async (request, reply) => {
   });
   if (result.statusCode !== 200) return reply.code(result.statusCode).send(result.json());
   const value = result.json();
+  const available = {
+    supported: true,
+    permission: 'allowed',
+    availability: 'available',
+  };
+  value.features['listening.history'] = available;
+  value.features['mixes.saved'] = available;
+  value.features['metadata.curation'] = {
+    ...available,
+    fields: ['title', 'artist', 'album', 'cover', 'lyrics'],
+    formats: ['mp3'],
+  };
   value.features['library.recentDownloads'] = {
     supported: mode !== 'unsupported',
     permission: mode === 'denied' ? 'denied' : 'allowed',

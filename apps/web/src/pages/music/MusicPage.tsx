@@ -30,6 +30,7 @@ import { selectionScopeKey } from '../../selection/model';
 import type { ApiErrorCode, MusicDirectory, MusicEntry } from '@musiclatte/contracts';
 import styles from './Music.module.css';
 import { ArtistInfoPanel } from './ArtistInfoPanel';
+import { MusicSectionNav, type MusicSectionAvailability } from './MusicSectionNav';
 
 const MAX_FOLDER_TRAIL_DEPTH = 24;
 
@@ -39,10 +40,16 @@ async function loadFolderTrail(client: MusicClient, current: MusicDirectory, sig
   let parent = current.parent;
   while (parent && reversed.length < MAX_FOLDER_TRAIL_DEPTH && !visited.has(parent)) {
     visited.add(parent);
-    const data = await client.read(
-      { kind: 'folder', id: parent, query: new URLSearchParams() },
-      signal,
-    );
+    let data: LibraryData;
+    try {
+      data = await client.read(
+        { kind: 'folder', id: parent, query: new URLSearchParams() },
+        signal,
+      );
+    } catch (error) {
+      if (errorCode(error) === 'unauthenticated') throw error;
+      break;
+    }
     if (data.kind !== 'folder') break;
     reversed.push(data.directory);
     parent = data.directory.parent;
@@ -62,11 +69,8 @@ export function MusicPage({
   canRandom,
   canWritePlaylists,
   canFavorites,
-  canRecent = false,
-  canCuration = false,
-  canMixes = false,
-  canListening = false,
   canArtistInfo = false,
+  sections,
   csrfToken,
 }: {
   location: string;
@@ -80,11 +84,8 @@ export function MusicPage({
   canRandom: boolean;
   canWritePlaylists: boolean;
   canFavorites: boolean;
-  canRecent?: boolean;
-  canCuration?: boolean;
-  canMixes?: boolean;
-  canListening?: boolean;
   canArtistInfo?: boolean;
+  sections: MusicSectionAvailability;
   csrfToken: string;
 }) {
   const player = usePlayer();
@@ -379,31 +380,7 @@ export function MusicPage({
         />
       )}
       <div className={styles.toolbar}>
-        <SectionNav
-          label={copy['music.title']}
-          variant="tabs"
-          items={[
-            {
-              label: copy['music.all'],
-              ...(route.kind === 'folders' ? { href: `${base}music` } : {}),
-              current: true,
-            },
-            ...(canListening
-              ? [
-                  { label: copy['listening.history'], href: `${base}music/history` },
-                  { label: copy['listening.top'], href: `${base}music/top` },
-                ]
-              : []),
-            ...(canMixes ? [{ label: copy['mix.title'], href: `${base}music/mixes` }] : []),
-            ...(canCuration
-              ? [{ label: copy['curation.title'], href: `${base}music/curation` }]
-              : []),
-            ...(canRecent ? [{ label: copy['recent.title'], href: `${base}music/recent` }] : []),
-            ...(canFavorites
-              ? [{ label: copy['favorites.title'], href: `${base}music/favorites` }]
-              : []),
-          ]}
-        />
+        <MusicSectionNav base={base} locale={locale} current="music" available={sections} />
         {canRandom && (
           <div className={styles.random}>
             <Action

@@ -63,17 +63,20 @@ it('should render repeated events and unavailable songs without autoplay', async
         onUnauthenticated={() => {}}
         canStream
         onLocale={() => {}}
+        sections={{ listening: true, mixes: true, curation: true, recent: true, favorites: true }}
       />
     </PlayerProvider>,
   );
   await screen.findByRole('heading', { name: 'Recent listening' });
-  const navigation = screen.getByRole('navigation', { name: 'Listening navigation' });
+  const navigation = screen.getByRole('navigation', { name: 'Music' });
   expect(within(navigation).getByRole('link', { name: 'All music' })).toBeTruthy();
   expect(
     within(navigation).getByRole('link', { name: 'Recent listening' }).getAttribute('aria-current'),
   ).toBe('page');
   expect(within(navigation).getByRole('link', { name: 'Frequently played' })).toBeTruthy();
-  expect(navigation.parentElement?.contains(screen.getByLabelText('Language'))).toBe(true);
+  expect(within(navigation).getByRole('link', { name: 'Saved mixes' })).toBeTruthy();
+  expect(within(navigation).getByRole('link', { name: 'Recent downloads' })).toBeTruthy();
+  expect(within(navigation).getByRole('link', { name: 'Favorites' })).toBeTruthy();
   const refresh = screen.getByRole('button', { name: 'Refresh history' });
   const primaryPlay = screen
     .getAllByRole('button', { name: 'Play now' })

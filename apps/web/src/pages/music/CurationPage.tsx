@@ -16,11 +16,11 @@ import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
 import { usePlayer } from '../../player/PlayerProvider';
 import { Action } from '../../design/components/Action';
 import { StatusSurface } from '../../design/components/StatusSurface';
-import { SectionNav } from '../../design/components/SectionNav';
 import { LanguagePicker } from '../../app/LanguagePicker';
 import { messages, type Locale } from '../../i18n';
 import { errorCode } from '../../auth/client';
 import styles from './CurationPage.module.css';
+import { MusicSectionNav, type MusicSectionAvailability } from './MusicSectionNav';
 export function CurationPage({
   base,
   locale,
@@ -29,6 +29,7 @@ export function CurationPage({
   apiOrigin,
   canStream,
   onUnauthenticated,
+  sections,
 }: {
   base: string;
   locale: Locale;
@@ -37,6 +38,7 @@ export function CurationPage({
   apiOrigin: string;
   canStream: boolean;
   onUnauthenticated: () => void;
+  sections: MusicSectionAvailability;
 }) {
   const copy = messages[locale];
   const player = usePlayer();
@@ -135,25 +137,15 @@ export function CurationPage({
   return (
     <div className={styles.page}>
       <div className={styles.topline}>
-        <SectionNav
-          label={copy['music.breadcrumb']}
-          items={[
-            { label: copy['music.all'], href: `${base}music` },
-            {
-              label: copy['curation.title'],
-              href: `${base}music/curation`,
-              current: true,
-            },
-          ]}
-        />
+        <header className={styles.heading}>
+          <h1 ref={heading} tabIndex={-1} data-page-heading>
+            {copy['curation.title']}
+          </h1>
+          <p>{copy['curation.description']}</p>
+        </header>
         <LanguagePicker locale={locale} onChange={onLocale} />
       </div>
-      <header className={styles.heading}>
-        <h1 ref={heading} tabIndex={-1} data-page-heading>
-          {copy['curation.title']}
-        </h1>
-        <p>{copy['curation.description']}</p>
-      </header>
+      <MusicSectionNav base={base} locale={locale} current="curation" available={sections} />
       <section className={styles.filterPanel} aria-label={copy['curation.filters']}>
         <h2>{copy['curation.filters']}</h2>
         <div className={styles.filters}>

@@ -76,7 +76,7 @@ npm run dev:api
 
 ## 선택 기능: YouTube 가져오기
 
-기본 명령 `docker compose up -d --build`는 유지되며 imports는 기본 비활성이다. gonic 최초 관리자 설정 후 scan 권한이 있는 전용 worker 계정을 만든다. JSON credential과 import policy는 저장소 밖 private 경로에 두고 `.env`에는 절대 파일 경로(`IMPORT_CREDENTIAL_FILE`, `IMPORT_POLICY_FILE`)만 기록한다. 형식은 [private 설정 가이드](docs/architecture/import-deployment.md)를 따른다. API의 private SQLite volume을 공유하므로 UID/GID 1000:1000을 유지하고 host 음악 디렉터리에 해당 worker의 제한된 쓰기 권한을 준비한다. API/gonic은 읽기 전용이다. root 실행, 음악 전체 recursive chown, world-writable 권한으로 문제를 숨기지 않는다.
+기본 명령 `docker compose up -d --build`는 유지되며 imports는 기본 비활성이다. gonic 최초 관리자 설정 후 scan 권한이 있는 전용 worker 계정을 만든다. 새 배포는 `relativeRoot`가 `jojo-music`인 비밀값 없는 [`deploy/import-policy.example.json`](deploy/import-policy.example.json)에서 시작하고 placeholder를 교체한다. 완성한 import policy와 JSON credential은 저장소 밖 private 경로에 두고 `.env`에는 절대 파일 경로(`IMPORT_CREDENTIAL_FILE`, `IMPORT_POLICY_FILE`)만 기록한다. 형식은 [private 설정 가이드](docs/architecture/import-deployment.md)를 따른다. API의 private SQLite volume을 공유하므로 UID/GID 1000:1000을 유지하고 host 음악 디렉터리에 해당 worker의 제한된 쓰기 권한을 준비한다. API/gonic은 읽기 전용이다. root 실행, 음악 전체 recursive chown, world-writable 권한으로 문제를 숨기지 않는다.
 
 ```sh
 docker compose -f compose.yaml -f deploy/compose.imports.yaml config --quiet

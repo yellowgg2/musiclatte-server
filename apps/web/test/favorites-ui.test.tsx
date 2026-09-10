@@ -165,7 +165,7 @@ describe('favorites UI', () => {
     await user.click(await screen.findByRole('link', { name: 'Favorites' }));
 
     expect(await screen.findByRole('heading', { name: 'Favorites' })).toBeTruthy();
-    const navigation = screen.getByRole('navigation', { name: 'Current location' });
+    const navigation = screen.getByRole('navigation', { name: 'Music' });
     expect(
       within(navigation).getByRole('link', { name: 'Favorites' }).getAttribute('aria-current'),
     ).toBe('page');

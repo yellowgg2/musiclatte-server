@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Action } from '../../design/components/Action';
 import { StatusSurface } from '../../design/components/StatusSurface';
-import { SectionNav } from '../../design/components/SectionNav';
 import { LanguagePicker } from '../../app/LanguagePicker';
 import { MusicRow } from '../../music/components/MusicRow';
 import { createMusicClient } from '../../music/client';
@@ -11,6 +10,7 @@ import { createListeningReader, listeningRange, type ListeningRow } from '../../
 import { errorCode } from '../../auth/client';
 import { messages, type Locale } from '../../i18n';
 import styles from './Listening.module.css';
+import { MusicSectionNav, type MusicSectionAvailability } from './MusicSectionNav';
 export function ListeningHistoryPage({
   kind,
   locale,
@@ -20,6 +20,7 @@ export function ListeningHistoryPage({
   onUnauthenticated,
   onLocale,
   canStream,
+  sections,
 }: {
   kind: 'history' | 'top';
   locale: Locale;
@@ -29,6 +30,7 @@ export function ListeningHistoryPage({
   onUnauthenticated(): void;
   onLocale?: (locale: Locale) => void;
   canStream: boolean;
+  sections: MusicSectionAvailability;
 }) {
   const copy = messages[locale];
   const player = usePlayer();
@@ -136,30 +138,15 @@ export function ListeningHistoryPage({
   return (
     <section className={styles.page}>
       <div className={styles.topline}>
-        <SectionNav
-          label={copy['listening.navigation']}
-          items={[
-            { label: copy['music.all'], href: `${base}music` },
-            {
-              label: copy['listening.history'],
-              href: `${base}music/history`,
-              current: kind === 'history',
-            },
-            {
-              label: copy['listening.top'],
-              href: `${base}music/top`,
-              current: kind === 'top',
-            },
-          ]}
-        />
+        <header className={styles.heading}>
+          <h1 data-page-heading tabIndex={-1}>
+            {title}
+          </h1>
+          <p>{copy['listening.scope']}</p>
+        </header>
         {onLocale && <LanguagePicker locale={locale} onChange={onLocale} />}
       </div>
-      <header className={styles.heading}>
-        <h1 data-page-heading tabIndex={-1}>
-          {title}
-        </h1>
-        <p>{copy['listening.scope']}</p>
-      </header>
+      <MusicSectionNav base={base} locale={locale} current={kind} available={sections} />
       <div className={styles.controlBar}>
         <div className={styles.filterActions}>
           <label>

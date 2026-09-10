@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "libraries": [
+    {
+      "id": "music",
+      "musicFolderId": "replace-with-gonic-folder-id",
+      "relativeRoot": "jojo-music",
+      "allowedUsers": ["replace-with-gonic-username"]
+    }
+  ],
+  "engineManagers": ["replace-with-gonic-manager-username"]
+}

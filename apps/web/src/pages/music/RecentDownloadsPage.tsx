@@ -11,7 +11,6 @@ import { Action } from '../../design/components/Action';
 import { Artwork } from '../../design/components/Artwork';
 import { TextField } from '../../design/components/TextField';
 import { StatusSurface } from '../../design/components/StatusSurface';
-import { SectionNav } from '../../design/components/SectionNav';
 import { formatCount, messages, type Locale } from '../../i18n';
 import { MusicRow } from '../../music/components/MusicRow';
 import { usePlayer } from '../../player/PlayerProvider';
@@ -23,6 +22,7 @@ import { selectionScopeKey } from '../../selection/model';
 import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
 import fields from '../../design/components/TextField.module.css';
 import styles from './RecentDownloads.module.css';
+import { MusicSectionNav, type MusicSectionAvailability } from './MusicSectionNav';
 
 type RequestKind = 'initial' | 'refresh' | 'period' | 'more' | 'metadata';
 export function RecentDownloadsPage({
@@ -37,6 +37,7 @@ export function RecentDownloadsPage({
   csrfToken,
   unavailable = false,
   onCapabilityRetry,
+  sections,
 }: {
   base: string;
   locale: Locale;
@@ -49,6 +50,7 @@ export function RecentDownloadsPage({
   csrfToken: string;
   unavailable?: boolean;
   onCapabilityRetry: () => void;
+  sections: MusicSectionAvailability;
 }) {
   const copy = messages[locale];
   const player = usePlayer();
@@ -240,25 +242,15 @@ export function RecentDownloadsPage({
   return (
     <div className={styles.page} ref={pageTarget}>
       <div className={styles.topline}>
-        <SectionNav
-          label={copy['music.breadcrumb']}
-          items={[
-            { label: copy['music.all'], href: `${base}music` },
-            {
-              label: copy['recent.title'],
-              href: `${base}music/recent`,
-              current: true,
-            },
-          ]}
-        />
+        <header className={styles.heading}>
+          <h1 ref={headingTarget} tabIndex={-1} data-page-heading>
+            {copy['recent.title']}
+          </h1>
+          <p>{copy['recent.description']}</p>
+        </header>
         <LanguagePicker locale={locale} onChange={onLocale} />
       </div>
-      <header className={styles.heading}>
-        <h1 ref={headingTarget} tabIndex={-1} data-page-heading>
-          {copy['recent.title']}
-        </h1>
-        <p>{copy['recent.description']}</p>
-      </header>
+      <MusicSectionNav base={base} locale={locale} current="recent" available={sections} />
       <section className={styles.controlPanel} aria-label={copy['recent.controls']}>
         <RecentPeriodControl
           locale={locale}

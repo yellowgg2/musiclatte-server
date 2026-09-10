@@ -332,6 +332,24 @@ describe('library UI', () => {
     );
     expect(screen.queryByRole('alert')).toBeNull();
   });
+
+  /** A broken ancestor above resolved folders preserves the usable partial path. */
+  it('should keep resolved breadcrumb ancestors when the root lookup is unavailable', async () => {
+    const context = withDirectoryTree(
+      createTestContext(),
+      {
+        leaf: { name: 'Late night', parent: 'jazz' },
+        jazz: { name: 'Jazz', parent: 'missing-root' },
+      },
+      ['missing-root'],
+    );
+    makeSUT('/music/folders/leaf?musicFolderId=root', context);
+
+    const breadcrumb = await screen.findByRole('navigation', { name: 'Current location' });
+    expect(await within(breadcrumb).findByRole('link', { name: 'Jazz' })).toBeTruthy();
+    expect(within(breadcrumb).getByText('Late night')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
   /** Preserves a canonical folder origin through search changes and pagination, then returns to it. */
   it('should return to the source folder after requerying and paging search results', async () => {
     const context = createTestContext();
@@ -498,7 +516,11 @@ describe('library UI', () => {
     await user.clear(screen.getByLabelText('Search music'));
     await user.type(screen.getByLabelText('Search music'), 'missing{Enter}');
     expect(await screen.findByText('Music not found')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'All music' })).toBeTruthy();
+    expect(
+      within(screen.getByRole('navigation', { name: 'Music' })).getByRole('link', {
+        name: 'All music',
+      }),
+    ).toBeTruthy();
   });
   /** A successful full page offers independent offset navigation without inventing totals. */
   it('should advance song pages and retain the query in the URL', async () => {

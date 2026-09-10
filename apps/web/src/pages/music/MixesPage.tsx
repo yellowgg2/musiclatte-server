@@ -14,6 +14,7 @@ import { SectionNav } from '../../design/components/SectionNav';
 import { errorCode } from '../../auth/client';
 import { messages, type Locale } from '../../i18n';
 import styles from './Mixes.module.css';
+import { MusicSectionNav, type MusicSectionAvailability } from './MusicSectionNav';
 export function MixesPage({
   id,
   base,
@@ -24,6 +25,7 @@ export function MixesPage({
   onUnauthenticated,
   canStream,
   onLocale,
+  sections,
 }: {
   id?: string;
   base: string;
@@ -34,6 +36,7 @@ export function MixesPage({
   onUnauthenticated(): void;
   canStream: boolean;
   onLocale?: (locale: Locale) => void;
+  sections: MusicSectionAvailability;
 }) {
   const copy = messages[locale];
   const player = usePlayer();
@@ -206,26 +209,26 @@ export function MixesPage({
   return (
     <section className={styles.page}>
       <div className={styles.topline}>
-        <SectionNav
-          label={copy['music.breadcrumb']}
-          items={[
-            { label: copy['music.all'], href: `${base}music` },
-            {
-              label: copy['mix.title'],
-              href: `${base}music/mixes`,
-              current: !id,
-            },
-            ...(id ? [{ label: saved?.name ?? copy['mix.title'], current: true }] : []),
-          ]}
-        />
+        <header className={styles.heading}>
+          <h1 tabIndex={-1} data-page-heading>
+            {saved?.name ?? copy['mix.title']}
+          </h1>
+          <p>{copy['mix.help']}</p>
+        </header>
         {onLocale && <LanguagePicker locale={locale} onChange={onLocale} />}
       </div>
-      <header className={styles.heading}>
-        <h1 tabIndex={-1} data-page-heading>
-          {saved?.name ?? copy['mix.title']}
-        </h1>
-        <p>{copy['mix.help']}</p>
-      </header>
+      {id && (
+        <SectionNav
+          label={copy['music.breadcrumb']}
+          variant="breadcrumb"
+          items={[
+            { label: copy['music.all'], href: `${base}music` },
+            { label: copy['mix.title'], href: `${base}music/mixes` },
+            { label: saved?.name ?? copy['mix.title'], current: true },
+          ]}
+        />
+      )}
+      <MusicSectionNav base={base} locale={locale} current="mixes" available={sections} />
       {loading ? (
         <StatusSurface
           state="loading"

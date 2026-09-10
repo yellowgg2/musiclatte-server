@@ -6,7 +6,7 @@ The worker waits for healthy gonic/API and successful worker-volume-init. API/we
 
 ## Private setup
 
-Keep both files outside the checkout and Docker context, in a private operator directory. `IMPORT_POLICY_FILE` and `IMPORT_CREDENTIAL_FILE` in `.env` are absolute **paths**, never credential contents. Compose mounts the policy read-only and the worker credential as a read-only secret. Local Compose file secrets retain host ownership/modes; do not rely on secret `uid` remapping. Give UID 1000 read access, for example owner 1000 and mode 0600. The policy must be readable by API UID 1000 too. Never put passwords in `.env`, CLI arguments, images or logs.
+Keep both files outside the checkout and Docker context, in a private operator directory. Start new deployments from [`deploy/import-policy.example.json`](../../deploy/import-policy.example.json), whose default library-relative import root is `jojo-music`, and replace its synthetic folder ID and usernames before copying it to that private directory. Override `relativeRoot` only for a deployment that intentionally uses another library layout. `IMPORT_POLICY_FILE` and `IMPORT_CREDENTIAL_FILE` in `.env` are absolute **paths**, never credential contents. Compose mounts the policy read-only and the worker credential as a read-only secret. Local Compose file secrets retain host ownership/modes; do not rely on secret `uid` remapping. Give UID 1000 read access, for example owner 1000 and mode 0600. The policy must be readable by API UID 1000 too. Never put passwords in `.env`, CLI arguments, images or logs.
 
 Policy shape (replace synthetic IDs/usernames with the gonic folder ID and authorized users):
 
@@ -14,7 +14,12 @@ Policy shape (replace synthetic IDs/usernames with the gonic folder ID and autho
 {
   "schemaVersion": 1,
   "libraries": [
-    { "id": "music", "musicFolderId": "1", "relativeRoot": "imports", "allowedUsers": ["listener"] }
+    {
+      "id": "music",
+      "musicFolderId": "1",
+      "relativeRoot": "jojo-music",
+      "allowedUsers": ["listener"]
+    }
   ],
   "engineManagers": ["operator"]
 }

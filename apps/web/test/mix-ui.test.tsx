@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { PlayerProvider } from '../src/player/PlayerProvider';
 import { createQueue, setShuffle } from '../src/player/queue';
 const song = { id: 'tr-1', title: 'Synthetic song', isDir: false };
+const sections = { listening: true, mixes: true, curation: true, recent: true, favorites: true };
 afterEach(() => {
   cleanup();
   localStorage.clear();
@@ -73,6 +74,7 @@ it('should show the mix editor and save without playing', async () => {
         csrfToken="fixture"
         onUnauthenticated={() => {}}
         canStream
+        sections={sections}
       />
     </PlayerProvider>,
   );
@@ -113,6 +115,7 @@ it('should expose mix navigation and a clear action hierarchy', async () => {
         onUnauthenticated={() => {}}
         canStream
         onLocale={() => {}}
+        sections={sections}
       />
     </PlayerProvider>,
   );
@@ -124,7 +127,7 @@ it('should expose mix navigation and a clear action hierarchy', async () => {
     'page',
   );
   expect(navigation.textContent).not.toContain('/');
-  expect(navigation.parentElement?.contains(screen.getByLabelText('Language'))).toBe(true);
+  expect(screen.getByRole('navigation', { name: 'Music' })).toBeTruthy();
   expect(screen.getByRole('form', { name: 'Mix conditions' })).toBeTruthy();
   expect(screen.getByRole('region', { name: 'Mix results' })).toBeTruthy();
   const save = screen.getByRole('button', { name: 'Save conditions' });

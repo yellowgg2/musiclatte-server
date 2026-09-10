@@ -20,6 +20,7 @@ function createTestContext() {
     availability: 'available',
     status: 200,
     fresh: false,
+    fullNavigation: false,
     pending: null as Promise<Response> | null,
   };
   const calls: URL[] = [];
@@ -47,6 +48,9 @@ function createTestContext() {
             'playlists.read',
             'playlists.write',
             'library.recentDownloads',
+            ...(state.fullNavigation
+              ? ['listening.history', 'mixes.saved', 'metadata.curation', 'favorites.songs']
+              : []),
           ].map((key) => [
             key,
             key === 'library.recentDownloads'
@@ -59,6 +63,8 @@ function createTestContext() {
           ]),
         ),
       });
+    if (url.pathname.endsWith('/favorites/songs'))
+      return Response.json({ schemaVersion: 1, songs: [] });
     if (url.pathname.endsWith('/music/folders'))
       return Response.json({ schemaVersion: 1, folders: [] });
     if (url.pathname.endsWith('/recent-downloads')) {
@@ -160,13 +166,46 @@ describe('recent route', () => {
     expect(await screen.findByRole('heading', { name: 'Recent downloads' })).toBe(
       document.activeElement,
     );
-    const navigation = screen.getByRole('navigation', { name: 'Current location' });
+    const navigation = screen.getByRole('navigation', { name: 'Music' });
     expect(
       within(navigation)
         .getByRole('link', { name: 'Recent downloads' })
         .getAttribute('aria-current'),
     ).toBe('page');
     expect(screen.getByRole('region', { name: 'Recent download controls' })).toBeTruthy();
+  });
+
+  /** Every available music destination stays visible below the current page heading. */
+  it('should show the complete music navigation below the recent heading', async () => {
+    const context = createTestContext();
+    context.state.fullNavigation = true;
+    makeSUT(context);
+
+    const heading = await screen.findByRole('heading', { name: 'Recent downloads' });
+    const navigation = screen
+      .getAllByRole('navigation')
+      .find(
+        (candidate) =>
+          candidate.getAttribute('data-variant') === 'tabs' &&
+          within(candidate).queryByText('Recent downloads'),
+      );
+    expect(navigation).toBeTruthy();
+    expect(
+      within(navigation!)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual([
+      'All music',
+      'Recent listening',
+      'Frequently played',
+      'Saved mixes',
+      'Music curation',
+      'Recent downloads',
+      'Favorites',
+    ]);
+    expect(
+      heading.compareDocumentPosition(navigation!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
   });
   /** No empty entry remains for unsupported or unavailable producers. */
   it.each(['unsupported', 'unavailable', 'denied'])(

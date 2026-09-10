@@ -41,6 +41,7 @@ import { FavoritesProvider } from '../favorites/FavoritesProvider';
 import { MetadataSyncProvider } from '../metadata/MetadataSyncProvider';
 import { isFavoritesPath } from '../favorites/routes';
 import { FavoritesPage } from '../pages/music/FavoritesPage';
+import type { MusicSectionAvailability } from '../pages/music/MusicSectionNav';
 import styles from './Shell.module.css';
 import '../design/global.css';
 export function Router({
@@ -103,6 +104,13 @@ export function Router({
   const canRecent = availableEntries(state.capabilities).includes('library.recentDownloads');
   const currentMix = mixRoute(location, base);
   const canMixes = availableEntries(state.capabilities).includes('mixes.saved');
+  const musicSections = {
+    listening: canListening,
+    mixes: canMixes,
+    curation: canCuration,
+    recent: canRecent,
+    favorites: canFavorites,
+  } satisfies MusicSectionAvailability;
   const copy = messages[locale];
   const metadataRoute = metadataPageRoute(location, base);
   const canEditMetadata = availableEntries(state.capabilities).includes('metadata.write');
@@ -382,6 +390,7 @@ export function Router({
                       fetcher={fetcher}
                       apiOrigin={apiOrigin}
                       canStream={canStream}
+                      sections={musicSections}
                       onUnauthenticated={store.expire}
                     />
                   ) : (
@@ -447,6 +456,7 @@ export function Router({
                     csrfToken={state.session.csrfToken}
                     unavailable={recentCapability === 'unavailable'}
                     onCapabilityRetry={() => void store.restore()}
+                    sections={musicSections}
                   />
                 ) : currentRecentPath ? (
                   <div className={styles.settings}>
@@ -508,6 +518,7 @@ export function Router({
                     apiOrigin={apiOrigin}
                     onUnauthenticated={store.expire}
                     canStream={canStream}
+                    sections={musicSections}
                     canWritePlaylists={canWritePlaylists}
                     csrfToken={state.session.csrfToken}
                   />
@@ -593,6 +604,7 @@ export function Router({
                     onUnauthenticated={store.expire}
                     onLocale={onLocale}
                     canStream={canStream}
+                    sections={musicSections}
                   />
                 ) : currentMix && canMixes ? (
                   <MixesPage
@@ -606,6 +618,7 @@ export function Router({
                     csrfToken={state.session.csrfToken}
                     onUnauthenticated={store.expire}
                     canStream={canStream}
+                    sections={musicSections}
                   />
                 ) : musicRoute(location, base) && canBrowse ? (
                   <MusicPage
@@ -618,13 +631,10 @@ export function Router({
                     onUnauthenticated={store.expire}
                     canStream={canStream}
                     canRandom={canRandom}
-                    canRecent={canRecent}
-                    canCuration={canCuration}
-                    canMixes={canMixes}
-                    canListening={canListening}
                     canArtistInfo={canArtistInfo}
                     canWritePlaylists={canWritePlaylists}
                     canFavorites={canFavorites}
+                    sections={musicSections}
                     csrfToken={state.session.csrfToken}
                   />
                 ) : isSettingsPath(path, base) || path === `${base}login` || path === base ? (
