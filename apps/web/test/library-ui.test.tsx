@@ -207,7 +207,8 @@ describe('library UI', () => {
     await waitFor(() =>
       expect(context.calls.some((c) => c.url.pathname.endsWith('/capabilities'))).toBe(true),
     );
-    expect(screen.queryByRole('heading', { name: 'Music' })).not.toBeNull();
+    expect(screen.queryByRole('heading', { name: 'All music' })).not.toBeNull();
+    expect(screen.getByText('Explore your folders or find a favorite.')).toBeTruthy();
     const views = screen.getByRole('navigation', { name: 'Music' });
     expect(
       within(views).getByRole('link', { name: 'All music' }).getAttribute('aria-current'),
@@ -641,7 +642,7 @@ describe('library regression boundaries', () => {
     expect(await screen.findAllByText(song.title)).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Searched folder' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Reset search' }));
-    expect(await screen.findByRole('heading', { name: 'Music' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'All music' })).toBeTruthy();
     expect(window.location.pathname).toBe('/music');
     expect(new URLSearchParams(window.location.search).get('musicFolderId')).toBe('root & 1');
   });

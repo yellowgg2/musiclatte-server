@@ -89,3 +89,6 @@ heading.
   import ledger was cleared and the old `imports` directory was moved out of the music root to the
   recoverable deployment work area. A secret-free deployment template and contract test now keep
   `jojo-music` as the default for future private policies.
+- A second presentation follow-up standardized every music feature page heading at `2rem`, matching
+  Recent downloads. The root page now uses `All music`/`모든 음악` as both its document heading and
+  title and shows the existing localized browsing description directly below it.

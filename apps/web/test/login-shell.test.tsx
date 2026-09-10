@@ -86,14 +86,14 @@ describe('login shell', () => {
     const context = createTestContext();
     context.signIn();
     const { user, view } = await makeSUT(context);
-    await screen.findByRole('heading', { name: 'Music' });
+    await screen.findByRole('heading', { name: 'All music' });
     await user.click(screen.getByRole('link', { name: 'Settings' }));
     const settings = await screen.findByRole('heading', { name: 'Settings' });
     await waitFor(() => expect(document.activeElement).toBe(settings));
     expect(document.documentElement.dataset.pageHeadingInput).toBe('pointer');
     screen.getByRole('link', { name: 'Music' }).focus();
     await user.keyboard('{Enter}');
-    const music = await screen.findByRole('heading', { name: 'Music' });
+    const music = await screen.findByRole('heading', { name: 'All music' });
     await waitFor(() => expect(document.activeElement).toBe(music));
     expect(document.documentElement.dataset.pageHeadingInput).toBe('keyboard');
     await user.pointer({
@@ -200,7 +200,7 @@ describe('login shell', () => {
     await user.type(await screen.findByLabelText('Username'), 'fixture-listener');
     await user.type(screen.getByLabelText('Password'), 'synthetic-password');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(await screen.findByRole('heading', { name: 'Music' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'All music' })).toBeTruthy();
     expect(window.location.pathname).toBe('/music');
     expect(screen.queryByRole('link', { name: /Playlist/ })).toBeNull();
     expect(screen.getByRole('link', { name: 'Imports' })).toBeTruthy();
@@ -240,7 +240,7 @@ describe('login shell', () => {
     expect((screen.getByLabelText('Username') as HTMLInputElement).value).toBe('fixture-listener');
     context.fail('');
     await user.type(screen.getByLabelText('Password'), 'synthetic-password{Enter}');
-    expect(await screen.findByRole('heading', { name: 'Music' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'All music' })).toBeTruthy();
   });
   /** Unsafe, encoded and unimplemented return paths never become navigation targets. */
   it('should allow only implemented relative return paths within the SPA base', async () => {

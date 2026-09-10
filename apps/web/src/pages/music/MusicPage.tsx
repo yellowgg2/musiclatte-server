@@ -251,7 +251,7 @@ export function MusicPage({
                     ? 'music.artists'
                     : route.kind === 'album'
                       ? 'music.albums'
-                      : 'music.title'
+                      : 'music.all'
             ];
   const empty =
     data?.kind === 'folders'
@@ -347,6 +347,7 @@ export function MusicPage({
           <h1 tabIndex={-1} data-page-heading>
             {title}
           </h1>
+          {route.kind === 'folders' && <p>{copy['music.description']}</p>}
         </header>
         <div className={styles.utilities}>
           {metadataUI.canHistory && <a href={`${base}metadata-jobs`}>{copy['metadata.history']}</a>}

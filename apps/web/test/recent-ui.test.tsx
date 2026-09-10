@@ -216,7 +216,7 @@ describe('recent route', () => {
       if (mode === 'unavailable') c.state.availability = 'temporarily_unavailable';
       if (mode === 'denied') c.state.permission = 'denied';
       makeSUT(c, '/music');
-      await screen.findByRole('heading', { name: 'Music' });
+      await screen.findByRole('heading', { name: 'All music' });
       expect(screen.queryByRole('link', { name: 'Recent downloads' })).toBeNull();
     },
   );

@@ -45,6 +45,23 @@ and 1440×900 iframe viewports.
 No browser console failure was observed during the measured flow. The session-created tab,
 loopback servers, and control file are cleanup-owned by this run.
 
+## Post-deployment desktop queue follow-up
+
+A later devserver screenshot identified that the remaining overflow was the desktop queue popover,
+not the mobile expanded player. The popover capped its border box at `min(60vh, 32rem)`, while the
+child queue inherited that full limit inside the popover padding and could therefore spill by the
+padding budget. The popover now clips its own border box and the child queue subtracts both padding
+edges and borders from its scroll-height budget. `QueueView` also identifies the current occurrence
+by queue position and centers that row once whenever either queue surface mounts.
+
+- RED: the desktop CSS contract failed because the popover did not own clipping and had no
+  padding-adjusted child height budget.
+- GREEN: the desktop containment and mount-centering tests passed alongside the mobile definite
+  height regression.
+- Chrome 1440×900 with a 25-song queue showed song 10 centered on open, one exact
+  `aria-current=true` row, a visible inner scrollbar, and song 20 wholly inside the popover above
+  the persistent player after scrolling to the end.
+
 ## Deferred acceptance
 
 Implementation evidence satisfies the automatic dependency for P8-UA-001 and the S01 portion of

@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentType } from 'react';
@@ -430,6 +432,57 @@ describe('persistent player UI', () => {
     const queue = within(scrollBody).getByRole('region', { name: 'Queue' });
     expect(within(queue).getByRole('button', { name: /Queue song 20/ })).toBeDefined();
     expect(scrollBody.contains(dialog.querySelector('header'))).toBe(false);
+  });
+
+  /** The desktop popover reserves its padding inside the height limit so rows cannot spill out. */
+  it('should contain the desktop queue inside its popover height budget', () => {
+    const css = readFileSync(resolve('apps/web/src/player/Player.module.css'), 'utf8');
+    const popover = css.match(/\.desktopQueue\s*\{([^}]*)\}/)?.[1];
+    const queue = css.match(/\.desktopQueue\s*>\s*\.queue\s*\{([^}]*)\}/)?.[1];
+
+    expect(popover).toContain('overflow: hidden');
+    expect(queue).toContain(
+      'max-height: calc(min(60vh, 32rem) - var(--space-4) - var(--space-4) - 2px)',
+    );
+  });
+
+  /** A definite mobile sheet height gives its single scroll body a real clipping boundary. */
+  it('should constrain the expanded player to a definite mobile height', () => {
+    const css = readFileSync(resolve('apps/web/src/player/Player.module.css'), 'utf8');
+    const mobile = css.slice(css.indexOf('@media (max-width: 48rem)'));
+    const sheet = mobile.match(/\.sheet\s*\{([^}]*)\}/)?.[1];
+
+    expect(sheet).toMatch(/(?:^|\n)\s*height:\s*min\(92dvh,\s*52rem\);/);
+  });
+
+  /** Opening a queue brings its exact current occurrence to the middle of the scroll viewport. */
+  it('should center the current queue row when the desktop queue opens', async () => {
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    try {
+      const { audio, user } = await makeSUT({ folderSongs: longQueueSongs });
+      await user.click(await screen.findByRole('button', { name: /Play Queue song 10/ }));
+      act(() => audio.emit('playing'));
+      const desktop = screen.getAllByRole('complementary', { name: 'Now playing' })[0]!;
+      await user.click(within(desktop).getByRole('button', { name: 'Show queue' }));
+
+      const current = within(desktop).getByRole('button', { current: true });
+      await waitFor(() =>
+        expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', inline: 'nearest' }),
+      );
+      expect(current.textContent).toContain('Queue song 10');
+    } finally {
+      if (original)
+        Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+          configurable: true,
+          value: original,
+        });
+      else delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
+    }
   });
 
   /** Preserves the current queue when random is empty or unavailable and replaces it on success. */

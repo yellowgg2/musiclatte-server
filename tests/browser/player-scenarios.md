@@ -56,8 +56,9 @@ MUSICLATTE_PREVIEW_API_TARGET=http://127.0.0.1:3118 \
 4. With quality feedback visible, repeat the 390px dialog/body/final-row and horizontal-overflow
    measurements.
 5. Open `/__preview/desktop`, start and pause the same queue, then open Queue. Confirm the popover
-   stays above the persistent player and its named list retains `overflow-y:auto`, keyboard End,
-   and last-row visibility.
+   stays above the persistent player, opens with the exact current occurrence centered, and its
+   named list retains `overflow-y:auto`, keyboard End, and last-row visibility. The last row must
+   end inside the popover rather than overlapping the persistent player.
 
 ## Phase 8 three-state repeat control
 

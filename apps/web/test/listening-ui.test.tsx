@@ -16,6 +16,24 @@ it('should keep the listening refresh action compact when mobile controls wrap',
   );
 });
 
+/** Every music destination uses the same page-title scale as Recent downloads. */
+it('should keep music feature page titles at one consistent size', () => {
+  const paths = [
+    'apps/web/src/pages/music/Listening.module.css',
+    'apps/web/src/pages/music/Mixes.module.css',
+    'apps/web/src/pages/music/CurationPage.module.css',
+    'apps/web/src/pages/music/RecentDownloads.module.css',
+    'apps/web/src/pages/music/FavoritesPage.module.css',
+    'apps/web/src/pages/music/Music.module.css',
+  ];
+  const sizes = paths.map(
+    (path) =>
+      readFileSync(resolve(path), 'utf8').match(/\.heading h1\s*\{[^}]*font-size:\s*([^;]+);/)?.[1],
+  );
+
+  expect(sizes).toEqual(paths.map(() => '2rem'));
+});
+
 /** Repeated songs remain distinct history events and unavailable songs retain their timestamp. */
 it('should render repeated events and unavailable songs without autoplay', async () => {
   const path = resolve('apps/web/src/pages/music/ListeningHistoryPage.tsx');
