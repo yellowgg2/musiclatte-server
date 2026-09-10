@@ -10,6 +10,7 @@ dist/
 coverage/
 .vite/
 .cache/
+artifact/
 *.tsbuildinfo
 *.log
 .DS_Store
