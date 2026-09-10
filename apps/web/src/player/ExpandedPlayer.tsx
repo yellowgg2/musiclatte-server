@@ -8,6 +8,7 @@ import { usePlayer } from './PlayerProvider';
 import { formatTime, playLabel } from './view-helpers';
 import styles from './Player.module.css';
 import { FavoriteAction } from '../favorites/components/FavoriteAction';
+import { RepeatAction } from './RepeatAction';
 
 export function ExpandedPlayer({ locale, onClose }: { locale: Locale; onClose: () => void }) {
   const player = usePlayer();
@@ -109,12 +110,7 @@ export function ExpandedPlayer({ locale, onClose }: { locale: Locale; onClose: (
             >
               ⇄
             </IconAction>
-            <IconAction
-              label={`${copy['player.repeat']}: ${copy[`player.repeat.${queue.repeat}`]}`}
-              onClick={player.cycleRepeat}
-            >
-              ↻
-            </IconAction>
+            <RepeatAction mode={queue.repeat} locale={locale} onCycle={player.cycleRepeat} />
           </div>
           <QualityFeedback locale={locale} />
           <QueueView locale={locale} />

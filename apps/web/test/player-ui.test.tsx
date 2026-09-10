@@ -262,11 +262,62 @@ describe('persistent player UI', () => {
     expect(
       screen.getAllByRole('button', { name: 'Shuffle' })[0]?.getAttribute('aria-pressed'),
     ).toBe('false');
-    expect(screen.getAllByRole('button', { name: 'Repeat: Off' })[0]).toBeDefined();
+    expect(
+      screen.getAllByRole('button', { name: 'Repeat. Current: Off. Next: One track.' })[0],
+    ).toBeDefined();
     expect(screen.getAllByRole('slider', { name: 'Seek' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('slider', { name: 'Volume' }).length).toBeGreaterThan(0);
     await user.click(screen.getAllByRole('button', { name: 'Show queue' })[0]!);
     expect(screen.getByRole('region', { name: 'Queue' }).getAttribute('tabindex')).toBe('0');
+  });
+
+  /** Shares distinct repeat shapes and localized current/next names across both player surfaces. */
+  it('should synchronize three-state repeat markers across desktop and expanded players', async () => {
+    const { audio, user } = await makeSUT();
+    await user.click(await screen.findByRole('button', { name: 'Play First patient song' }));
+    act(() => audio.emit('playing'));
+
+    const desktop = screen.getAllByRole('complementary', { name: 'Now playing' })[0]!;
+    const off = within(desktop).getByRole('button', {
+      name: 'Repeat. Current: Off. Next: One track.',
+    });
+    expect(off.getAttribute('data-repeat-mode')).toBe('off');
+    expect(off.getAttribute('aria-pressed')).toBe('false');
+    expect(off.querySelector('[data-repeat-marker="off"]')).not.toBeNull();
+
+    await user.click(off);
+    const one = within(desktop).getByRole('button', {
+      name: 'Repeat. Current: One track. Next: All tracks.',
+    });
+    expect(one.getAttribute('data-repeat-mode')).toBe('one');
+    expect(one.getAttribute('aria-pressed')).toBe('true');
+    expect(one.querySelector('[data-repeat-marker="one"]')?.textContent).toBe('1');
+
+    await user.click(screen.getByRole('button', { name: 'Open player: First patient song' }));
+    const dialog = screen.getByRole('dialog', { name: 'Now playing' });
+    const expandedOne = within(dialog).getByRole('button', {
+      name: 'Repeat. Current: One track. Next: All tracks.',
+    });
+    expect(expandedOne.getAttribute('data-repeat-mode')).toBe('one');
+
+    await user.click(expandedOne);
+    const expandedAll = within(dialog).getByRole('button', {
+      name: 'Repeat. Current: All tracks. Next: Off.',
+    });
+    expect(expandedAll.getAttribute('data-repeat-mode')).toBe('all');
+    expect(expandedAll.querySelector('[data-repeat-marker]')).toBeNull();
+    expect(
+      within(desktop).getByRole('button', {
+        name: 'Repeat. Current: All tracks. Next: Off.',
+      }),
+    ).toBeDefined();
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'ko');
+    expect(
+      within(dialog).getByRole('button', {
+        name: '반복. 현재: 전곡 반복. 다음: 반복 안 함.',
+      }),
+    ).toBeDefined();
   });
 
   /** Restarts an ended song in repeat-one while keeping explicit next and previous available. */
@@ -274,8 +325,14 @@ describe('persistent player UI', () => {
     const { audio, user } = await makeSUT();
     await user.click(await screen.findByRole('button', { name: 'Play First patient song' }));
     act(() => audio.emit('playing'));
-    await user.click(screen.getAllByRole('button', { name: 'Repeat: Off' })[0]!);
-    expect(screen.getAllByRole('button', { name: 'Repeat: One' }).length).toBeGreaterThan(0);
+    await user.click(
+      screen.getAllByRole('button', { name: 'Repeat. Current: Off. Next: One track.' })[0]!,
+    );
+    expect(
+      screen.getAllByRole('button', {
+        name: 'Repeat. Current: One track. Next: All tracks.',
+      }).length,
+    ).toBeGreaterThan(0);
 
     audio.currentTime = 73;
     act(() => audio.emit('timeupdate'));
@@ -302,13 +359,21 @@ describe('persistent player UI', () => {
     await user.click(await screen.findByRole('button', { name: 'Play First patient song' }));
     act(() => audio.emit('playing'));
     await user.click(screen.getAllByRole('button', { name: 'Next track' })[0]!);
-    await user.click(screen.getAllByRole('button', { name: 'Repeat: Off' })[0]!);
-    await user.click(screen.getAllByRole('button', { name: 'Repeat: One' })[0]!);
+    await user.click(
+      screen.getAllByRole('button', { name: 'Repeat. Current: Off. Next: One track.' })[0]!,
+    );
+    await user.click(
+      screen.getAllByRole('button', {
+        name: 'Repeat. Current: One track. Next: All tracks.',
+      })[0]!,
+    );
 
     act(() => audio.emit('ended'));
     await waitFor(() => expect(audio.src).toContain('/songs/song%20%2F%20one/stream'));
 
-    await user.click(screen.getAllByRole('button', { name: 'Repeat: All' })[0]!);
+    await user.click(
+      screen.getAllByRole('button', { name: 'Repeat. Current: All tracks. Next: Off.' })[0]!,
+    );
     await user.click(screen.getAllByRole('button', { name: 'Next track' })[0]!);
     const loads = audio.load.mock.calls.length;
     const plays = audio.play.mock.calls.length;

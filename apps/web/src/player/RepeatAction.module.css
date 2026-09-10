@@ -1,0 +1,22 @@
+.action {
+  overflow: visible;
+}
+
+.glyph {
+  width: 1.35rem;
+  height: 1.35rem;
+  overflow: visible;
+}
+
+.slash {
+  stroke-width: 2.4;
+}
+
+.one {
+  fill: currentColor;
+  stroke: none;
+  font-family: inherit;
+  font-size: 0.56rem;
+  font-weight: 800;
+  text-anchor: middle;
+}

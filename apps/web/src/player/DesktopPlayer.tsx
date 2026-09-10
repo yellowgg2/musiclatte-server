@@ -8,6 +8,7 @@ import { QueueView } from './QueueView';
 import { formatTime, playLabel } from './view-helpers';
 import styles from './Player.module.css';
 import { FavoriteAction } from '../favorites/components/FavoriteAction';
+import { RepeatAction } from './RepeatAction';
 
 export function DesktopPlayer({ locale }: { locale: Locale }) {
   const player = usePlayer();
@@ -15,7 +16,6 @@ export function DesktopPlayer({ locale }: { locale: Locale }) {
   const { state } = player;
   const copy = messages[locale];
   if (!state.current || !state.queue) return null;
-  const repeat = copy[`player.repeat.${state.queue.repeat}`];
   return (
     <aside className={styles.desktop} aria-label={copy['player.nowPlaying']} data-persistent-player>
       <div className={styles.track}>
@@ -68,9 +68,7 @@ export function DesktopPlayer({ locale }: { locale: Locale }) {
         >
           ⇄
         </IconAction>
-        <IconAction label={`${copy['player.repeat']}: ${repeat}`} onClick={player.cycleRepeat}>
-          ↻
-        </IconAction>
+        <RepeatAction mode={state.queue.repeat} locale={locale} onCycle={player.cycleRepeat} />
         <label className={styles.volume}>
           <span>{copy['player.volume']}</span>
           <input

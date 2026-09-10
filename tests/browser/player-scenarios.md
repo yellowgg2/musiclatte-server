@@ -58,3 +58,22 @@ MUSICLATTE_PREVIEW_API_TARGET=http://127.0.0.1:3118 \
 5. Open `/__preview/desktop`, start and pause the same queue, then open Queue. Confirm the popover
    stays above the persistent player and its named list retains `overflow-y:auto`, keyboard End,
    and last-row visibility.
+
+## Phase 8 three-state repeat control
+
+Reuse `tests/support/library-preview.ts` and the isolated ports above. The preview keeps the normal
+Router, locale picker, desktop player, and mobile expanded player in one provider lifecycle.
+
+1. On `/__preview/desktop`, start a song in English. Cycle the repeat button through off, one, all,
+   and off. For every state record `data-repeat-mode`, `aria-pressed`, the marker (`off`, `one`, or
+   absent), the accessible name/title, and the 44×44px button bounds.
+2. On `/__preview/mobile`, open the expanded player at 390×844. Cycle one state on desktop before
+   opening when testing cross-surface state, then cycle again in the dialog and confirm both
+   `[data-repeat-mode]` controls update together. Switch EN↔KO and confirm current/next names.
+3. Keyboard-activate the focused repeat button and confirm `:focus-visible` plus the existing
+   outline remain visible. Ensure decorative SVG content does not add an accessibility node.
+4. On `/__preview/narrow`, verify the 320×844 transport wraps within its container with zero
+   horizontal document overflow and keeps every control at 44×44px.
+5. Apply Chrome 200% page zoom, repeat the 320px containment and focus check, then restore 100%
+   before cleanup. Review off/one/all screenshots or DOM markers without treating this automatic
+   run as final P8-UA-002 approval.
