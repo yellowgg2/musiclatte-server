@@ -64,3 +64,24 @@ Corrected findings: **CORE-009 / LIST-005** (mobile final action hidden by fixed
 ## Documentation and cleanup
 
 Obsidian Step 11, Phase 3 overview and component catalog synchronized separately from this repository. The Step 14 real worker/import/iPhone responsibility remains unchanged. Preview API/Vite processes and task tab are stopped/closed; viewport, zoom and reduced-motion overrides restored; temporary control removed. No existing user tab/process/data was cleaned up.
+
+## Optional metadata decoder regression — 2026-09-11
+
+- A real devserver import completed as `ready`, but `/music/recent` showed the generic refresh
+  failure even though the API response was HTTP 200. The downloaded file carried a valid `genre`
+  tag; the shared server `MusicEntry` schema and Subsonic decoder permit and preserve it, while the
+  recent web client's strict optional-key allowlist omitted only `genre`.
+- RED added a producer-consumer contract covering every optional public song field. The focused
+  contract failed 1/4 with `decodeRecent` `internal_error`. GREEN adds `genre` to the string-field
+  allowlist; the same contract passes 4/4.
+- The existing devserver web image was rebuilt without replacing API, worker, gonic, or their
+  volumes. Connected Chrome loaded both actual recent downloads, refresh retained the list with no
+  alert, and the newly imported song started playback. Playback was paused and the task tab closed;
+  the user-requested downloaded music remains in the library.
+- Final verification under Node 24.20.0/npm 11.19.0 passed affected unit 17/17, contract 6/6,
+  typecheck, production build, format check, and diff check. The production bundle is
+  `index-BZyC51Gv.js`.
+- No rendered structure, shared component, Gallery state, locale resource, API, schema, or server
+  behavior changed. Existing Phase 3 UI acceptance remains valid; no new user-only check is needed.
+- Rulebook postflight classified the verified strict-decoder/schema-drift lesson as `related`, so
+  the outcome is `ambiguous`; no canonical write or Rulebook data-repository sync occurred.

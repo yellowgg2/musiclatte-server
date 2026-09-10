@@ -6,12 +6,20 @@ export interface ListeningSample {
   paused?: boolean;
   seeking?: boolean;
 }
+
+function newListeningEventId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+}
+
 /** Passive interval accounting. All coordinates are absolute media seconds, including offset sources. */
 export function createListeningTracker({
   emit,
   wallClock = Date.now,
   monotonic = () => performance.now(),
-  eventId = () => crypto.randomUUID(),
+  eventId = newListeningEventId,
 }: {
   emit(event: Readonly<ListeningEventInput>): void;
   wallClock?: () => number;
@@ -71,16 +79,15 @@ export function createListeningTracker({
     const listenedMs = Math.floor(Math.min(union, wallClock() - current.startedAt));
     const threshold = current.duration > 0 ? Math.min(current.duration * 500, 240000) : 240000;
     if (listenedMs >= threshold && listenedMs > 0) {
+      const event = Object.freeze({
+        eventId: eventId(),
+        songId: current.songId,
+        startedAt: new Date(current.startedAt).toISOString(),
+        qualifiedAt: new Date(wallClock()).toISOString(),
+        listenedMs,
+      });
+      emit(event);
       current.sent = true;
-      emit(
-        Object.freeze({
-          eventId: eventId(),
-          songId: current.songId,
-          startedAt: new Date(current.startedAt).toISOString(),
-          qualifiedAt: new Date(wallClock()).toISOString(),
-          listenedMs,
-        }),
-      );
     }
   }
   return {

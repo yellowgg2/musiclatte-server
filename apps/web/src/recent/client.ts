@@ -35,6 +35,7 @@ function song(value: unknown): value is MusicEntry {
     'coverArt',
     'album',
     'artist',
+    'genre',
     'contentType',
     'suffix',
     'starred',

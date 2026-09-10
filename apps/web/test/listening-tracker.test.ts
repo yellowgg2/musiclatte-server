@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 async function setup() {
   const path = resolve('apps/web/src/listening/tracker.ts');
   expect(existsSync(path), 'listening interval tracker is required').toBe(true);
@@ -101,4 +101,59 @@ it('should handle unknown duration and short tracks without position shortcuts',
   c.advance(2000);
   c.tracker.observe('timeupdate', { time: 2 });
   expect(c.events).toHaveLength(2);
+});
+
+/** LAN HTTP playback must create a server-valid event without secure-context randomUUID. */
+it('should create an event when randomUUID is unavailable', async () => {
+  vi.stubGlobal('crypto', {
+    getRandomValues(bytes: Uint8Array) {
+      bytes.fill(0xa5);
+      return bytes;
+    },
+  });
+  try {
+    const path = resolve('apps/web/src/listening/tracker.ts');
+    const { createListeningTracker } = await import(path);
+    let now = 0;
+    const events: { eventId: string }[] = [];
+    const tracker = createListeningTracker({
+      emit: (event: { eventId: string }) => events.push(event),
+      wallClock: () => Date.parse('2026-09-09T00:00:00Z') + now,
+      monotonic: () => now,
+    });
+    tracker.start('http-track', 4);
+    tracker.observe('playing', { time: 0 });
+    now += 2000;
+    tracker.observe('timeupdate', { time: 2 });
+    expect(events).toHaveLength(1);
+    expect(events[0]!.eventId).toMatch(/^[A-Za-z0-9_-]{22,128}$/);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+/** A failed ID attempt must not permanently suppress the qualified playback event. */
+it('should retry event creation after a transient ID failure', async () => {
+  const path = resolve('apps/web/src/listening/tracker.ts');
+  const { createListeningTracker } = await import(path);
+  let now = 0;
+  let attempts = 0;
+  const events: unknown[] = [];
+  const tracker = createListeningTracker({
+    emit: (event: unknown) => events.push(event),
+    wallClock: () => Date.parse('2026-09-09T00:00:00Z') + now,
+    monotonic: () => now,
+    eventId: () => {
+      if (++attempts === 1) throw new Error('temporary entropy failure');
+      return 'r'.repeat(22);
+    },
+  });
+  tracker.start('retry-track', 4);
+  tracker.observe('playing', { time: 0 });
+  now += 2000;
+  expect(() => tracker.observe('timeupdate', { time: 2 })).toThrow('temporary entropy failure');
+  now += 1000;
+  tracker.observe('timeupdate', { time: 3 });
+  expect(events).toHaveLength(1);
+  expect(attempts).toBe(2);
 });

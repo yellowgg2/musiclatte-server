@@ -53,6 +53,36 @@ describe('recent UI producer consumer', () => {
     ])
       expect(() => decodeRecent(bad)).toThrow();
   });
+  /** Ready items retain every optional public song field allowed by the shared contract. */
+  it('should accept all optional public metadata for ready songs', async () => {
+    const { decodeRecent } = await makeSUT();
+    const ready = recentFixtures.ready;
+    const response = {
+      ...ready,
+      items: ready.items.map((entry) => ({
+        ...entry,
+        song: {
+          ...entry.song,
+          parent: 'parent',
+          albumId: 'album-id',
+          artistId: 'artist-id',
+          coverArt: 'cover-art',
+          album: 'Album',
+          artist: 'Artist',
+          genre: 'Genre',
+          contentType: 'audio/mpeg',
+          suffix: 'mp3',
+          starred: '2026-09-11T00:00:00.000Z',
+          duration: 180,
+          bitRate: 320,
+          size: 7_200_000,
+          track: 1,
+          year: 2026,
+        },
+      })),
+    };
+    expect(decodeRecent(response)).toEqual(response);
+  });
   /** Real authenticated producer serialization, snapshot and no-scan contracts reach the web client. */
   it('should consume real API cursor pages without scanning the library', async () => {
     const { createRecentClient } = await makeSUT();
