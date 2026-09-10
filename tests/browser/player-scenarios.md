@@ -33,3 +33,28 @@ or media identifiers in browser evidence.
 
 Run production exclusion and native gateway regression with the Step's focused contract command.
 Stop only the owned API/Vite processes and remove the owned control file.
+
+## Phase 8 mobile queue containment
+
+Run the same normal Router fixture with explicit free ports. Set the owned control file to
+`long-queue`; use `long-queue-error` only for the quality-feedback state.
+
+```bash
+PORT=3118 WEB_PORT=5188 PREVIEW_CONTROL=/tmp/musiclatte-p8-s01-control \
+  node --import tsx tests/support/library-preview.ts
+MUSICLATTE_PREVIEW_API_TARGET=http://127.0.0.1:3118 \
+  npm run dev:web -- --host 127.0.0.1 --port 5188
+```
+
+1. Open `/__preview/mobile` and `/__preview/narrow`, start and pause the 25-song queue, then open
+   the expanded player. Confirm the dialog ends inside the 844px iframe and the named body is the
+   only vertical scroller; the queue list itself has visible overflow.
+2. Scroll the body to the end. Measure the final queue button inside the body viewport, activate it
+   with Enter, then verify `aria-current=true`.
+3. From the last queue button, Tab wraps to Close and Shift+Tab wraps back. Escape closes the dialog
+   and restores focus to its opener.
+4. With quality feedback visible, repeat the 390px dialog/body/final-row and horizontal-overflow
+   measurements.
+5. Open `/__preview/desktop`, start and pause the same queue, then open Queue. Confirm the popover
+   stays above the persistent player and its named list retains `overflow-y:auto`, keyboard End,
+   and last-row visibility.

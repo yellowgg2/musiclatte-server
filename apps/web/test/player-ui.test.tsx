@@ -24,6 +24,17 @@ const songs = [
   },
 ] satisfies MusicEntry[];
 
+const longQueueSongs = [
+  ...songs,
+  ...Array.from({ length: 20 }, (_, index) => ({
+    id: `queue-song-${index + 1}`,
+    title: `Queue song ${index + 1} with a deliberately long localized-player-safe title`,
+    artist: index % 2 === 0 ? '긴 대기열 아티스트' : 'Long queue artist',
+    duration: 180 + index,
+    isDir: false,
+  })),
+] satisfies MusicEntry[];
+
 class FakeAudio extends EventTarget {
   src = '';
   currentTime = 0;
@@ -46,7 +57,7 @@ class FakeAudio extends EventTarget {
   }
 }
 
-function createTestContext() {
+function createTestContext(folderSongs: MusicEntry[] = songs) {
   let randomMode: 'success' | 'empty' | 'error' = 'success';
   const calls: URL[] = [];
   const fetcher: typeof fetch = async (input, init) => {
@@ -90,7 +101,7 @@ function createTestContext() {
     if (url.pathname.endsWith('/folders/fixture'))
       return Response.json({
         schemaVersion: 1,
-        directory: { id: 'fixture', name: 'Fixture folder', child: songs },
+        directory: { id: 'fixture', name: 'Fixture folder', child: folderSongs },
       });
     if (url.pathname.endsWith('/random')) {
       if (randomMode === 'error')
@@ -117,9 +128,9 @@ interface RouterProps {
   audioFactory: () => FakeAudio;
 }
 
-async function makeSUT() {
+async function makeSUT({ folderSongs = songs }: { folderSongs?: MusicEntry[] } = {}) {
   const audio = new FakeAudio();
-  const context = createTestContext();
+  const context = createTestContext(folderSongs);
   localStorage.setItem('musiclatte.locale', 'en');
   window.history.replaceState(null, '', '/music/folders/fixture');
   const modulePath = '../src/app/Router';
@@ -285,6 +296,20 @@ describe('persistent player UI', () => {
     await user.keyboard('{Escape}');
     await waitFor(() => expect(document.activeElement).toBe(opener));
     expect(screen.queryByRole('dialog', { name: 'Now playing' })).toBeNull();
+  });
+
+  /** Keeps a long queue under one dialog-owned scroll body without nesting the fixed header. */
+  it('should contain a long queue in the expanded player scroll body', async () => {
+    const { audio, user } = await makeSUT({ folderSongs: longQueueSongs });
+    await user.click(await screen.findByRole('button', { name: 'Play First patient song' }));
+    act(() => audio.emit('playing'));
+    await user.click(screen.getByRole('button', { name: 'Open player: First patient song' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Now playing' });
+    const scrollBody = within(dialog).getByTestId('expanded-player-scroll-body');
+    const queue = within(scrollBody).getByRole('region', { name: 'Queue' });
+    expect(within(queue).getByRole('button', { name: /Queue song 20/ })).toBeDefined();
+    expect(scrollBody.contains(dialog.querySelector('header'))).toBe(false);
   });
 
   /** Preserves the current queue when random is empty or unavailable and replaces it on success. */

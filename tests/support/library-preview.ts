@@ -10,6 +10,15 @@ import {
   syntheticMediaMetadata,
 } from '../../packages/test-support/src/media-fixtures.js';
 const control = process.env.PREVIEW_CONTROL;
+const longQueueSongs = [
+  ...librarySongs,
+  ...Array.from({ length: 20 }, (_, index) => ({
+    ...librarySongs[index % librarySongs.length]!,
+    id: `long-queue-song-${index + 1}`,
+    title: `긴 대기열 곡 ${index + 1} — Long queue song with a deliberately wide title`,
+    artist: index % 2 === 0 ? '긴 대기열 아티스트' : 'Long queue artist',
+  })),
+];
 const upstream = createServer((request, response) => {
   const url = new URL(request.url ?? '/', 'http://localhost');
   const operation = url.pathname.split('/').at(-1);
@@ -32,13 +41,14 @@ const upstream = createServer((request, response) => {
     'getMusicFolders',
     'getIndexes',
     'getMusicDirectory',
+    'getSong',
     'search3',
     'getArtist',
     'getAlbum',
     'getRandomSongs',
   ].includes(operation ?? '');
   if (isMedia) {
-    if (!valid || mode === 'media-error') {
+    if (!valid || mode === 'media-error' || mode === 'long-queue-error') {
       response.writeHead(valid ? 503 : 401, { 'content-type': 'text/plain' });
       response.end('Synthetic media unavailable');
       return;
@@ -82,13 +92,16 @@ const upstream = createServer((request, response) => {
   }
   const empty = mode === 'empty' || q === 'empty' || id === 'empty';
   const randomEmpty = mode === 'random-empty';
-  const songs = empty
-    ? []
-    : q === 'new'
-      ? [{ ...librarySongs[0]!, title: 'Newest result' }]
-      : q === 'old'
-        ? [{ ...librarySongs[0]!, title: 'Obsolete result' }]
-        : librarySongs;
+  const songs =
+    mode === 'long-queue' || mode === 'long-queue-error'
+      ? longQueueSongs
+      : empty
+        ? []
+        : q === 'new'
+          ? [{ ...librarySongs[0]!, title: 'Newest result' }]
+          : q === 'old'
+            ? [{ ...librarySongs[0]!, title: 'Obsolete result' }]
+            : librarySongs;
   const album = {
     id: 'album-1',
     name: 'Small hours',
@@ -97,6 +110,7 @@ const upstream = createServer((request, response) => {
     song: songs,
   };
   const artist = { id: 'artist-1', name: 'Daylight', album: empty ? [] : [album] };
+  const song = songs.find((entry) => entry.id === id) ?? songs[0] ?? librarySongs[0]!;
   const previewDirectories: Record<string, { name: string; parent?: string }> = {
     'folder-1': { name: 'jojo-music' },
     'folder-2': { name: 'Jazz', parent: 'folder-1' },
@@ -124,6 +138,7 @@ const upstream = createServer((request, response) => {
         child: empty ? [] : [{ id: 'empty', title: 'Empty folder', isDir: true }, ...songs],
       },
     },
+    getSong: { song: { ...song, bitRate: 256 } },
     search3: {
       searchResult3: { song: songs, artist: empty ? [] : [artist], album: empty ? [] : [album] },
     },
@@ -155,6 +170,11 @@ const upstream = createServer((request, response) => {
 await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve));
 const address = upstream.address();
 if (!address || typeof address === 'string') throw new Error('Preview bind failed');
+const port = Number(process.env.PORT ?? 3000);
+const webPort = Number(process.env.WEB_PORT ?? 5173);
+if (!Number.isSafeInteger(port) || port <= 0 || !Number.isSafeInteger(webPort) || webPort <= 0) {
+  throw new Error('Invalid preview ports');
+}
 const storage = (await import('./session-storage-harness.js')).createTestContext;
 const data = await storage();
 data.setNow(Date.now());
@@ -162,23 +182,31 @@ const context = await createTestContext({
   upstream: `http://127.0.0.1:${address.port}`,
   sessions: data.sessionsFor(data.db, 3600000),
   instances: data.instances,
-  origin: 'http://127.0.0.1:5173',
+  origin: `http://127.0.0.1:${webPort}`,
   secureCookies: false,
+  streamQuality: true,
   timeoutMs: 5000,
 });
 const mobilePreview = (width: number) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>S10 ${width}px preview</title>
 <style>html,body{margin:0;min-height:100%;background:#dedbe4}body{display:grid;place-items:start center;padding:24px}iframe{width:${width}px;height:844px;border:1px solid #777;border-radius:20px;background:white;box-shadow:0 12px 40px #29263333}</style>
-</head><body><iframe title="Musiclatte ${width}px player preview" src="http://127.0.0.1:5173/music/folders/folder-3?musicFolderId=0"></iframe></body></html>`;
+</head><body><iframe title="Musiclatte ${width}px player preview" src="http://127.0.0.1:${webPort}/music/folders/folder-3?musicFolderId=0"></iframe></body></html>`;
+const desktopPreview = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Player desktop preview</title>
+<style>html,body{margin:0;min-height:100%;background:#dedbe4}body{display:grid;place-items:start center;padding:24px}iframe{width:1440px;height:900px;border:1px solid #777;background:white;box-shadow:0 12px 40px #29263333}</style>
+</head><body><iframe title="Musiclatte desktop player preview" src="http://127.0.0.1:${webPort}/music/folders/folder-3?musicFolderId=0"></iframe></body></html>`;
 context.app.get('/__preview/mobile', async (_request, reply) =>
   reply.type('text/html').send(mobilePreview(390)),
 );
 context.app.get('/__preview/narrow', async (_request, reply) =>
   reply.type('text/html').send(mobilePreview(320)),
 );
+context.app.get('/__preview/desktop', async (_request, reply) =>
+  reply.type('text/html').send(desktopPreview),
+);
 const clock = setInterval(() => data.setNow(Date.now()), 100);
-await context.app.listen({ host: '127.0.0.1', port: 3000 });
-console.info('S10 synthetic S09 API ready at 127.0.0.1:3000');
+await context.app.listen({ host: '127.0.0.1', port });
+console.info(`Synthetic library preview ready at 127.0.0.1:${port}`);
 async function cleanup() {
   clearInterval(clock);
   await context.cleanup();

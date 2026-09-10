@@ -62,61 +62,63 @@ export function ExpandedPlayer({ locale, onClose }: { locale: Locale; onClose: (
             ×
           </IconAction>
         </header>
-        <div className={styles.heroArtwork}>
-          <Artwork
-            alt=""
-            {...(current.coverArt ? { src: player.coverUrl(current.coverArt) } : {})}
-          />
+        <div className={styles.sheetBody} data-testid="expanded-player-scroll-body">
+          <div className={styles.heroArtwork}>
+            <Artwork
+              alt=""
+              {...(current.coverArt ? { src: player.coverUrl(current.coverArt) } : {})}
+            />
+          </div>
+          <div className={styles.sheetTitle}>
+            <strong>{current.title}</strong>
+            <span>{current.artist || copy['music.unknownArtist']}</span>
+            <CurrentQuality locale={locale} />
+          </div>
+          <label className={styles.sheetSeek}>
+            <span>{copy['player.seek']}</span>
+            <input
+              aria-label={copy['player.seek']}
+              type="range"
+              min="0"
+              max={Math.max(1, player.state.duration)}
+              value={Math.min(player.state.currentTime, Math.max(1, player.state.duration))}
+              onChange={(event) => player.seek(Number(event.currentTarget.value))}
+            />
+            <span>
+              {formatTime(player.state.currentTime)} / {formatTime(player.state.duration)}
+            </span>
+          </label>
+          <div className={styles.sheetTransport}>
+            <FavoriteAction song={current} locale={locale} compact />
+            <IconAction label={copy['player.previous']} onClick={player.previous}>
+              ◀|
+            </IconAction>
+            <IconAction
+              label={playLabel(locale, current.title, player.state.status)}
+              onClick={player.state.status === 'playing' ? player.pause : player.resume}
+            >
+              {player.state.status === 'playing' ? 'Ⅱ' : '▶'}
+            </IconAction>
+            <IconAction label={copy['player.next']} onClick={player.next}>
+              |▶
+            </IconAction>
+            <IconAction
+              label={copy['player.shuffle']}
+              pressed={queue.shuffled}
+              onClick={player.toggleShuffle}
+            >
+              ⇄
+            </IconAction>
+            <IconAction
+              label={`${copy['player.repeat']}: ${copy[`player.repeat.${queue.repeat}`]}`}
+              onClick={player.cycleRepeat}
+            >
+              ↻
+            </IconAction>
+          </div>
+          <QualityFeedback locale={locale} />
+          <QueueView locale={locale} />
         </div>
-        <div className={styles.sheetTitle}>
-          <strong>{current.title}</strong>
-          <span>{current.artist || copy['music.unknownArtist']}</span>
-          <CurrentQuality locale={locale} />
-        </div>
-        <label className={styles.sheetSeek}>
-          <span>{copy['player.seek']}</span>
-          <input
-            aria-label={copy['player.seek']}
-            type="range"
-            min="0"
-            max={Math.max(1, player.state.duration)}
-            value={Math.min(player.state.currentTime, Math.max(1, player.state.duration))}
-            onChange={(event) => player.seek(Number(event.currentTarget.value))}
-          />
-          <span>
-            {formatTime(player.state.currentTime)} / {formatTime(player.state.duration)}
-          </span>
-        </label>
-        <div className={styles.sheetTransport}>
-          <FavoriteAction song={current} locale={locale} compact />
-          <IconAction label={copy['player.previous']} onClick={player.previous}>
-            ◀|
-          </IconAction>
-          <IconAction
-            label={playLabel(locale, current.title, player.state.status)}
-            onClick={player.state.status === 'playing' ? player.pause : player.resume}
-          >
-            {player.state.status === 'playing' ? 'Ⅱ' : '▶'}
-          </IconAction>
-          <IconAction label={copy['player.next']} onClick={player.next}>
-            |▶
-          </IconAction>
-          <IconAction
-            label={copy['player.shuffle']}
-            pressed={queue.shuffled}
-            onClick={player.toggleShuffle}
-          >
-            ⇄
-          </IconAction>
-          <IconAction
-            label={`${copy['player.repeat']}: ${copy[`player.repeat.${queue.repeat}`]}`}
-            onClick={player.cycleRepeat}
-          >
-            ↻
-          </IconAction>
-        </div>
-        <QualityFeedback locale={locale} />
-        <QueueView locale={locale} />
       </section>
     </div>
   );
