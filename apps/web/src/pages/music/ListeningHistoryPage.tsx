@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Action } from '../../design/components/Action';
 import { StatusSurface } from '../../design/components/StatusSurface';
+import { SectionNav } from '../../design/components/SectionNav';
 import { LanguagePicker } from '../../app/LanguagePicker';
 import { MusicRow } from '../../music/components/MusicRow';
 import { createMusicClient } from '../../music/client';
@@ -134,50 +135,66 @@ export function ListeningHistoryPage({
     }).format(new Date(time));
   return (
     <section className={styles.page}>
-      <header>
+      <div className={styles.topline}>
+        <SectionNav
+          label={copy['listening.navigation']}
+          items={[
+            { label: copy['music.all'], href: `${base}music` },
+            {
+              label: copy['listening.history'],
+              href: `${base}music/history`,
+              current: kind === 'history',
+            },
+            {
+              label: copy['listening.top'],
+              href: `${base}music/top`,
+              current: kind === 'top',
+            },
+          ]}
+        />
         {onLocale && <LanguagePicker locale={locale} onChange={onLocale} />}
-        <a href={`${base}music`}>{copy['music.all']}</a>
+      </div>
+      <header className={styles.heading}>
         <h1 data-page-heading tabIndex={-1}>
           {title}
         </h1>
         <p>{copy['listening.scope']}</p>
-        <nav aria-label={copy['listening.navigation']}>
-          <a href={`${base}music/history`} aria-current={kind === 'history' ? 'page' : undefined}>
-            {copy['listening.history']}
-          </a>
-          <a href={`${base}music/top`} aria-current={kind === 'top' ? 'page' : undefined}>
-            {copy['listening.top']}
-          </a>
-        </nav>
       </header>
-      <div className={styles.actions}>
-        <label>
-          {copy['listening.period']}
-          <select
-            value={preset}
-            onChange={(event) => setPreset(event.target.value as 'all' | '7' | '30')}
+      <div className={styles.controlBar}>
+        <div className={styles.filterActions}>
+          <label>
+            {copy['listening.period']}
+            <select
+              value={preset}
+              onChange={(event) => setPreset(event.target.value as 'all' | '7' | '30')}
+            >
+              <option value="all">{copy['listening.all']}</option>
+              <option value="7">{copy['listening.week']}</option>
+              <option value="30">{copy['listening.month']}</option>
+            </select>
+          </label>
+          <Action variant="secondary" onClick={() => setRefresh((n) => n + 1)}>
+            {copy['listening.refresh']}
+          </Action>
+        </div>
+        <div className={styles.playbackActions}>
+          <Action
+            disabled={!canStream || !songs.length || loading}
+            onClick={() => player.activate({ song: songs[0]!, songs, source: `listening-${kind}` })}
           >
-            <option value="all">{copy['listening.all']}</option>
-            <option value="7">{copy['listening.week']}</option>
-            <option value="30">{copy['listening.month']}</option>
-          </select>
-        </label>
-        <Action onClick={() => setRefresh((n) => n + 1)}>{copy['listening.refresh']}</Action>
-        <Action
-          disabled={!canStream || !songs.length || loading}
-          onClick={() => player.activate({ song: songs[0]!, songs, source: `listening-${kind}` })}
-        >
-          {copy['mix.play']}
-        </Action>
-        <Action
-          disabled={!canStream || !songs.length || loading}
-          onClick={() => {
-            player.appendSongs(songs);
-            setNotice(copy['mix.added']);
-          }}
-        >
-          {copy['mix.append']}
-        </Action>
+            {copy['mix.play']}
+          </Action>
+          <Action
+            variant="secondary"
+            disabled={!canStream || !songs.length || loading}
+            onClick={() => {
+              player.appendSongs(songs);
+              setNotice(copy['mix.added']);
+            }}
+          >
+            {copy['mix.append']}
+          </Action>
+        </div>
       </div>
       {player.listening.pending > 0 && <p role="status">{copy['listening.saving']}</p>}
       {(player.listening.failed > 0 || player.listening.dropped > 0) && (

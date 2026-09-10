@@ -16,6 +16,7 @@ import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
 import { usePlayer } from '../../player/PlayerProvider';
 import { Action } from '../../design/components/Action';
 import { StatusSurface } from '../../design/components/StatusSurface';
+import { SectionNav } from '../../design/components/SectionNav';
 import { LanguagePicker } from '../../app/LanguagePicker';
 import { messages, type Locale } from '../../i18n';
 import { errorCode } from '../../auth/client';
@@ -133,100 +134,115 @@ export function CurationPage({
   }
   return (
     <div className={styles.page}>
-      <header className={styles.heading}>
-        <div>
-          <a href={`${base}music`}>{copy['curation.back']}</a>
-          <h1 ref={heading} tabIndex={-1} data-page-heading>
-            {copy['curation.title']}
-          </h1>
-          <p>{copy['curation.description']}</p>
-        </div>
+      <div className={styles.topline}>
+        <SectionNav
+          label={copy['music.breadcrumb']}
+          items={[
+            { label: copy['music.all'], href: `${base}music` },
+            {
+              label: copy['curation.title'],
+              href: `${base}music/curation`,
+              current: true,
+            },
+          ]}
+        />
         <LanguagePicker locale={locale} onChange={onLocale} />
+      </div>
+      <header className={styles.heading}>
+        <h1 ref={heading} tabIndex={-1} data-page-heading>
+          {copy['curation.title']}
+        </h1>
+        <p>{copy['curation.description']}</p>
       </header>
-      <div className={styles.filters}>
-        <label>
-          {copy['curation.library']}
-          <select value={filters.libraryId} onChange={(e) => filter('libraryId', e.target.value)}>
-            <option value="">{copy['curation.all']}</option>
-            {[
-              ...new Set([
-                ...(data?.coverage.map((c) => c.libraryId) ?? []),
-                ...(filters.libraryId ? [filters.libraryId] : []),
-              ]),
-            ].map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {copy['curation.format']}
-          <select
-            value={filters.format}
-            onChange={(e) => filter('format', e.target.value as CurationFilters['format'])}
-          >
-            <option value="">{copy['curation.all']}</option>
-            <option value="mp3">MP3</option>
-            <option value="unsupported">{copy['curation.unsupportedFormat']}</option>
-          </select>
-        </label>
-        <label>
-          {copy['curation.status']}
-          <select
-            value={filters.curationStatus}
-            onChange={(e) =>
-              filter('curationStatus', e.target.value as CurationFilters['curationStatus'])
-            }
-          >
-            <option value="">{copy['curation.all']}</option>
-            {(['unreviewed', 'needs_review', 'in_progress', 'completed'] as const).map((value) => (
-              <option key={value} value={value}>
-                {copy[`curation.state.${value}`]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {copy['curation.optionalField']}
-          <select
-            value={filters.field}
-            onChange={(e) => filter('field', e.target.value as CurationFilters['field'])}
-          >
-            <option value="">{copy['curation.all']}</option>
-            {(['album', 'cover', 'lyrics'] as const).map((value) => (
-              <option key={value} value={value}>
-                {copy[`metadata.${value}`]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {copy['curation.fieldStatus']}
-          <select
-            disabled={!filters.field}
-            value={filters.fieldStatus}
-            onChange={(e) =>
-              filter('fieldStatus', e.target.value as CurationFilters['fieldStatus'])
-            }
-          >
-            <option value="">{copy['curation.all']}</option>
-            {(['unknown', 'missing', 'present', 'unavailable', 'not_applicable'] as const).map(
-              (value) => (
-                <option key={value} value={value}>
-                  {copy[`curation.field.${value}`]}
+      <section className={styles.filterPanel} aria-label={copy['curation.filters']}>
+        <h2>{copy['curation.filters']}</h2>
+        <div className={styles.filters}>
+          <label>
+            {copy['curation.library']}
+            <select value={filters.libraryId} onChange={(e) => filter('libraryId', e.target.value)}>
+              <option value="">{copy['curation.all']}</option>
+              {[
+                ...new Set([
+                  ...(data?.coverage.map((c) => c.libraryId) ?? []),
+                  ...(filters.libraryId ? [filters.libraryId] : []),
+                ]),
+              ].map((id) => (
+                <option key={id} value={id}>
+                  {id}
                 </option>
-              ),
-            )}
-          </select>
-        </label>
-      </div>
-      <div className={styles.actions}>
-        <Action variant="secondary" disabled={state.loading} onClick={() => retry((v) => v + 1)}>
-          {copy['curation.refresh']}
-        </Action>
-        <p>{copy['curation.snapshotHelp']}</p>
-      </div>
+              ))}
+            </select>
+          </label>
+          <label>
+            {copy['curation.format']}
+            <select
+              value={filters.format}
+              onChange={(e) => filter('format', e.target.value as CurationFilters['format'])}
+            >
+              <option value="">{copy['curation.all']}</option>
+              <option value="mp3">MP3</option>
+              <option value="unsupported">{copy['curation.unsupportedFormat']}</option>
+            </select>
+          </label>
+          <label>
+            {copy['curation.status']}
+            <select
+              value={filters.curationStatus}
+              onChange={(e) =>
+                filter('curationStatus', e.target.value as CurationFilters['curationStatus'])
+              }
+            >
+              <option value="">{copy['curation.all']}</option>
+              {(['unreviewed', 'needs_review', 'in_progress', 'completed'] as const).map(
+                (value) => (
+                  <option key={value} value={value}>
+                    {copy[`curation.state.${value}`]}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+          <label>
+            {copy['curation.optionalField']}
+            <select
+              value={filters.field}
+              onChange={(e) => filter('field', e.target.value as CurationFilters['field'])}
+            >
+              <option value="">{copy['curation.all']}</option>
+              {(['album', 'cover', 'lyrics'] as const).map((value) => (
+                <option key={value} value={value}>
+                  {copy[`metadata.${value}`]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            {copy['curation.fieldStatus']}
+            <select
+              disabled={!filters.field}
+              value={filters.fieldStatus}
+              onChange={(e) =>
+                filter('fieldStatus', e.target.value as CurationFilters['fieldStatus'])
+              }
+            >
+              <option value="">{copy['curation.all']}</option>
+              {(['unknown', 'missing', 'present', 'unavailable', 'not_applicable'] as const).map(
+                (value) => (
+                  <option key={value} value={value}>
+                    {copy[`curation.field.${value}`]}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+        </div>
+        <div className={styles.actions}>
+          <Action variant="secondary" disabled={state.loading} onClick={() => retry((v) => v + 1)}>
+            {copy['curation.refresh']}
+          </Action>
+          <p>{copy['curation.snapshotHelp']}</p>
+        </div>
+      </section>
       {state.loading && !data && (
         <StatusSurface
           state="loading"
@@ -245,24 +261,30 @@ export function CurationPage({
       {playError && <p role="alert">{copy[`error.${playError}`]}</p>}
       {data && (
         <>
-          <p role="status">
-            {copy['curation.count']
-              .replace('{shown}', String(data.tracks.length))
-              .replace('{total}', String(data.total))}{' '}
-            · {copy['curation.asOf']} {date(data.asOf)}
-          </p>
-          <ul className={styles.coverage} aria-label={copy['curation.coverage']}>
-            {data.coverage.map((item) => (
-              <li key={item.libraryId}>
-                {item.libraryId} · {copy[`curation.coverage.${item.status}`]} ·{' '}
-                {copy['curation.coverageCount']
-                  .replace('{found}', String(item.discoveredCount))
-                  .replace('{verified}', String(item.verifiedCount))
-                  .replace('{unknown}', String(item.unknownCount))}
-              </li>
-            ))}
-          </ul>
-          {pending && <p role="status">{copy['curation.inventoryPending']}</p>}
+          <section className={styles.summaryPanel} aria-label={copy['curation.coverage']}>
+            <h2>{copy['curation.coverage']}</h2>
+            <p className={styles.resultCount} role="status">
+              {copy['curation.count']
+                .replace('{shown}', String(data.tracks.length))
+                .replace('{total}', String(data.total))}{' '}
+              · {copy['curation.asOf']} {date(data.asOf)}
+            </p>
+            <ul className={styles.coverage}>
+              {data.coverage.map((item) => (
+                <li key={item.libraryId}>
+                  <strong>{item.libraryId}</strong>
+                  <span>{copy[`curation.coverage.${item.status}`]}</span>
+                  <span>
+                    {copy['curation.coverageCount']
+                      .replace('{found}', String(item.discoveredCount))
+                      .replace('{verified}', String(item.verifiedCount))
+                      .replace('{unknown}', String(item.unknownCount))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {pending && <p role="status">{copy['curation.inventoryPending']}</p>}
+          </section>
           {!data.tracks.length && (
             <StatusSurface
               state="empty"

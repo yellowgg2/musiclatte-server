@@ -1,0 +1,220 @@
+{
+  "controls": [
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "_skip_1e54e_188",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 132,
+        "x": 12,
+        "y": -84
+      },
+      "tag": "a",
+      "text": "본문으로 건너뛰기"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 63,
+        "width": 99,
+        "x": 8,
+        "y": 689
+      },
+      "tag": "a",
+      "text": "음악"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 63,
+        "width": 99,
+        "x": 111,
+        "y": 689
+      },
+      "tag": "a",
+      "text": "재생목록"
+    },
+    {
+      "background": "rgb(238, 231, 245)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": "page",
+      "disabled": false,
+      "rect": {
+        "height": 63,
+        "width": 99,
+        "x": 213,
+        "y": 689
+      },
+      "tag": "a",
+      "text": "설정"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_action_y3rzf_1 _secondary_y3rzf_25",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 86,
+        "x": 41,
+        "y": 272
+      },
+      "tag": "button",
+      "text": "로그아웃"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 99,
+        "x": 79,
+        "y": 398
+      },
+      "tag": "select",
+      "text": "한국어English"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(0, 0, 0)",
+      "className": "",
+      "color": "rgb(0, 0, 0)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 13,
+        "width": 13,
+        "x": 69,
+        "y": 682
+      },
+      "tag": "input",
+      "text": ""
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(0, 0, 0)",
+      "className": "",
+      "color": "rgb(0, 0, 0)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 13,
+        "width": 13,
+        "x": 69,
+        "y": 736
+      },
+      "tag": "input",
+      "text": ""
+    }
+  ],
+  "document": {
+    "clientHeight": 760,
+    "clientWidth": 320,
+    "horizontalOverflow": false,
+    "scrollHeight": 1271,
+    "scrollWidth": 320
+  },
+  "fixed": [
+    {
+      "position": "fixed",
+      "rect": {
+        "height": 48,
+        "width": 132,
+        "x": 12,
+        "y": -84
+      },
+      "tag": "a",
+      "text": "본문으로 건너뛰기"
+    },
+    {
+      "position": "fixed",
+      "rect": {
+        "height": 80,
+        "width": 320,
+        "x": 0,
+        "y": 680
+      },
+      "tag": "nav",
+      "text": "주 메뉴"
+    }
+  ],
+  "heading": "설정",
+  "locale": "ko",
+  "navigation": [
+    {
+      "label": "주 메뉴",
+      "links": [
+        {
+          "current": null,
+          "text": "음악"
+        },
+        {
+          "current": null,
+          "text": "재생목록"
+        },
+        {
+          "current": "page",
+          "text": "설정"
+        }
+      ]
+    }
+  ],
+  "reducedMotion": false,
+  "surface": "quality-ko-320",
+  "url": "/settings",
+  "viewport": {
+    "dpr": 1,
+    "height": 760,
+    "width": 320
+  },
+  "radioLabels": [
+    {
+      "labelRect": {
+        "bottom": 708.9453125,
+        "height": 44,
+        "left": 56.25,
+        "right": 263.75,
+        "top": 664.9453125,
+        "width": 207.5,
+        "x": 56.25,
+        "y": 664.9453125
+      },
+      "value": "original"
+    },
+    {
+      "labelRect": {
+        "bottom": 772.9453125,
+        "height": 64,
+        "left": 56.25,
+        "right": 263.75,
+        "top": 708.9453125,
+        "width": 207.5,
+        "x": 56.25,
+        "y": 708.9453125
+      },
+      "value": "economy"
+    }
+  ]
+}

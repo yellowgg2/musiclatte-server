@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Musiclatte Phase 7 UI review</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: #f7f5f2;
+        color: #292633;
+      }
+      body {
+        margin: 0;
+        padding: 32px;
+      }
+      main {
+        max-width: 1280px;
+        margin: auto;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.4rem);
+        margin: 0.3rem 0 1rem;
+      }
+      .lead {
+        color: #6b6672;
+        max-width: 70ch;
+      }
+      .status {
+        border-left: 5px solid #8b6b2d;
+        background: #fff8e8;
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin: 24px 0;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 16px;
+      }
+      .wide {
+        grid-column: 1 / -1;
+      }
+      .comparison {
+        display: grid;
+        grid-template-columns: minmax(0, 3fr) minmax(220px, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+      figure {
+        margin: 0;
+      }
+      figcaption {
+        color: #6b6672;
+        font-weight: 700;
+      }
+      article {
+        background: white;
+        border: 1px solid #ded9e2;
+        border-radius: 18px;
+        padding: 20px;
+      }
+      article h2 {
+        margin-top: 0;
+      }
+      .shot {
+        display: block;
+        width: 100%;
+        height: auto;
+        margin: 16px 0;
+        border: 1px solid #ded9e2;
+        border-radius: 12px;
+        background: #f7f5f2;
+      }
+      .tag {
+        display: inline-block;
+        background: #eee8f6;
+        color: #69508b;
+        border-radius: 999px;
+        padding: 5px 9px;
+        font-weight: 700;
+        font-size: 0.82rem;
+      }
+      a {
+        color: #5f477e;
+      }
+      footer {
+        margin-top: 28px;
+        color: #6b6672;
+      }
+      @media (max-width: 760px) {
+        body {
+          padding: 16px;
+        }
+        .comparison {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="tag">P7-UA-001–005 · automatic matrix passed</span>
+      <h1>웹 감상 확장 UI 검토</h1>
+      <p class="lead">
+        실제 normal route와 합성 안전 fixture를 Chrome 1440×900, 390×844, 320px 및 실제 200%
+        확대에서 확인했습니다. 아래에는 승인된 방향의 대표 화면을 표시합니다.
+      </p>
+      <div class="status">
+        <strong>현재 상태: 통과 5건, 사용자 요청 스킵 1건, 사용자 검수 1건 남음</strong><br />KO/EN,
+        반응형, 실제 Chrome 200% 확대, 키보드 조작, contrast, 오류/빈 상태와 플레이어 겹침을
+        통과했습니다. VoiceOver는 사용자 요청으로 스킵했으며 실제 iPhone Safari 결과만 남았습니다.
+      </div>
+      <section class="grid">
+        <article class="wide" id="mix">
+          <h2>저장한 믹스 · 수정 후</h2>
+          <div class="comparison">
+            <figure>
+              <figcaption>Desktop</figcaption>
+              <img
+                class="shot"
+                src="screenshots/mix-desktop-after.png"
+                alt="수정된 저장한 믹스 데스크톱 화면"
+              />
+            </figure>
+            <figure>
+              <figcaption>390px</figcaption>
+              <img
+                class="shot"
+                src="screenshots/mix-mobile-390-after.png"
+                alt="수정된 저장한 믹스 390픽셀 화면"
+              />
+            </figure>
+          </div>
+          <p>
+            ‘모든 음악 / 저장한 믹스 / 현재 믹스’를 상단으로 이동하고 언어 선택을 우측에 맞췄습니다.
+            조건 저장은 primary, 믹스 삭제는 destructive, 다시 뽑기·큐 추가는 secondary로
+            구분했습니다. 중앙 68rem 제한도 제거했습니다.
+          </p>
+          <p><code>P7-UA-001/005</code></p>
+        </article>
+        <article class="wide" id="listening">
+          <h2>최근 감상 · 수정 후</h2>
+          <div class="comparison">
+            <figure>
+              <figcaption>Desktop</figcaption>
+              <img
+                class="shot"
+                src="screenshots/listening-desktop-after.png"
+                alt="수정된 최근 감상 데스크톱 화면"
+              />
+            </figure>
+            <figure>
+              <figcaption>390px</figcaption>
+              <img
+                class="shot"
+                src="screenshots/listening-mobile-390-after.png"
+                alt="수정된 최근 감상 390픽셀 화면"
+              />
+            </figure>
+          </div>
+          <p>
+            ‘모든 음악 / 최근 감상 / 자주 들은 곡’을 최상단 전환 영역으로 이동했습니다. 기간과
+            새로고침은 좌측 filter group, 지금 재생과 큐 추가는 우측 playback group으로 나누고
+            primary/secondary 위계를 적용했습니다. 320px 재배치도 별도로 확인했습니다.
+          </p>
+          <p><code>P7-UA-002/005</code></p>
+        </article>
+        <article id="quality">
+          <h2>재생 품질</h2>
+          <img
+            class="shot"
+            src="screenshots/quality-desktop.png"
+            alt="재생 품질 설정 데스크톱 화면"
+          />
+          <p>다음 곡 선택 radio와 현재 곡의 effective 품질이 분리되어 보이는지 확인했습니다.</p>
+          <p><code>P7-UA-003/005</code></p>
+        </article>
+        <article id="artist">
+          <h2>아티스트 상세</h2>
+          <img
+            class="shot"
+            src="screenshots/artist-desktop.png"
+            alt="아티스트 상세 데스크톱 화면"
+          />
+          <p>
+            앨범 우선 위계, 긴 소개, 이미지 fallback, 더 보기와 관련 아티스트 이동을 확인했습니다.
+          </p>
+          <p><code>P7-UA-004/005</code></p>
+        </article>
+        <article id="gallery">
+          <h2>승인 Gallery</h2>
+          <img
+            class="shot"
+            src="screenshots/gallery-desktop.png"
+            alt="공유 컴포넌트 Gallery 화면"
+          />
+          <p>
+            2026-09-10 사용자 확인: 컴포넌트 Gallery 방향은 괜찮음. shared primitive 변경은
+            없습니다.
+          </p>
+        </article>
+      </section>
+      <footer>
+        Run <code>20260910-100110+0900</code> · product base <code>f75edf7</code> + acceptance
+        feedback patch · 자세한 기록은
+        <a href="report.md">report.md</a>
+      </footer>
+    </main>
+  </body>
+</html>

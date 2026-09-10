@@ -7,6 +7,7 @@ import { useMetadataSelectionRebase } from '../../metadata/selection';
 import { Action } from '../../design/components/Action';
 import { TextField } from '../../design/components/TextField';
 import { StatusSurface } from '../../design/components/StatusSurface';
+import { SectionNav } from '../../design/components/SectionNav';
 import { LanguagePicker } from '../../app/LanguagePicker';
 import { messages, formatCount, type Locale } from '../../i18n';
 import { errorCode } from '../../auth/client';
@@ -281,60 +282,43 @@ export function MusicPage({
         </div>
       </div>
       {route.kind !== 'folders' && (
-        <nav className={styles.breadcrumb} aria-label={copy['music.breadcrumb']}>
-          <a href={`${base}music`}>{copy['music.all']}</a>
-          {scope.size > 0 && (
-            <>
-              <span aria-hidden="true">/</span>
-              <a href={link('folders')}>{copy['music.selectedLibrary']}</a>
-            </>
-          )}
-          {data?.kind === 'folder' && data.directory.parent && (
-            <>
-              <span aria-hidden="true">/</span>
-              <a href={link('folder', data.directory.parent)}>{copy['music.parent']}</a>
-            </>
-          )}
-        </nav>
+        <SectionNav
+          label={copy['music.breadcrumb']}
+          items={[
+            { label: copy['music.all'], href: `${base}music` },
+            ...(scope.size > 0
+              ? [{ label: copy['music.selectedLibrary'], href: link('folders') }]
+              : []),
+            ...(data?.kind === 'folder' && data.directory.parent
+              ? [{ label: copy['music.parent'], href: link('folder', data.directory.parent) }]
+              : []),
+            { label: title, current: true },
+          ]}
+        />
       )}
       <div className={styles.toolbar}>
-        <nav className={styles.views} aria-label={copy['music.title']}>
-          {route.kind === 'folders' && (
-            <a className={styles.favoriteLink} href={`${base}music`} aria-current="page">
-              {copy['music.all']}
-            </a>
-          )}
-          {canListening && (
-            <>
-              <a className={styles.favoriteLink} href={`${base}music/history`}>
-                {copy['listening.history']}
-              </a>
-              <a className={styles.favoriteLink} href={`${base}music/top`}>
-                {copy['listening.top']}
-              </a>
-            </>
-          )}
-          {canMixes && (
-            <a className={styles.favoriteLink} href={`${base}music/mixes`}>
-              {copy['mix.title']}
-            </a>
-          )}
-          {canCuration && (
-            <a className={styles.favoriteLink} href={`${base}music/curation`}>
-              {copy['curation.title']}
-            </a>
-          )}
-          {canRecent && (
-            <a className={styles.favoriteLink} href={`${base}music/recent`}>
-              {copy['recent.title']}
-            </a>
-          )}
-          {canFavorites && (
-            <a className={styles.favoriteLink} href={`${base}music/favorites`}>
-              <span aria-hidden="true">★</span> {copy['favorites.title']}
-            </a>
-          )}
-        </nav>
+        <SectionNav
+          label={copy['music.title']}
+          items={[
+            ...(route.kind === 'folders'
+              ? [{ label: copy['music.all'], href: `${base}music`, current: true }]
+              : []),
+            ...(canListening
+              ? [
+                  { label: copy['listening.history'], href: `${base}music/history` },
+                  { label: copy['listening.top'], href: `${base}music/top` },
+                ]
+              : []),
+            ...(canMixes ? [{ label: copy['mix.title'], href: `${base}music/mixes` }] : []),
+            ...(canCuration
+              ? [{ label: copy['curation.title'], href: `${base}music/curation` }]
+              : []),
+            ...(canRecent ? [{ label: copy['recent.title'], href: `${base}music/recent` }] : []),
+            ...(canFavorites
+              ? [{ label: copy['favorites.title'], href: `${base}music/favorites` }]
+              : []),
+          ]}
+        />
         {canRandom && (
           <div className={styles.random}>
             <Action

@@ -1,0 +1,447 @@
+{
+  "controls": [
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "_skip_1e54e_188",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 132,
+        "x": 12,
+        "y": -84
+      },
+      "tag": "a",
+      "text": "본문으로 건너뛰기"
+    },
+    {
+      "background": "rgb(238, 231, 245)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": "page",
+      "disabled": false,
+      "rect": {
+        "height": 63,
+        "width": 99,
+        "x": 8,
+        "y": 689
+      },
+      "tag": "a",
+      "text": "음악"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 63,
+        "width": 99,
+        "x": 111,
+        "y": 689
+      },
+      "tag": "a",
+      "text": "재생목록"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 63,
+        "width": 99,
+        "x": 213,
+        "y": 689
+      },
+      "tag": "a",
+      "text": "설정"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 93,
+        "x": 212,
+        "y": 96
+      },
+      "tag": "select",
+      "text": "한국어English"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 49,
+        "x": 16,
+        "y": 156
+      },
+      "tag": "a",
+      "text": "모든 음악"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "_favoriteLink_1it5r_115",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 99,
+        "x": 16,
+        "y": 216
+      },
+      "tag": "a",
+      "text": "★ 즐겨찾기"
+    },
+    {
+      "background": "rgb(105, 80, 139)",
+      "borderColor": "rgba(0, 0, 0, 0)",
+      "className": "_action_y3rzf_1 _primary_y3rzf_18",
+      "color": "rgb(255, 255, 255)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 119,
+        "x": 185,
+        "y": 216
+      },
+      "tag": "button",
+      "text": "랜덤 음악 재생"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_input_smb7j_10",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 288,
+        "x": 16,
+        "y": 308
+      },
+      "tag": "input",
+      "text": ""
+    },
+    {
+      "background": "rgb(105, 80, 139)",
+      "borderColor": "rgba(0, 0, 0, 0)",
+      "className": "_action_y3rzf_1 _primary_y3rzf_18",
+      "color": "rgb(255, 255, 255)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 60,
+        "x": 16,
+        "y": 364
+      },
+      "tag": "button",
+      "text": "검색"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "_folderRow_1it5r_82",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 72,
+        "width": 286,
+        "x": 17,
+        "y": 469
+      },
+      "tag": "a",
+      "text": "Small hours›"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgba(0, 0, 0, 0)",
+      "className": "_action_y3rzf_1 _quiet_y3rzf_30",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 150,
+        "x": 137,
+        "y": 755
+      },
+      "tag": "button",
+      "text": "더 보기"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 68,
+        "x": 137,
+        "y": 879
+      },
+      "tag": "a",
+      "text": "Moonlight"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(41, 38, 51)",
+      "className": "_miniTrack_z8qyx_28",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 50,
+        "width": 106,
+        "x": 81,
+        "y": 627
+      },
+      "tag": "button",
+      "text": "플레이어 열기: The slow way home"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_action_16bdt_1",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 44,
+        "x": 199,
+        "y": 630
+      },
+      "tag": "button",
+      "text": "The slow way home 재생"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_action_16bdt_1",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 44,
+        "x": 255,
+        "y": 630
+      },
+      "tag": "button",
+      "text": "The slow way home 즐겨찾기에 추가"
+    }
+  ],
+  "document": {
+    "clientHeight": 760,
+    "clientWidth": 320,
+    "horizontalOverflow": false,
+    "scrollHeight": 1099,
+    "scrollWidth": 320
+  },
+  "fixed": [
+    {
+      "position": "fixed",
+      "rect": {
+        "height": 48,
+        "width": 132,
+        "x": 12,
+        "y": -84
+      },
+      "tag": "a",
+      "text": "본문으로 건너뛰기"
+    },
+    {
+      "position": "fixed",
+      "rect": {
+        "height": 80,
+        "width": 320,
+        "x": 0,
+        "y": 680
+      },
+      "tag": "nav",
+      "text": "주 메뉴"
+    },
+    {
+      "position": "fixed",
+      "rect": {
+        "height": 68,
+        "width": 304,
+        "x": 8,
+        "y": 618
+      },
+      "tag": "aside",
+      "text": "지금 재생 중"
+    }
+  ],
+  "heading": "Daylight",
+  "locale": "ko",
+  "navigation": [
+    {
+      "label": "주 메뉴",
+      "links": [
+        {
+          "current": "page",
+          "text": "음악"
+        },
+        {
+          "current": null,
+          "text": "재생목록"
+        },
+        {
+          "current": null,
+          "text": "설정"
+        }
+      ]
+    },
+    {
+      "label": "현재 위치",
+      "links": [
+        {
+          "current": null,
+          "text": "모든 음악"
+        }
+      ]
+    },
+    {
+      "label": "음악",
+      "links": [
+        {
+          "current": null,
+          "text": "★ 즐겨찾기"
+        }
+      ]
+    }
+  ],
+  "reducedMotion": false,
+  "surface": "artist-ko-320-player",
+  "url": "/music/artists/artist-1",
+  "viewport": {
+    "dpr": 1,
+    "height": 760,
+    "width": 320
+  },
+  "overlap": {
+    "bottomNav": [
+      {
+        "label": "주 메뉴",
+        "rect": {
+          "bottom": 760,
+          "height": 79.796875,
+          "left": 0,
+          "right": 320,
+          "top": 680.203125,
+          "width": 320,
+          "x": 0,
+          "y": 680.203125
+        }
+      },
+      {
+        "label": "현재 위치",
+        "rect": {
+          "bottom": 199.5,
+          "height": 44,
+          "left": 16,
+          "right": 304,
+          "top": 155.5,
+          "width": 288,
+          "x": 16,
+          "y": 155.5
+        }
+      },
+      {
+        "label": "음악",
+        "rect": {
+          "bottom": 259.5,
+          "height": 44,
+          "left": 16,
+          "right": 115.265625,
+          "top": 215.5,
+          "width": 99.265625,
+          "x": 16,
+          "y": 215.5
+        }
+      }
+    ],
+    "dpr": 1,
+    "fixed": [
+      {
+        "rect": {
+          "bottom": -36,
+          "height": 48,
+          "left": 12,
+          "right": 143.7890625,
+          "top": -84,
+          "width": 131.7890625,
+          "x": 12,
+          "y": -84
+        },
+        "text": "본문으로 건너뛰기"
+      },
+      {
+        "rect": {
+          "bottom": 760,
+          "height": 79.796875,
+          "left": 0,
+          "right": 320,
+          "top": 680.203125,
+          "width": 320,
+          "x": 0,
+          "y": 680.203125
+        },
+        "text": "음악재생목록설정"
+      },
+      {
+        "rect": {
+          "bottom": 0,
+          "height": 0,
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "width": 0,
+          "x": 0,
+          "y": 0
+        },
+        "text": "The slow way homeDaylight◀|▶|▶재생 위치0:020:02⇄↻음량≡"
+      },
+      {
+        "rect": {
+          "bottom": 686.40625,
+          "height": 68,
+          "left": 8,
+          "right": 312,
+          "top": 618.40625,
+          "width": 304,
+          "x": 8,
+          "y": 618.40625
+        },
+        "text": "The slow way homeDaylight▶|▶"
+      }
+    ]
+  }
+}

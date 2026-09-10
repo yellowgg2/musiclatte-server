@@ -1,0 +1,141 @@
+{
+  "failures": [],
+  "samples": [
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 6.73,
+      "required": 4.5,
+      "tag": "a",
+      "text": "본문으로 건너뛰기"
+    },
+    {
+      "background": [238, 231, 245],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 5.57,
+      "required": 4.5,
+      "tag": "a",
+      "text": "음악"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 6.73,
+      "required": 4.5,
+      "tag": "a",
+      "text": "재생목록"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 6.73,
+      "required": 4.5,
+      "tag": "a",
+      "text": "설정"
+    },
+    {
+      "background": [247, 245, 242],
+      "color": "rgb(41, 38, 51)",
+      "pass": true,
+      "ratio": 13.6,
+      "required": 3,
+      "tag": "h1",
+      "text": "Daylight"
+    },
+    {
+      "background": [247, 245, 242],
+      "color": "rgb(41, 38, 51)",
+      "pass": true,
+      "ratio": 13.6,
+      "required": 4.5,
+      "tag": "label",
+      "text": "언어한국어English"
+    },
+    {
+      "background": [247, 245, 242],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 6.18,
+      "required": 4.5,
+      "tag": "a",
+      "text": "모든 음악"
+    },
+    {
+      "background": [247, 245, 242],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 6.18,
+      "required": 4.5,
+      "tag": "a",
+      "text": "★ 즐겨찾기"
+    },
+    {
+      "background": [105, 80, 139],
+      "color": "rgb(255, 255, 255)",
+      "pass": true,
+      "ratio": 6.73,
+      "required": 4.5,
+      "tag": "button",
+      "text": "랜덤 음악 재생"
+    },
+    {
+      "background": [247, 245, 242],
+      "color": "rgb(41, 38, 51)",
+      "pass": true,
+      "ratio": 13.6,
+      "required": 4.5,
+      "tag": "label",
+      "text": "음악 검색"
+    },
+    {
+      "background": [105, 80, 139],
+      "color": "rgb(255, 255, 255)",
+      "pass": true,
+      "ratio": 6.73,
+      "required": 4.5,
+      "tag": "button",
+      "text": "검색"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 6.73,
+      "required": 4.5,
+      "tag": "a",
+      "text": "Small hours›"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(41, 38, 51)",
+      "pass": true,
+      "ratio": 14.8,
+      "required": 4.5,
+      "tag": "p",
+      "text": "Server biography. Server biography. Server biography. Server biography. Server biography. Server bio"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 6.73,
+      "required": 4.5,
+      "tag": "button",
+      "text": "더 보기"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 6.73,
+      "required": 4.5,
+      "tag": "a",
+      "text": "Moonlight"
+    }
+  ],
+  "surface": "artist-ko-1440"
+}

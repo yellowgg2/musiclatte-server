@@ -113,7 +113,7 @@ export function Router({
   useEffect(() => {
     void store.restore();
     const refresh = () => {
-      if (document.visibilityState === 'visible') void store.restore();
+      if (document.visibilityState === 'visible') void store.restore({ background: true });
     };
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);

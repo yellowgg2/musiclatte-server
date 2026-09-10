@@ -1,10 +1,21 @@
 // @vitest-environment jsdom
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { act, cleanup, render, screen, fireEvent } from '@testing-library/react';
+import { act, cleanup, render, screen, fireEvent, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { PlayerProvider } from '../src/player/PlayerProvider';
 afterEach(cleanup);
+
+/** Mobile filters keep actions at their normal control height instead of stretching to the label stack. */
+it('should keep the listening refresh action compact when mobile controls wrap', () => {
+  const css = readFileSync(resolve('apps/web/src/pages/music/Listening.module.css'), 'utf8');
+  const mobile = css.slice(css.indexOf('@media (max-width: 48rem)'));
+
+  expect(mobile).not.toMatch(
+    /\.filterActions,\s*\.playbackActions\s*\{[^}]*align-items:\s*stretch/,
+  );
+});
+
 /** Repeated songs remain distinct history events and unavailable songs retain their timestamp. */
 it('should render repeated events and unavailable songs without autoplay', async () => {
   const path = resolve('apps/web/src/pages/music/ListeningHistoryPage.tsx');
@@ -51,10 +62,25 @@ it('should render repeated events and unavailable songs without autoplay', async
         apiOrigin=""
         onUnauthenticated={() => {}}
         canStream
+        onLocale={() => {}}
       />
     </PlayerProvider>,
   );
   await screen.findByRole('heading', { name: 'Recent listening' });
+  const navigation = screen.getByRole('navigation', { name: 'Listening navigation' });
+  expect(within(navigation).getByRole('link', { name: 'All music' })).toBeTruthy();
+  expect(
+    within(navigation).getByRole('link', { name: 'Recent listening' }).getAttribute('aria-current'),
+  ).toBe('page');
+  expect(within(navigation).getByRole('link', { name: 'Frequently played' })).toBeTruthy();
+  expect(navigation.parentElement?.contains(screen.getByLabelText('Language'))).toBe(true);
+  const refresh = screen.getByRole('button', { name: 'Refresh history' });
+  const primaryPlay = screen
+    .getAllByRole('button', { name: 'Play now' })
+    .find((button) => !button.hasAttribute('disabled'))!;
+  const append = screen.getByRole('button', { name: 'Add to queue' });
+  expect(primaryPlay.className).not.toBe(refresh.className);
+  expect(append.className).toBe(refresh.className);
   expect((await screen.findAllByText('Synthetic song')).length).toBe(2);
   expect(screen.getByText('Song unavailable')).toBeTruthy();
   expect(audio.play).not.toHaveBeenCalled();

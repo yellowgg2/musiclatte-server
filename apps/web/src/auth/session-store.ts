@@ -21,6 +21,7 @@ export function createSessionStore(client: SessionClient) {
   };
   let generation = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let restoreInFlight: Promise<void> | undefined;
   const listeners = new Set<() => void>();
   function update(patch: Partial<SessionState>) {
     state = { ...state, ...patch };
@@ -72,18 +73,27 @@ export function createSessionStore(client: SessionClient) {
       else update({ capabilityUnavailable: true });
     }
   }
-  async function restore() {
-    if (state.busy) return;
-    const version = ++generation;
-    if (!state.session) update({ status: 'loading', error: null });
-    try {
-      await accept(await client.read(), version);
-    } catch (error) {
-      if (version !== generation) return;
-      const code = errorCode(error);
-      if (code === 'unauthenticated') clear(state.session ? 'expired' : state.reason);
-      else update({ status: state.session ? 'signed-in' : 'error', error: code, busy: false });
-    }
+  function restore({ background = false }: { background?: boolean } = {}) {
+    if (state.busy) return Promise.resolve();
+    if (restoreInFlight) return restoreInFlight;
+    const task = (async () => {
+      const version = ++generation;
+      if (!state.session && !background) update({ status: 'loading', error: null });
+      try {
+        await accept(await client.read(), version);
+      } catch (error) {
+        if (version !== generation) return;
+        const code = errorCode(error);
+        if (code === 'unauthenticated') clear(state.session ? 'expired' : state.reason);
+        else if (!background || state.session)
+          update({ status: state.session ? 'signed-in' : 'error', error: code, busy: false });
+      }
+    })();
+    restoreInFlight = task;
+    void task.finally(() => {
+      if (restoreInFlight === task) restoreInFlight = undefined;
+    });
+    return task;
   }
   return {
     getSnapshot: () => state,

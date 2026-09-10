@@ -1,0 +1,200 @@
+{
+  "controls": [
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "_skip_1e54e_188",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 132,
+        "x": 12,
+        "y": -84
+      },
+      "tag": "a",
+      "text": "본문으로 건너뛰기"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 214,
+        "x": 12,
+        "y": 115
+      },
+      "tag": "a",
+      "text": "음악"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 214,
+        "x": 12,
+        "y": 163
+      },
+      "tag": "a",
+      "text": "재생목록"
+    },
+    {
+      "background": "rgb(238, 231, 245)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": "page",
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 214,
+        "x": 12,
+        "y": 211
+      },
+      "tag": "a",
+      "text": "설정"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_action_y3rzf_1 _secondary_y3rzf_25",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 86,
+        "x": 897,
+        "y": 138
+      },
+      "tag": "button",
+      "text": "로그아웃"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 99,
+        "x": 335,
+        "y": 266
+      },
+      "tag": "select",
+      "text": "한국어English"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(0, 0, 0)",
+      "className": "",
+      "color": "rgb(0, 0, 0)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 13,
+        "width": 13,
+        "x": 325,
+        "y": 526
+      },
+      "tag": "input",
+      "text": ""
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(0, 0, 0)",
+      "className": "",
+      "color": "rgb(0, 0, 0)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 13,
+        "width": 13,
+        "x": 325,
+        "y": 570
+      },
+      "tag": "input",
+      "text": ""
+    }
+  ],
+  "document": {
+    "clientHeight": 900,
+    "clientWidth": 1440,
+    "horizontalOverflow": false,
+    "scrollHeight": 984,
+    "scrollWidth": 1440
+  },
+  "fixed": [
+    {
+      "position": "fixed",
+      "rect": {
+        "height": 48,
+        "width": 132,
+        "x": 12,
+        "y": -84
+      },
+      "tag": "a",
+      "text": "본문으로 건너뛰기"
+    },
+    {
+      "position": "fixed",
+      "rect": {
+        "height": 900,
+        "width": 240,
+        "x": 0,
+        "y": 0
+      },
+      "tag": "div",
+      "text": "Musiclatte음악재생목록설정"
+    }
+  ],
+  "heading": "설정",
+  "locale": "ko",
+  "navigation": [
+    {
+      "label": "주 메뉴",
+      "links": [
+        {
+          "current": null,
+          "text": "음악"
+        },
+        {
+          "current": null,
+          "text": "재생목록"
+        },
+        {
+          "current": "page",
+          "text": "설정"
+        }
+      ]
+    }
+  ],
+  "reducedMotion": false,
+  "surface": "quality-ko-economy",
+  "url": "/settings",
+  "viewport": {
+    "dpr": 1,
+    "height": 900,
+    "width": 1440
+  },
+  "qualityCopy": {
+    "checked": ["economy"],
+    "text": [
+      "다음 곡 재생 품질",
+      "다음에 재생을 시작하는 곡부터 적용됩니다. 현재 곡의 품질은 유지됩니다.",
+      "현재 곡: 서버 기본값"
+    ]
+  }
+}

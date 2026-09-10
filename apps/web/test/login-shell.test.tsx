@@ -2,7 +2,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentType } from 'react';
 
@@ -150,6 +150,38 @@ describe('login shell', () => {
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     finish(Response.json({ error: { code: 'unauthenticated' } }, { status: 401 }));
     expect(await screen.findByLabelText('Username')).toBeTruthy();
+  });
+
+  /** Background session checks keep an in-progress login draft mounted and coalesce duplicate resume events. */
+  it('should preserve login fields while a background session refresh is pending', async () => {
+    localStorage.setItem('musiclatte.locale', 'en');
+    const context = createTestContext();
+    const original = context.fetcher;
+    let sessionReads = 0;
+    let finishBackground!: (response: Response) => void;
+    context.fetcher = async (input, init) => {
+      if (String(input).endsWith('/session') && init?.method === 'GET' && ++sessionReads > 1)
+        return new Promise<Response>((resolve) => {
+          finishBackground = resolve;
+        });
+      return original(input, init);
+    };
+    const { user } = await makeSUT(context);
+    await user.type(await screen.findByLabelText('Username'), 'fixture-listener');
+    await user.type(screen.getByLabelText('Password'), 'draft-password');
+
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect((screen.getByLabelText('Username') as HTMLInputElement).value).toBe('fixture-listener');
+    expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe('draft-password');
+    expect(sessionReads).toBe(2);
+    finishBackground(Response.json({ error: { code: 'unauthenticated' } }, { status: 401 }));
+    await waitFor(() => expect(sessionReads).toBe(2));
+    expect((screen.getByLabelText('Username') as HTMLInputElement).value).toBe('fixture-listener');
+    expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe('draft-password');
   });
 
   /** Music layout is inspectable only in development and does not activate music navigation. */

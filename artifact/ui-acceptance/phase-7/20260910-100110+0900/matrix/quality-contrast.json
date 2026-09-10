@@ -1,0 +1,159 @@
+{
+  "failures": [],
+  "samples": [
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 6.73,
+      "required": 4.5,
+      "tag": "a",
+      "text": "본문으로 건너뛰기"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 6.73,
+      "required": 4.5,
+      "tag": "a",
+      "text": "음악"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 6.73,
+      "required": 4.5,
+      "tag": "a",
+      "text": "재생목록"
+    },
+    {
+      "background": [238, 231, 245],
+      "color": "rgb(105, 80, 139)",
+      "pass": true,
+      "ratio": 5.57,
+      "required": 4.5,
+      "tag": "a",
+      "text": "설정"
+    },
+    {
+      "background": [247, 245, 242],
+      "color": "rgb(41, 38, 51)",
+      "pass": true,
+      "ratio": 13.6,
+      "required": 3,
+      "tag": "h1",
+      "text": "설정"
+    },
+    {
+      "background": [247, 245, 242],
+      "color": "rgb(104, 97, 112)",
+      "pass": true,
+      "ratio": 5.46,
+      "required": 4.5,
+      "tag": "p",
+      "text": "계정과 언어를 관리하세요."
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(104, 97, 112)",
+      "pass": true,
+      "ratio": 5.94,
+      "required": 4.5,
+      "tag": "p",
+      "text": "로그인한 계정"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(41, 38, 51)",
+      "pass": true,
+      "ratio": 14.8,
+      "required": 4.5,
+      "tag": "p",
+      "text": "fixture-listener"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(41, 38, 51)",
+      "pass": true,
+      "ratio": 14.8,
+      "required": 4.5,
+      "tag": "button",
+      "text": "로그아웃"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(41, 38, 51)",
+      "pass": true,
+      "ratio": 14.8,
+      "required": 4.5,
+      "tag": "label",
+      "text": "언어한국어English"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(104, 97, 112)",
+      "pass": true,
+      "ratio": 5.94,
+      "required": 4.5,
+      "tag": "p",
+      "text": "언어를 바꿔도 현재 화면과 로그인 상태는 유지돼요."
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(41, 38, 51)",
+      "pass": true,
+      "ratio": 14.8,
+      "required": 4.5,
+      "tag": "label",
+      "text": "원본"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(41, 38, 51)",
+      "pass": true,
+      "ratio": 14.8,
+      "required": 4.5,
+      "tag": "label",
+      "text": "절약 (MP3 최대 128 kbps)"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(41, 38, 51)",
+      "pass": true,
+      "ratio": 14.8,
+      "required": 4.5,
+      "tag": "p",
+      "text": "다음에 재생을 시작하는 곡부터 적용됩니다. 현재 곡의 품질은 유지됩니다."
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(104, 97, 112)",
+      "pass": true,
+      "ratio": 5.94,
+      "required": 4.5,
+      "tag": "p",
+      "text": "선택한 품질이 없습니다. 기존 서버 재생 설정을 사용합니다."
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(41, 38, 51)",
+      "pass": true,
+      "ratio": 14.8,
+      "required": 4.5,
+      "tag": "p",
+      "text": "현재 곡: 서버 기본값"
+    },
+    {
+      "background": [255, 255, 255],
+      "color": "rgb(104, 97, 112)",
+      "pass": true,
+      "ratio": 5.94,
+      "required": 4.5,
+      "tag": "p",
+      "text": "미디어 스캔과 자동 스캔 설정은 관리자 계정에서 사용할 수 있어요."
+    }
+  ],
+  "surface": "quality-ko"
+}

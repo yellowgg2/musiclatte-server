@@ -1,0 +1,30 @@
+{
+  "before": [
+    {
+      "checked": true,
+      "name": "playback-quality",
+      "value": "original"
+    },
+    {
+      "checked": false,
+      "name": "playback-quality",
+      "value": "economy"
+    }
+  ],
+  "after": [
+    {
+      "checked": false,
+      "name": "playback-quality",
+      "value": "original"
+    },
+    {
+      "checked": true,
+      "name": "playback-quality",
+      "value": "economy"
+    }
+  ],
+  "active": {
+    "tag": "INPUT",
+    "value": "economy"
+  }
+}

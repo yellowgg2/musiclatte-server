@@ -7,6 +7,7 @@ import { IconAction } from '../design/components/IconAction';
 import { TextField } from '../design/components/TextField';
 import { StatusSurface } from '../design/components/StatusSurface';
 import { Artwork } from '../design/components/Artwork';
+import { SectionNav } from '../design/components/SectionNav';
 import { messages, type Locale } from '../i18n';
 import {
   galleryBrokenCover,
@@ -286,6 +287,23 @@ export function Gallery() {
               </figure>
             ))}
           </div>
+        </section>
+        <section id="section-nav" className={styles.section}>
+          <div className={styles.sectionHeading}>
+            <span className={styles.number}>07</span>
+            <div>
+              <h2>{t['gallery.sectionNav']}</h2>
+              <p>{t['gallery.sectionNavNote']}</p>
+            </div>
+          </div>
+          <SectionNav
+            label={t['listening.navigation']}
+            items={[
+              { label: t['music.all'], href: '#section-nav' },
+              { label: t['listening.history'], href: '#section-nav', current: true },
+              { label: t['listening.top'], href: '#section-nav' },
+            ]}
+          />
         </section>
         <section id="music-row" className={styles.section}>
           <h2>{t['music.songs']}</h2>

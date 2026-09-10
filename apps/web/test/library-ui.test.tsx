@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -20,6 +22,15 @@ const result: MusicSearchResult = {
   artist: [{ id: 'artist/1', name: 'Daylight', album: [] }],
   album: [{ id: 'album/1', name: 'Small hours', song: [] }],
 };
+
+/** Wrapped artist utilities stay aligned to the content edge like other music-page language pickers. */
+it('should align wrapped artist utilities to the inline end', () => {
+  const css = readFileSync(resolve('apps/web/src/pages/music/Music.module.css'), 'utf8');
+  const utilities = css.match(/\.utilities\s*\{([^}]*)\}/)?.[1];
+
+  expect(utilities).toContain('margin-inline-start: auto');
+});
+
 function createTestContext(libraries = [{ id: 'root & 1', name: 'My music' }]) {
   let signedIn = true;
   let failure = '';
@@ -170,6 +181,10 @@ describe('library UI', () => {
       expect(context.calls.some((c) => c.url.pathname.endsWith('/capabilities'))).toBe(true),
     );
     expect(screen.queryByRole('heading', { name: 'Music' })).not.toBeNull();
+    const views = screen.getByRole('navigation', { name: 'Music' });
+    expect(
+      within(views).getByRole('link', { name: 'All music' }).getAttribute('aria-current'),
+    ).toBe('page');
     expect(await screen.findByRole('link', { name: 'Daylight folder' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'My music' })).toBeNull();
     await user.click(await screen.findByRole('link', { name: 'Daylight folder' }));
@@ -362,6 +377,13 @@ describe('library regression boundaries', () => {
     const select = within(gallery).getAllByRole('checkbox')[0]!;
     await userEvent.setup().click(select);
     expect((select as HTMLInputElement).checked).toBe(true);
+    const sectionNavigation = document.querySelector<HTMLElement>('#section-nav');
+    expect(sectionNavigation).not.toBeNull();
+    expect(
+      within(sectionNavigation!)
+        .getByRole('link', { name: '최근 감상' })
+        .getAttribute('aria-current'),
+    ).toBe('page');
   });
   /** Unsafe dot path segments cannot become requests to a different endpoint after URL normalization. */
   it('should reject encoded traversal while accepting canonical opaque deep links', async () => {

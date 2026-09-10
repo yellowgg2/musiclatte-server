@@ -1,0 +1,290 @@
+{
+  "controls": [
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "_skip_1e54e_188",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 128,
+        "x": 12,
+        "y": -84
+      },
+      "tag": "a",
+      "text": "Skip to content"
+    },
+    {
+      "background": "rgb(238, 231, 245)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": "page",
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 214,
+        "x": 12,
+        "y": 115
+      },
+      "tag": "a",
+      "text": "Music"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 214,
+        "x": 12,
+        "y": 163
+      },
+      "tag": "a",
+      "text": "Playlists"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 214,
+        "x": 12,
+        "y": 211
+      },
+      "tag": "a",
+      "text": "Settings"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 93,
+        "x": 1316,
+        "y": 32
+      },
+      "tag": "select",
+      "text": "한국어English"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 55,
+        "x": 272,
+        "y": 100
+      },
+      "tag": "a",
+      "text": "All music"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "_favoriteLink_1it5r_115",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 114,
+        "x": 272,
+        "y": 168
+      },
+      "tag": "a",
+      "text": "★ Favorites"
+    },
+    {
+      "background": "rgb(105, 80, 139)",
+      "borderColor": "rgba(0, 0, 0, 0)",
+      "className": "_action_y3rzf_1 _primary_y3rzf_18",
+      "color": "rgb(255, 255, 255)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 170,
+        "x": 1238,
+        "y": 168
+      },
+      "tag": "button",
+      "text": "Play random songs"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_input_smb7j_10",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 1040,
+        "x": 272,
+        "y": 268
+      },
+      "tag": "input",
+      "text": ""
+    },
+    {
+      "background": "rgb(105, 80, 139)",
+      "borderColor": "rgba(0, 0, 0, 0)",
+      "className": "_action_y3rzf_1 _primary_y3rzf_18",
+      "color": "rgb(255, 255, 255)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 84,
+        "x": 1324,
+        "y": 268
+      },
+      "tag": "button",
+      "text": "Search"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "_folderRow_1it5r_82",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 72,
+        "width": 1134,
+        "x": 273,
+        "y": 381
+      },
+      "tag": "a",
+      "text": "Small hours›"
+    },
+    {
+      "background": "rgb(238, 231, 245)",
+      "borderColor": "rgba(0, 0, 0, 0)",
+      "className": "_action_y3rzf_1 _quiet_y3rzf_30",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 902,
+        "x": 481,
+        "y": 683
+      },
+      "tag": "button",
+      "text": "Show less"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 68,
+        "x": 481,
+        "y": 779
+      },
+      "tag": "a",
+      "text": "Moonlight"
+    }
+  ],
+  "document": {
+    "clientHeight": 900,
+    "clientWidth": 1440,
+    "horizontalOverflow": false,
+    "scrollHeight": 900,
+    "scrollWidth": 1440
+  },
+  "fixed": [
+    {
+      "position": "fixed",
+      "rect": {
+        "height": 48,
+        "width": 128,
+        "x": 12,
+        "y": -84
+      },
+      "tag": "a",
+      "text": "Skip to content"
+    },
+    {
+      "position": "fixed",
+      "rect": {
+        "height": 900,
+        "width": 240,
+        "x": 0,
+        "y": 0
+      },
+      "tag": "div",
+      "text": "MusiclatteMusicPlaylistsSettings"
+    }
+  ],
+  "heading": "Daylight",
+  "locale": "en",
+  "navigation": [
+    {
+      "label": "Main navigation",
+      "links": [
+        {
+          "current": "page",
+          "text": "Music"
+        },
+        {
+          "current": null,
+          "text": "Playlists"
+        },
+        {
+          "current": null,
+          "text": "Settings"
+        }
+      ]
+    },
+    {
+      "label": "Current location",
+      "links": [
+        {
+          "current": null,
+          "text": "All music"
+        }
+      ]
+    },
+    {
+      "label": "Music",
+      "links": [
+        {
+          "current": null,
+          "text": "★ Favorites"
+        }
+      ]
+    }
+  ],
+  "reducedMotion": false,
+  "surface": "artist-en-1440",
+  "url": "/music/artists/artist-1",
+  "viewport": {
+    "dpr": 1,
+    "height": 900,
+    "width": 1440
+  }
+}

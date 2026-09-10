@@ -16,8 +16,14 @@
 }
 .headingActions {
   justify-content: flex-start;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
 }
-.back,
+.headingActions > :last-child:not(button) {
+  margin-inline-start: auto;
+}
 .recoveryLink {
   display: inline-flex;
   align-items: center;
@@ -67,5 +73,9 @@
   }
   .headingActions {
     justify-content: flex-start;
+  }
+  .headingActions > :last-child:not(button) {
+    width: 100%;
+    margin-inline-start: 0;
   }
 }

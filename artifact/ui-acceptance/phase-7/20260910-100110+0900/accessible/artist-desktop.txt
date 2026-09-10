@@ -1,0 +1,49 @@
+- link "본문으로 건너뛰기":
+  - /url: "#main"
+- banner:
+  - generic: Musiclatte
+- navigation "주 메뉴":
+  - link "음악":
+    - /url: /music
+    - text: 음악
+  - link "재생목록":
+    - /url: /playlists
+    - text: 재생목록
+  - link "설정":
+    - /url: /settings
+    - text: 설정
+- main:
+  - heading "Daylight" [active] [level=1]
+  - text: 언어
+  - combobox "언어":
+    - option "한국어" [selected]
+    - option "English"
+  - navigation "현재 위치":
+    - link "모든 음악":
+      - /url: /music
+  - navigation "음악":
+    - link "즐겨찾기":
+      - /url: /music/favorites
+      - generic: ★
+      - text: 즐겨찾기
+  - button "랜덤 음악 재생"
+  - search:
+    - generic: 음악 검색
+    - searchbox "음악 검색"
+    - button "검색"
+  - heading "앨범" [level=2]
+  - list:
+    - link "Small hours":
+      - /url: /music/albums/album-1
+      - generic: Small hours
+      - generic: ›
+  - region "서버 제공 정보":
+    - img "Daylight 아티스트 이미지":
+    - heading "서버 제공 정보" [level=2]
+    - paragraph: Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography. Server biography.
+    - button "더 보기"
+    - region "내 라이브러리의 관련 아티스트":
+      - heading "내 라이브러리의 관련 아티스트" [level=3]
+      - list:
+        - link "Moonlight":
+          - /url: /music/artists/artist-2

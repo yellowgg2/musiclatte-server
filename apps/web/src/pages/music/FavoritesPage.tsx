@@ -12,6 +12,7 @@ import { useMetadataSelectionRebase } from '../../metadata/selection';
 import { SelectionBar } from '../../selection/components/SelectionBar';
 import { selectionScopeKey } from '../../selection/model';
 import { LanguagePicker } from '../../app/LanguagePicker';
+import { SectionNav } from '../../design/components/SectionNav';
 import styles from './FavoritesPage.module.css';
 
 export function FavoritesPage({
@@ -61,9 +62,17 @@ export function FavoritesPage({
   return (
     <div className={styles.page}>
       <div className={styles.topline}>
-        <a className={styles.back} href={`${base}music`}>
-          ← {copy['favorites.back']}
-        </a>
+        <SectionNav
+          label={copy['music.breadcrumb']}
+          items={[
+            { label: copy['music.all'], href: `${base}music` },
+            {
+              label: copy['favorites.title'],
+              href: `${base}music/favorites`,
+              current: true,
+            },
+          ]}
+        />
         <LanguagePicker locale={locale} onChange={onLocale} />
       </div>
       <header className={styles.heading}>
@@ -72,7 +81,7 @@ export function FavoritesPage({
         </h1>
         <p>{copy['favorites.description']}</p>
       </header>
-      <div className={styles.headingActions}>
+      <section className={styles.headingActions} aria-label={copy['favorites.actions']}>
         {state.songs.length > 0 && canStream && (
           <Action
             onClick={() =>
@@ -85,19 +94,19 @@ export function FavoritesPage({
         <Action variant="secondary" busy={state.loading} onClick={() => void store.refresh()}>
           {copy['favorites.refresh']}
         </Action>
-      </div>
-      {(state.songs.length > 0 || selection.state.active) && (
-        <SelectionBar
-          locale={locale}
-          scopeLabel={copy['selection.scope.favorites']}
-          pageItems={state.songs.map((song, order) => ({ id: song.id, order }))}
-          fetcher={fetcher}
-          apiOrigin={apiOrigin}
-          csrfToken={csrfToken}
-          canWrite={canWritePlaylists}
-          onUnauthenticated={onUnauthenticated}
-        />
-      )}
+        {(state.songs.length > 0 || selection.state.active) && (
+          <SelectionBar
+            locale={locale}
+            scopeLabel={copy['selection.scope.favorites']}
+            pageItems={state.songs.map((song, order) => ({ id: song.id, order }))}
+            fetcher={fetcher}
+            apiOrigin={apiOrigin}
+            csrfToken={csrfToken}
+            canWrite={canWritePlaylists}
+            onUnauthenticated={onUnauthenticated}
+          />
+        )}
+      </section>
       {state.loading && !state.loaded && (
         <StatusSurface
           state="loading"

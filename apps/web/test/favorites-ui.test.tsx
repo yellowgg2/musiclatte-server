@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { FavoriteSongResponse, MusicEntry } from '@musiclatte/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -165,6 +165,11 @@ describe('favorites UI', () => {
     await user.click(await screen.findByRole('link', { name: 'Favorites' }));
 
     expect(await screen.findByRole('heading', { name: 'Favorites' })).toBeTruthy();
+    const navigation = screen.getByRole('navigation', { name: 'Current location' });
+    expect(
+      within(navigation).getByRole('link', { name: 'Favorites' }).getAttribute('aria-current'),
+    ).toBe('page');
+    expect(screen.getByRole('region', { name: 'Favorite actions' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Play favorites' }));
     expect(audio.src).toContain('/songs/song-b/stream');
     await user.click(screen.getByRole('button', { name: 'Select songs' }));

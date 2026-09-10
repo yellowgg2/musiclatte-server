@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
 import { PlayerProvider } from '../src/player/PlayerProvider';
 import { createQueue, setShuffle } from '../src/player/queue';
 const song = { id: 'tr-1', title: 'Synthetic song', isDir: false };
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 /** Appending preserves current occurrence, shuffle order and repeat while adding new occurrences. */
 it('should append without replacing the active queue', async () => {
   const module = await import('../src/player/queue');
@@ -79,6 +82,60 @@ it('should show the mix editor and save without playing', async () => {
   await screen.findByRole('heading', { name: 'Evening' });
   expect(audio.play).not.toHaveBeenCalled();
 });
+
+/** Mix navigation stays in the page topline and destructive/playback actions have distinct weight. */
+it('should expose mix navigation and a clear action hierarchy', async () => {
+  const { MixesPage: Page } = await import('../src/pages/music/MixesPage');
+  const savedMix = {
+    id: '738cf965-b8e3-41a0-876c-87c1804f2e69',
+    name: 'Evening',
+    conditions: { size: 50 },
+    revision: 1,
+    createdAt: '2026-09-09T00:00:00Z',
+    updatedAt: '2026-09-09T00:00:00Z',
+  };
+  const fetcher: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith('/genres')) return Response.json({ schemaVersion: 1, genres: [] });
+    if (url.endsWith('/folders'))
+      return Response.json({ schemaVersion: 1, folders: [{ id: '0', name: 'Music' }] });
+    return Response.json({ schemaVersion: 1, mix: savedMix });
+  };
+  render(
+    <PlayerProvider fetcher={fetcher} apiOrigin="" onUnauthenticated={() => {}}>
+      <Page
+        id={savedMix.id}
+        base="/"
+        locale="en"
+        fetcher={fetcher}
+        apiOrigin=""
+        csrfToken="fixture"
+        onUnauthenticated={() => {}}
+        canStream
+        onLocale={() => {}}
+      />
+    </PlayerProvider>,
+  );
+  await screen.findByRole('heading', { name: 'Evening' });
+  const navigation = screen.getByRole('navigation', { name: 'Current location' });
+  expect(within(navigation).getByRole('link', { name: 'All music' })).toBeTruthy();
+  expect(within(navigation).getByRole('link', { name: 'Saved mixes' })).toBeTruthy();
+  expect(within(navigation).getByText('Evening').parentElement?.getAttribute('aria-current')).toBe(
+    'page',
+  );
+  expect(navigation.textContent).not.toContain('/');
+  expect(navigation.parentElement?.contains(screen.getByLabelText('Language'))).toBe(true);
+  expect(screen.getByRole('form', { name: 'Mix conditions' })).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Mix results' })).toBeTruthy();
+  const save = screen.getByRole('button', { name: 'Save conditions' });
+  const remove = screen.getByRole('button', { name: 'Delete mix' });
+  const draw = screen.getByRole('button', { name: 'Find songs' });
+  const play = screen.getByRole('button', { name: 'Play now' });
+  const append = screen.getByRole('button', { name: 'Add to queue' });
+  expect(remove.className).not.toBe(save.className);
+  expect(draw.className).not.toBe(play.className);
+  expect(append.className).toBe(draw.className);
+});
 /** Appending in the actual provider preserves media source/time, including duplicate tracks. */
 it('should preserve active media and start an initially empty appended queue explicitly', async () => {
   const { usePlayer } = await import('../src/player/PlayerProvider');
@@ -124,6 +181,7 @@ it('should preserve active media and start an initially empty appended queue exp
   expect(audio.src).toContain('/api/v1/media/songs/tr-1/stream');
   expect(audio.play).toHaveBeenCalledTimes(1);
   act(() => {
+    audio.dispatchEvent(new Event('loadedmetadata'));
     audio.currentTime = 37;
     audio.dispatchEvent(new Event('timeupdate'));
   });

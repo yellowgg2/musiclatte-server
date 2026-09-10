@@ -10,6 +10,7 @@ import { MusicRow } from '../../music/components/MusicRow';
 import { Action } from '../../design/components/Action';
 import { TextField } from '../../design/components/TextField';
 import { StatusSurface } from '../../design/components/StatusSurface';
+import { SectionNav } from '../../design/components/SectionNav';
 import { errorCode } from '../../auth/client';
 import { messages, type Locale } from '../../i18n';
 import styles from './Mixes.module.css';
@@ -204,9 +205,22 @@ export function MixesPage({
   }
   return (
     <section className={styles.page}>
-      <header>
+      <div className={styles.topline}>
+        <SectionNav
+          label={copy['music.breadcrumb']}
+          items={[
+            { label: copy['music.all'], href: `${base}music` },
+            {
+              label: copy['mix.title'],
+              href: `${base}music/mixes`,
+              current: !id,
+            },
+            ...(id ? [{ label: saved?.name ?? copy['mix.title'], current: true }] : []),
+          ]}
+        />
         {onLocale && <LanguagePicker locale={locale} onChange={onLocale} />}
-        <a href={`${base}music`}>{copy['music.all']}</a>
+      </div>
+      <header className={styles.heading}>
         <h1 tabIndex={-1} data-page-heading>
           {saved?.name ?? copy['mix.title']}
         </h1>
@@ -256,6 +270,7 @@ export function MixesPage({
           )}
           <form
             className={styles.form}
+            aria-label={copy['mix.conditions']}
             onSubmit={(event) => {
               event.preventDefault();
               save();
@@ -332,7 +347,12 @@ export function MixesPage({
                 {copy['mix.save']}
               </Action>
               {id && (
-                <Action type="button" disabled={busy} onClick={() => setConfirmDelete(true)}>
+                <Action
+                  type="button"
+                  variant="destructive"
+                  disabled={busy}
+                  onClick={() => setConfirmDelete(true)}
+                >
                   {copy['mix.delete']}
                 </Action>
               )}
@@ -348,6 +368,7 @@ export function MixesPage({
             <div className={styles.actions}>
               <p>{copy['mix.deleteHelp']}</p>
               <Action
+                variant="destructive"
                 disabled={busy}
                 onClick={() =>
                   void run(async (signal) => {
@@ -363,13 +384,16 @@ export function MixesPage({
               >
                 {copy['mix.confirmDelete']}
               </Action>
-              <Action onClick={() => setConfirmDelete(false)}>{copy['mix.cancel']}</Action>
+              <Action variant="secondary" onClick={() => setConfirmDelete(false)}>
+                {copy['mix.cancel']}
+              </Action>
             </div>
           )}
           {id && (
-            <section>
-              <div className={styles.actions}>
+            <section className={styles.resultPanel} aria-label={copy['mix.results']}>
+              <div className={styles.resultActions}>
                 <Action
+                  variant="secondary"
                   busy={busy}
                   onClick={() =>
                     void run(async (signal) => {
@@ -380,25 +404,28 @@ export function MixesPage({
                 >
                   {songs === null ? copy['mix.draw'] : copy['mix.redraw']}
                 </Action>
-                <Action
-                  disabled={!canStream || !songs?.length || busy}
-                  onClick={() => {
-                    if (songs?.length) player.activate({ song: songs[0]!, songs, source: 'mix' });
-                  }}
-                >
-                  {copy['mix.play']}
-                </Action>
-                <Action
-                  disabled={!canStream || !songs?.length || busy}
-                  onClick={() => {
-                    if (songs?.length) {
-                      player.appendSongs(songs);
-                      setNotice(copy['mix.added']);
-                    }
-                  }}
-                >
-                  {copy['mix.append']}
-                </Action>
+                <div className={styles.playbackActions}>
+                  <Action
+                    disabled={!canStream || !songs?.length || busy}
+                    onClick={() => {
+                      if (songs?.length) player.activate({ song: songs[0]!, songs, source: 'mix' });
+                    }}
+                  >
+                    {copy['mix.play']}
+                  </Action>
+                  <Action
+                    variant="secondary"
+                    disabled={!canStream || !songs?.length || busy}
+                    onClick={() => {
+                      if (songs?.length) {
+                        player.appendSongs(songs);
+                        setNotice(copy['mix.added']);
+                      }
+                    }}
+                  >
+                    {copy['mix.append']}
+                  </Action>
+                </div>
               </div>
               {songs?.length === 0 && <p role="status">{copy['mix.noSongs']}</p>}
               <ul className={styles.results}>
@@ -441,7 +468,6 @@ export function MixesPage({
         </div>
       )}
       {notice && <p role="status">{notice}</p>}
-      {id && <a href={`${base}music/mixes`}>{copy['mix.title']}</a>}
     </section>
   );
 }

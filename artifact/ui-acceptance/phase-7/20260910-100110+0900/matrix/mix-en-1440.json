@@ -1,0 +1,397 @@
+{
+  "controls": [
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "_skip_1e54e_188",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 128,
+        "x": 12,
+        "y": -84
+      },
+      "tag": "a",
+      "text": "Skip to content"
+    },
+    {
+      "background": "rgb(238, 231, 245)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": "page",
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 214,
+        "x": 12,
+        "y": 115
+      },
+      "tag": "a",
+      "text": "Music"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 214,
+        "x": 12,
+        "y": 163
+      },
+      "tag": "a",
+      "text": "Playlists"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 48,
+        "width": 214,
+        "x": 12,
+        "y": 211
+      },
+      "tag": "a",
+      "text": "Settings"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 55,
+        "x": 296,
+        "y": 56
+      },
+      "tag": "a",
+      "text": "All music"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(105, 80, 139)",
+      "className": "",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 75,
+        "x": 378,
+        "y": 56
+      },
+      "tag": "a",
+      "text": "Saved mixes"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 99,
+        "x": 1286,
+        "y": 56
+      },
+      "tag": "select",
+      "text": "한국어English"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_input_smb7j_10",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 260,
+        "x": 296,
+        "y": 289
+      },
+      "tag": "input",
+      "text": ""
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 46,
+        "width": 260,
+        "x": 572,
+        "y": 289
+      },
+      "tag": "select",
+      "text": "All music foldersSynthetic Music"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 46,
+        "width": 260,
+        "x": 848,
+        "y": 289
+      },
+      "tag": "select",
+      "text": "All genresJazz"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_input_smb7j_10",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 260,
+        "x": 1124,
+        "y": 289
+      },
+      "tag": "input",
+      "text": ""
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_input_smb7j_10",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 260,
+        "x": 296,
+        "y": 382
+      },
+      "tag": "input",
+      "text": ""
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_input_smb7j_10",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 260,
+        "x": 572,
+        "y": 382
+      },
+      "tag": "input",
+      "text": ""
+    },
+    {
+      "background": "rgb(105, 80, 139)",
+      "borderColor": "rgba(0, 0, 0, 0)",
+      "className": "_action_y3rzf_1 _primary_y3rzf_18",
+      "color": "rgb(255, 255, 255)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 147,
+        "x": 296,
+        "y": 494
+      },
+      "tag": "button",
+      "text": "Save conditions"
+    },
+    {
+      "background": "rgb(163, 51, 69)",
+      "borderColor": "rgba(0, 0, 0, 0)",
+      "className": "_action_y3rzf_1 _destructive_y3rzf_38",
+      "color": "rgb(255, 255, 255)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 110,
+        "x": 455,
+        "y": 494
+      },
+      "tag": "button",
+      "text": "Delete mix"
+    },
+    {
+      "background": "rgb(238, 231, 245)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_action_y3rzf_1 _secondary_y3rzf_25",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 114,
+        "x": 296,
+        "y": 591
+      },
+      "tag": "button",
+      "text": "Draw again"
+    },
+    {
+      "background": "rgb(105, 80, 139)",
+      "borderColor": "rgba(0, 0, 0, 0)",
+      "className": "_action_y3rzf_1 _primary_y3rzf_18",
+      "color": "rgb(255, 255, 255)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 98,
+        "x": 1145,
+        "y": 591
+      },
+      "tag": "button",
+      "text": "Play now"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_action_y3rzf_1 _secondary_y3rzf_25",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 129,
+        "x": 1255,
+        "y": 591
+      },
+      "tag": "button",
+      "text": "Add to queue"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(41, 38, 51)",
+      "className": "_summary_1yxsn_54",
+      "color": "rgb(41, 38, 51)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 80,
+        "width": 1032,
+        "x": 296,
+        "y": 667
+      },
+      "tag": "summary",
+      "text": "Details: 가을 & Café + 100%"
+    },
+    {
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(140, 129, 149)",
+      "className": "_action_16bdt_1 _play_1yxsn_42",
+      "color": "rgb(105, 80, 139)",
+      "current": null,
+      "disabled": false,
+      "rect": {
+        "height": 44,
+        "width": 44,
+        "x": 1328,
+        "y": 685
+      },
+      "tag": "button",
+      "text": "Play 가을 & Café + 100%"
+    }
+  ],
+  "document": {
+    "clientHeight": 900,
+    "clientWidth": 1440,
+    "horizontalOverflow": false,
+    "scrollHeight": 900,
+    "scrollWidth": 1440
+  },
+  "fixed": [
+    {
+      "position": "fixed",
+      "rect": {
+        "height": 48,
+        "width": 128,
+        "x": 12,
+        "y": -84
+      },
+      "tag": "a",
+      "text": "Skip to content"
+    },
+    {
+      "position": "fixed",
+      "rect": {
+        "height": 900,
+        "width": 240,
+        "x": 0,
+        "y": 0
+      },
+      "tag": "div",
+      "text": "MusiclatteMusicPlaylistsSettings"
+    }
+  ],
+  "heading": "긴 밤 산책 & Café 믹스 — 2026",
+  "locale": "en",
+  "navigation": [
+    {
+      "label": "Main navigation",
+      "links": [
+        {
+          "current": "page",
+          "text": "Music"
+        },
+        {
+          "current": null,
+          "text": "Playlists"
+        },
+        {
+          "current": null,
+          "text": "Settings"
+        }
+      ]
+    },
+    {
+      "label": "Current location",
+      "links": [
+        {
+          "current": null,
+          "text": "All music"
+        },
+        {
+          "current": null,
+          "text": "Saved mixes"
+        }
+      ]
+    }
+  ],
+  "reducedMotion": false,
+  "surface": "mix-en-1440",
+  "url": "/music/mixes/c19b18b6-68d6-4095-85a8-c833ad1492d6",
+  "viewport": {
+    "dpr": 1,
+    "height": 900,
+    "width": 1440
+  }
+}

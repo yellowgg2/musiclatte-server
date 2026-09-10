@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RecentDownloadItem, RecentDownloadResponse } from '@musiclatte/contracts';
@@ -160,6 +160,13 @@ describe('recent route', () => {
     expect(await screen.findByRole('heading', { name: 'Recent downloads' })).toBe(
       document.activeElement,
     );
+    const navigation = screen.getByRole('navigation', { name: 'Current location' });
+    expect(
+      within(navigation)
+        .getByRole('link', { name: 'Recent downloads' })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+    expect(screen.getByRole('region', { name: 'Recent download controls' })).toBeTruthy();
   });
   /** No empty entry remains for unsupported or unavailable producers. */
   it.each(['unsupported', 'unavailable', 'denied'])(
@@ -188,6 +195,7 @@ describe('recent route', () => {
     await c.user.click(screen.getByRole('checkbox', { name: 'Select Song 2' }));
     await c.user.click(screen.getByRole('button', { name: 'Play loaded songs' }));
     await waitFor(() => expect(c.audio.play).toHaveBeenCalled());
+    c.audio.pause.mockClear();
     c.state.fresh = true;
     await c.user.click(screen.getByRole('button', { name: 'Refresh' }));
     await screen.findByText('Song 3');

@@ -1,0 +1,17 @@
+{
+  "url": "http://127.0.0.1:5315/login",
+  "title": "다시 만나 반가워요 · Musiclatte",
+  "reducedMotion": true,
+  "motionToken": "0ms",
+  "button": {
+    "text": "다시 시도",
+    "transitionDuration": "0s",
+    "transitionProperty": "background-color"
+  },
+  "horizontalOverflow": false,
+  "viewport": {
+    "width": 756,
+    "height": 469,
+    "dpr": 1
+  }
+}

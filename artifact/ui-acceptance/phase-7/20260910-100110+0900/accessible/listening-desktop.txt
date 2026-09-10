@@ -1,0 +1,489 @@
+- link "본문으로 건너뛰기":
+  - /url: "#main"
+- banner:
+  - generic: Musiclatte
+- navigation "주 메뉴":
+  - link "음악":
+    - /url: /music
+    - text: 음악
+  - link "재생목록":
+    - /url: /playlists
+    - text: 재생목록
+  - link "설정":
+    - /url: /settings
+    - text: 설정
+- main:
+  - text: 언어
+  - combobox "언어":
+    - option "한국어" [selected]
+    - option "English"
+  - link "모든 음악":
+    - /url: /music
+  - heading "최근 감상" [active] [level=1]
+  - paragraph: 이 웹 플레이어에서 기록 기능을 활성화한 이후 들은 기록입니다. 최근 다운로드나 다른 기기의 기록은 포함하지 않습니다.
+  - navigation "감상 기록 탐색":
+    - link "최근 감상":
+      - /url: /music/history
+    - link "자주 들은 곡":
+      - /url: /music/top
+  - text: 감상 기간
+  - combobox "감상 기간":
+    - option "전체 기간" [selected]
+    - option "최근 7일"
+    - option "최근 30일"
+  - button "기록 새로고침"
+  - button "지금 재생"
+  - button "큐에 추가"
+  - list "최근 감상":
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 2. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+    - time: 2026. 9. 9. 오전 10:02
+    - list:
+      - 'generic "상세 정보: 가을 & Café + 100%"':
+        - generic: 가을 & Café + 100%
+        - generic: Synthetic Artist
+        - generic: Mixed Tags
+        - 'generic "길이: 0:02"': 0:02
+      - button "가을 & Café + 100% 재생":
+        - generic: ▶
+  - button "기록 더 보기"
+  - generic "감상 기록 안내"

@@ -11,6 +11,7 @@ import { Action } from '../../design/components/Action';
 import { Artwork } from '../../design/components/Artwork';
 import { TextField } from '../../design/components/TextField';
 import { StatusSurface } from '../../design/components/StatusSurface';
+import { SectionNav } from '../../design/components/SectionNav';
 import { formatCount, messages, type Locale } from '../../i18n';
 import { MusicRow } from '../../music/components/MusicRow';
 import { usePlayer } from '../../player/PlayerProvider';
@@ -239,7 +240,17 @@ export function RecentDownloadsPage({
   return (
     <div className={styles.page} ref={pageTarget}>
       <div className={styles.topline}>
-        <a href={`${base}music`}>← {copy['recent.back']}</a>
+        <SectionNav
+          label={copy['music.breadcrumb']}
+          items={[
+            { label: copy['music.all'], href: `${base}music` },
+            {
+              label: copy['recent.title'],
+              href: `${base}music/recent`,
+              current: true,
+            },
+          ]}
+        />
         <LanguagePicker locale={locale} onChange={onLocale} />
       </div>
       <header className={styles.heading}>
@@ -248,39 +259,43 @@ export function RecentDownloadsPage({
         </h1>
         <p>{copy['recent.description']}</p>
       </header>
-      <RecentPeriodControl
-        locale={locale}
-        busy={loading || unavailable}
-        onApply={(filter) => void request('period', filter)}
-      />
-      {data && (
-        <p className={styles.scope}>
-          {copy['recent.range']
-            .replace('{from}', date(data.filter.from))
-            .replace('{to}', date(data.filter.to))}
-          <br />
-          {copy['recent.snapshot'].replace('{date}', date(data.asOf))}
-        </p>
-      )}
-      <div className={styles.actions}>
-        <Action
-          variant="secondary"
-          busy={loading}
-          onClick={() => (unavailable ? onCapabilityRetry() : void request('refresh'))}
-        >
-          {copy['recent.refresh']}
-        </Action>
-        {songs.length > 0 && !blocked && !selection.state.active && (
-          <Action variant="secondary" onClick={() => selection.dispatch({ type: 'enter' })}>
-            {copy['selection.enter']}
-          </Action>
+      <section className={styles.controlPanel} aria-label={copy['recent.controls']}>
+        <RecentPeriodControl
+          locale={locale}
+          busy={loading || unavailable}
+          onApply={(filter) => void request('period', filter)}
+        />
+        {data && (
+          <p className={styles.scope}>
+            {copy['recent.range']
+              .replace('{from}', date(data.filter.from))
+              .replace('{to}', date(data.filter.to))}
+            <br />
+            {copy['recent.snapshot'].replace('{date}', date(data.asOf))}
+          </p>
         )}
-        {songs.length > 0 && canStream && !blocked && (
-          <Action onClick={() => player.activate({ song: songs[0]!, songs, source, position: 0 })}>
-            {copy['recent.play']}
+        <div className={styles.actions}>
+          <Action
+            variant="quiet"
+            busy={loading}
+            onClick={() => (unavailable ? onCapabilityRetry() : void request('refresh'))}
+          >
+            {copy['recent.refresh']}
           </Action>
-        )}
-      </div>
+          {songs.length > 0 && !blocked && !selection.state.active && (
+            <Action variant="secondary" onClick={() => selection.dispatch({ type: 'enter' })}>
+              {copy['selection.enter']}
+            </Action>
+          )}
+          {songs.length > 0 && canStream && !blocked && (
+            <Action
+              onClick={() => player.activate({ song: songs[0]!, songs, source, position: 0 })}
+            >
+              {copy['recent.play']}
+            </Action>
+          )}
+        </div>
+      </section>
       {hasNew && (
         <StatusSurface
           state="empty"

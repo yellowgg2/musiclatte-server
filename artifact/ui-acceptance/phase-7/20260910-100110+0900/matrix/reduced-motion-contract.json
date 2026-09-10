@@ -1,0 +1,35 @@
+{
+  "animatedFeatureElements": [
+    {
+      "animation": "none",
+      "class": "_action_y3rzf_1 _primary_y3rzf_18",
+      "tag": "BUTTON",
+      "transition": "0.14s"
+    },
+    {
+      "animation": "none",
+      "class": "_action_y3rzf_1 _primary_y3rzf_18",
+      "tag": "BUTTON",
+      "transition": "0.14s"
+    },
+    {
+      "animation": "none",
+      "class": "_action_y3rzf_1 _quiet_y3rzf_30",
+      "tag": "BUTTON",
+      "transition": "0.14s"
+    }
+  ],
+  "rules": [
+    {
+      "condition": "(prefers-reduced-motion: reduce)",
+      "sheet": "inline",
+      "text": "@media (prefers-reduced-motion: reduce) {\n  ._backdrop_z8qyx_157, ._sheet_z8qyx_29 { animation: auto ease 0s 1 normal none running none; }\n}"
+    },
+    {
+      "condition": "(prefers-reduced-motion: reduce)",
+      "sheet": "inline",
+      "text": "@media (prefers-reduced-motion: reduce) {\n  :root { --motion-response: 0ms; }\n}"
+    }
+  ],
+  "runtimeMatch": false
+}
