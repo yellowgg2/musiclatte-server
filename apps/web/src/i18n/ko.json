@@ -168,6 +168,8 @@
   "music.search": "음악 검색",
   "music.searchPlaceholder": "곡, 아티스트 또는 앨범",
   "music.searchAction": "검색",
+  "music.searchReset": "검색 초기화",
+  "music.searchOrigin": "검색한 폴더",
   "music.searchRequired": "검색어를 입력해 주세요.",
   "music.searchResults": "검색 결과",
   "music.query": "검색어",

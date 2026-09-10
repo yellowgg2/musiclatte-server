@@ -21,3 +21,9 @@ Run `npm run dev:web -- --host 127.0.0.1` separately. Open `http://127.0.0.1:517
 Actual upstream validation may use a private local API plus an owned SSH tunnel to the existing demo after checking ports. Use normal login and read-only folder/search/artist/album interactions. Record counts and outcomes only, never titles, IDs, authentication queries or screenshots of personal metadata.
 
 Stop only owned processes, remove the owned control file, reset viewport/zoom/motion and close owned tabs. Shutdown deletes fixture storage. See [S08 evidence](../../docs/verification/phase-1/step-08/README.md). S06 browser scenarios describe the historical settings-only milestone; S08 supersedes its default entry and music-unavailable expectations.
+
+## Phase 8 S04 search-folder return
+
+Use the same harness with `search-pages` in the owned control file. Start from `/music/folders/folder-3?musicFolderId=0`, submit a search, and verify the `Searched folder` breadcrumb and `Reset search` secondary action return to that exact scoped folder. Re-submit a different query and follow `Next songs`; the single canonical `returnTo` must survive both changes while offsets reset for the new query, and BFF `/music/search` requests must never include `returnTo`.
+
+Repeat at `/__preview/narrow` (320px), in KO, and with keyboard focus on the reset action. Confirm the field and wrapped actions remain inside the frame, `검색한 폴더`/`검색 초기화` are visible, focus indication is clear, and there is no horizontal scrolling. Unit coverage owns reload/auth restoration, opaque folder IDs, invalid nested origins, duplicate/unknown parameters, encoded traversal, and scoped fallback.

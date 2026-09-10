@@ -168,6 +168,8 @@
   "music.search": "Search music",
   "music.searchPlaceholder": "Songs, artists or albums",
   "music.searchAction": "Search",
+  "music.searchReset": "Reset search",
+  "music.searchOrigin": "Searched folder",
   "music.searchRequired": "Enter a search term.",
   "music.searchResults": "Search results",
   "music.query": "Search term",

@@ -332,6 +332,84 @@ describe('library UI', () => {
     );
     expect(screen.queryByRole('alert')).toBeNull();
   });
+  /** Preserves a canonical folder origin through search changes and pagination, then returns to it. */
+  it('should return to the source folder after requerying and paging search results', async () => {
+    const context = createTestContext();
+    const folderId = 'dir/한글?&';
+    const scopeId = 'root & 1';
+    const path = `/latte/music/folders/${encodeURIComponent(folderId)}?${new URLSearchParams({
+      musicFolderId: scopeId,
+    })}`;
+    const { user } = makeSUT(path, context, '/latte/');
+    await screen.findByRole('heading', { name: 'Daylight folder' });
+
+    await user.type(screen.getByLabelText('Search music'), 'hello{Enter}');
+    await screen.findByRole('heading', { name: 'Search results' });
+    const firstSearch = new URL(window.location.href);
+    const returnTo = firstSearch.searchParams.get('returnTo');
+    expect(returnTo).not.toBeNull();
+    const { musicRoute } = await import('../src/music/queries');
+    expect(musicRoute(returnTo!, '/latte/')).toMatchObject({
+      kind: 'folder',
+      id: folderId,
+    });
+    expect(new URL(returnTo!, window.location.origin).searchParams.get('musicFolderId')).toBe(
+      scopeId,
+    );
+    expect(screen.getByRole('navigation', { name: 'Current location' }).textContent).toContain(
+      'Searched folder',
+    );
+    expect(screen.getByRole('link', { name: 'Searched folder' }).getAttribute('href')).toBe(
+      returnTo,
+    );
+
+    const input = screen.getByLabelText('Search music');
+    await user.clear(input);
+    await user.type(input, 'pages{Enter}');
+    expect(await screen.findByText('Page 0 song 0')).toBeTruthy();
+    expect(new URLSearchParams(window.location.search).get('returnTo')).toBe(returnTo);
+    expect(new URLSearchParams(window.location.search).has('songOffset')).toBe(false);
+
+    await user.click(screen.getByRole('link', { name: 'Next songs' }));
+    expect(await screen.findByText('Page 20 song 0')).toBeTruthy();
+    expect(new URLSearchParams(window.location.search).get('returnTo')).toBe(returnTo);
+    expect(
+      context.calls
+        .filter(({ url }) => url.pathname.endsWith('/music/search'))
+        .every(({ url }) => !url.searchParams.has('returnTo')),
+    ).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: 'Reset search' }));
+    expect(await screen.findByRole('heading', { name: 'Daylight folder' })).toBeTruthy();
+    expect(window.location.pathname + window.location.search).toBe(returnTo);
+    expect(screen.getByRole('heading', { name: 'Folder contents 2' })).toBeTruthy();
+  });
+  /** Every result paginator changes only its offset and retains the validated folder origin. */
+  it('should preserve the source folder across independent result pagination', async () => {
+    const source = '/music/folders/dir%2Fopaque?musicFolderId=root+%26+1';
+    makeSUT(
+      `/music/search?${new URLSearchParams({
+        q: 'pages',
+        musicFolderId: 'root & 1',
+        returnTo: source,
+        artistOffset: '20',
+        albumOffset: '20',
+        songOffset: '20',
+      })}`,
+    );
+    expect(await screen.findByText('Page 20 song 0')).toBeTruthy();
+
+    for (const kind of ['artist', 'album', 'song'] as const) {
+      const label = `Previous ${kind}s`;
+      const href = screen.getByRole('link', { name: label }).getAttribute('href');
+      const query = new URL(href!, window.location.origin).searchParams;
+      expect(query.get('returnTo'), label).toBe(source);
+      for (const offsetKind of ['artist', 'album', 'song'] as const)
+        expect(query.get(`${offsetKind}Offset`), `${label} ${offsetKind}`).toBe(
+          offsetKind === kind ? '0' : '20',
+        );
+    }
+  });
   /** No library must not trigger a fabricated scoped request. */
   it('should keep an empty library response recoverable', async () => {
     const { context } = makeSUT('/music', createTestContext([]));
@@ -436,12 +514,21 @@ describe('library UI', () => {
     const context = createTestContext();
     context.fail('unauthenticated');
     context.signOut();
-    const { user } = makeSUT('/music/search?q=hello%26world', context);
-    await user.type(await screen.findByLabelText('Username'), 'fixture-listener');
+    const source = '/music/folders/dir%2Fopaque?musicFolderId=root+%26+1';
+    const search = `/music/search?${new URLSearchParams({
+      q: 'hello&world',
+      musicFolderId: 'root & 1',
+      returnTo: source,
+    })}`;
+    const { user } = makeSUT(search, context);
+    const username = await screen.findByLabelText('Username');
+    expect(new URLSearchParams(window.location.search).get('returnTo')).toBe(search);
+    await user.type(username, 'fixture-listener');
     context.fail('');
     await user.type(screen.getByLabelText('Password'), 'synthetic-password{Enter}');
     expect(await screen.findAllByText(song.title)).toBeTruthy();
     expect(new URLSearchParams(window.location.search).get('q')).toBe('hello&world');
+    expect(new URLSearchParams(window.location.search).get('returnTo')).toBe(source);
   });
   /** Locale switches preserve content and the search URL while translating controls. */
   it('should keep long original content and query while changing language', async () => {
@@ -449,6 +536,7 @@ describe('library UI', () => {
     expect(await screen.findAllByText(song.title)).toBeTruthy();
     await user.selectOptions(screen.getByLabelText('Language'), 'ko');
     expect(await screen.findByLabelText('음악 검색')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '검색 초기화' })).toBeTruthy();
     expect(screen.getAllByText(song.title)).toBeTruthy();
     expect(window.location.search).toBe('?q=hello');
     expect(within(screen.getByRole('main')).queryByRole('button', { name: /재생/ })).toBeNull();
@@ -456,6 +544,85 @@ describe('library UI', () => {
 });
 
 describe('library regression boundaries', () => {
+  /** Search origins round-trip opaque IDs and reject every non-canonical nested destination. */
+  it('should validate only one canonical folder or music-start search origin', async () => {
+    const helpers = (await import('../src/music/queries')) as unknown as {
+      createSearchReturnTo: (
+        base: string,
+        route: { kind: 'folder'; id: string; query: URLSearchParams },
+      ) => string | null;
+      parseSearchReturnTo: (query: URLSearchParams, base: string) => string | null;
+      musicRoute: (
+        location: string,
+        base?: string,
+      ) => { kind: string; id?: string; query: URLSearchParams } | null;
+    };
+    const base = '/latte/';
+    const folderId = '폴더/opaque ?&';
+    const scopeId = 'root & 1';
+    const origin = helpers.createSearchReturnTo(base, {
+      kind: 'folder',
+      id: folderId,
+      query: new URLSearchParams({ musicFolderId: scopeId, ignored: 'drop-me' }),
+    });
+    expect(origin).not.toBeNull();
+    expect(helpers.parseSearchReturnTo(new URLSearchParams({ returnTo: origin! }), base)).toBe(
+      origin,
+    );
+    expect(helpers.musicRoute(origin!, base)).toMatchObject({ kind: 'folder', id: folderId });
+    expect(new URL(origin!, window.location.origin).searchParams.get('musicFolderId')).toBe(
+      scopeId,
+    );
+    expect(
+      helpers.parseSearchReturnTo(
+        new URLSearchParams({ returnTo: '/latte/music?musicFolderId=root+%26+1' }),
+        base,
+      ),
+    ).toBe('/latte/music?musicFolderId=root+%26+1');
+
+    for (const value of [
+      'https://evil.test/music',
+      '//evil.test/music',
+      '/latte\\music\\folders\\one',
+      '/latte//music/folders/one',
+      '/latte/music/folders/one#fragment',
+      '/latte/music/folders/one\nnext',
+      '/latte/music/folders/.',
+      '/latte/music/folders/%2e%2e',
+      '/latte/music/folders/%252e%252e',
+      '/latte/music/folders/one?musicFolderId=a&musicFolderId=b',
+      '/latte/music/folders/one?musicFolderId=bad%5Cscope',
+      '/latte/music/folders/one?musicFolderId=bad%0Ascope',
+      '/latte/music/folders/one?unknown=value',
+      `/latte/music/folders/${'x'.repeat(2049)}`,
+      `/latte/music/folders/one?${new URLSearchParams({ musicFolderId: 'x'.repeat(2049) })}`,
+    ])
+      expect(
+        helpers.parseSearchReturnTo(new URLSearchParams({ returnTo: value }), base),
+        value,
+      ).toBeNull();
+    const duplicate = new URLSearchParams();
+    duplicate.append('returnTo', origin!);
+    duplicate.append('returnTo', '/latte/music');
+    expect(helpers.parseSearchReturnTo(duplicate, base)).toBeNull();
+  });
+
+  /** Invalid origins keep search usable and reset only to the scoped music start. */
+  it('should fall back from an unsafe search origin without blocking results', async () => {
+    const { user } = makeSUT(
+      `/music/search?${new URLSearchParams({
+        q: 'hello',
+        musicFolderId: 'root & 1',
+        returnTo: 'https://evil.test/music',
+      })}`,
+    );
+    expect(await screen.findAllByText(song.title)).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Searched folder' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Reset search' }));
+    expect(await screen.findByRole('heading', { name: 'Music' })).toBeTruthy();
+    expect(window.location.pathname).toBe('/music');
+    expect(new URLSearchParams(window.location.search).get('musicFolderId')).toBe('root & 1');
+  });
   /** A revoked music request clears the signed-in UI rather than leaving protected data visible. */
   it('should clear a signed-in library on a 401 and keep its search return path', async () => {
     const context = createTestContext();
@@ -499,6 +666,12 @@ describe('library regression boundaries', () => {
     expect(safeReturnPath('/music/folders/%2e%2e')).toBe('/music');
     expect(safeReturnPath('/music/search?q=a%26b')).toBe('/music/search?q=a%26b');
     expect(safeReturnPath('/music/search?q=a&q=b')).toBe('/music');
+    const nested = `/music/search?${new URLSearchParams({
+      q: 'a&b',
+      returnTo: '/music/folders/opaque%2Fid?musicFolderId=root',
+    })}`;
+    expect(safeReturnPath(nested)).toBe(nested);
+    expect(safeReturnPath(`${nested}&returnTo=%2Fmusic`)).toBe('/music');
     expect(safeReturnPath('//evil.test/music')).toBe('/music');
   });
   /** Browser history restores the actual previous list position after async content is available. */

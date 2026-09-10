@@ -2,7 +2,7 @@ import { isCurationPath } from '../curation/state';
 import { metadataPageRoute } from '../metadata/routes';
 import { isRecentPath } from '../recent/routes';
 import { isImportsPath } from '../imports/routes';
-import { musicRoute } from '../music/queries';
+import { musicRoute, parseSearchReturnTo } from '../music/queries';
 import { playlistRoute } from '../playlists/routes';
 import { isFavoritesPath } from '../favorites/routes';
 /** Only implemented canonical relative routes can be restored after authentication. */
@@ -25,10 +25,16 @@ export function safeReturnPath(
   if (!route) return fallback;
   const allowed =
     route.kind === 'search'
-      ? ['q', 'musicFolderId', 'songOffset', 'artistOffset', 'albumOffset']
+      ? ['q', 'musicFolderId', 'songOffset', 'artistOffset', 'albumOffset', 'returnTo']
       : ['musicFolderId'];
   for (const key of route.query.keys())
     if (!allowed.includes(key) || route.query.getAll(key).length !== 1) return fallback;
+  if (
+    route.kind === 'search' &&
+    route.query.has('returnTo') &&
+    !parseSearchReturnTo(route.query, base)
+  )
+    return fallback;
   const path = value.split('?')[0]!;
   if (path.split('/').some((segment) => segment === '.' || segment === '..')) return fallback;
   return value;

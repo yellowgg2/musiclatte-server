@@ -102,6 +102,14 @@ const upstream = createServer((request, response) => {
           : q === 'old'
             ? [{ ...librarySongs[0]!, title: 'Obsolete result' }]
             : librarySongs;
+  const searchSongs =
+    mode === 'search-pages'
+      ? Array.from({ length: 20 }, (_, index) => ({
+          ...librarySongs[index % librarySongs.length]!,
+          id: `search-page-${url.searchParams.get('songOffset') ?? '0'}-${index}`,
+          title: `Page ${url.searchParams.get('songOffset') ?? '0'} song ${index}`,
+        }))
+      : songs;
   const album = {
     id: 'album-1',
     name: 'Small hours',
@@ -140,7 +148,11 @@ const upstream = createServer((request, response) => {
     },
     getSong: { song: { ...song, bitRate: 256 } },
     search3: {
-      searchResult3: { song: songs, artist: empty ? [] : [artist], album: empty ? [] : [album] },
+      searchResult3: {
+        song: searchSongs,
+        artist: empty ? [] : [artist],
+        album: empty ? [] : [album],
+      },
     },
     getArtist: { artist },
     getAlbum: { album },
@@ -186,6 +198,14 @@ const context = await createTestContext({
   secureCookies: false,
   streamQuality: true,
   timeoutMs: 5000,
+});
+context.app.server.prependListener('request', (request) => {
+  const browserRequest = new URL(request.url ?? '/', 'http://localhost');
+  if (browserRequest.pathname === '/api/v1/music/search') {
+    console.info(
+      `Synthetic browser search query keys: ${[...browserRequest.searchParams.keys()].sort().join(',')}`,
+    );
+  }
 });
 const mobilePreview = (width: number) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>S10 ${width}px preview</title>

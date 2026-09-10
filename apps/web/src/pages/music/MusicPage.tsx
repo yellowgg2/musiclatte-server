@@ -12,7 +12,14 @@ import { LanguagePicker } from '../../app/LanguagePicker';
 import { messages, formatCount, type Locale } from '../../i18n';
 import { errorCode } from '../../auth/client';
 import { createMusicClient, type LibraryData, type MusicClient } from '../../music/client';
-import { musicHref, musicRoute, scopeQuery, pageOffset } from '../../music/queries';
+import {
+  createSearchReturnTo,
+  musicHref,
+  musicRoute,
+  pageOffset,
+  parseSearchReturnTo,
+  scopeQuery,
+} from '../../music/queries';
 import { FolderRow } from '../../music/components/FolderRow';
 import { MusicRow } from '../../music/components/MusicRow';
 import { usePlayer } from '../../player/PlayerProvider';
@@ -182,6 +189,10 @@ export function MusicPage({
   const loading = state.key !== location || state.loading;
   const scope = scopeQuery(route.query);
   if (state.key === location && state.libraryId) scope.set('musicFolderId', state.libraryId);
+  const searchReturnTo = route.kind === 'search' ? parseSearchReturnTo(route.query, base) : null;
+  const searchReturnRoute = searchReturnTo ? musicRoute(searchReturnTo, base) : null;
+  const searchResetHref =
+    searchReturnTo ?? musicHref(base, 'folders', undefined, new URLSearchParams(scope));
   const currentDirectory = data?.kind === 'folder' ? data.directory : undefined;
   const [folderTrail, setFolderTrail] = useState<{
     key: string;
@@ -357,9 +368,11 @@ export function MusicPage({
                 ]
               : [
                   { label: copy['music.all'], href: `${base}music` },
-                  ...(scope.size > 0
-                    ? [{ label: copy['music.selectedLibrary'], href: link('folders') }]
-                    : []),
+                  ...(route.kind === 'search' && searchReturnRoute?.kind === 'folder'
+                    ? [{ label: copy['music.searchOrigin'], href: searchReturnTo! }]
+                    : scope.size > 0
+                      ? [{ label: copy['music.selectedLibrary'], href: link('folders') }]
+                      : []),
                   { label: title, current: true },
                 ]
           }
@@ -425,6 +438,9 @@ export function MusicPage({
           }
           const query = new URLSearchParams(scope);
           query.set('q', draft.trim());
+          const returnTo =
+            route.kind === 'folder' ? createSearchReturnTo(base, route) : searchReturnTo;
+          if (returnTo) query.set('returnTo', returnTo);
           navigateMusic(musicHref(base, 'search', undefined, query));
         }}
       >
@@ -441,7 +457,18 @@ export function MusicPage({
           }}
           {...(invalid ? { error: copy['music.searchRequired'] } : {})}
         />
-        <Action type="submit">{copy['music.searchAction']}</Action>
+        <div className={styles.searchActions}>
+          <Action type="submit">{copy['music.searchAction']}</Action>
+          {route.kind === 'search' && (
+            <Action
+              variant="secondary"
+              type="button"
+              onClick={() => navigateMusic(searchResetHref)}
+            >
+              {copy['music.searchReset']}
+            </Action>
+          )}
+        </div>
       </form>
       {selectionKey && (selectableSongs.length > 0 || selection.state.active) && (
         <SelectionBar
@@ -589,7 +616,15 @@ export function MusicPage({
           const offset = pageOffset(route.query, kind);
           if (items.length === 0 && offset === 0) return null;
           const page = (next: number) => {
-            const query = new URLSearchParams(route.query);
+            const query = new URLSearchParams(scope);
+            query.set('q', q);
+            for (const pageKind of ['artist', 'album', 'song'] as const) {
+              const key = `${pageKind}Offset`;
+              if (route.query.getAll(key).length !== 1) continue;
+              const current = pageOffset(route.query, pageKind);
+              if (current > 0) query.set(key, String(current));
+            }
+            if (searchReturnTo) query.set('returnTo', searchReturnTo);
             query.set(`${kind}Offset`, String(next));
             return musicHref(base, 'search', undefined, query);
           };

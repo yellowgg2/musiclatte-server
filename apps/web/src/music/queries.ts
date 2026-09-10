@@ -36,6 +36,48 @@ export function musicHref(
   const suffix = query.toString();
   return `${base}music${segment}${id === undefined ? '' : encodeURIComponent(id)}${suffix ? `?${suffix}` : ''}`;
 }
+
+function isDotSegment(value: string): boolean {
+  let decoded = value;
+  for (let depth = 0; depth < 3; depth++) {
+    if (decoded === '.' || decoded === '..') return true;
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) return false;
+      decoded = next;
+    } catch {
+      return true;
+    }
+  }
+  return decoded === '.' || decoded === '..';
+}
+
+/** Rebuild a folder route without copying unrelated query state into a search origin. */
+export function createSearchReturnTo(base: string, route: MusicRoute): string | null {
+  if (route.kind !== 'folder' || !route.id) return null;
+  return musicHref(base, 'folder', route.id, scopeQuery(route.query));
+}
+
+/** Validate one nested search origin and return its canonical folder/music-start href. */
+export function parseSearchReturnTo(query: URLSearchParams, base = '/'): string | null {
+  const values = query.getAll('returnTo');
+  if (values.length !== 1) return null;
+  const value = values[0]!;
+  if (!value.startsWith(base) || value.startsWith('//') || /[\\#\x00-\x1f\x7f]/.test(value))
+    return null;
+  const path = value.split('?')[0]!;
+  if (path.includes('//') || path.split('/').some(isDotSegment)) return null;
+  const route = musicRoute(value, base);
+  if (!route || (route.kind !== 'folder' && route.kind !== 'folders')) return null;
+  if (route.id && /[\\#\x00-\x1f\x7f]/.test(route.id)) return null;
+  for (const key of route.query.keys())
+    if (key !== 'musicFolderId' || route.query.getAll(key).length !== 1) return null;
+  const scopeId = route.query.get('musicFolderId');
+  if (scopeId !== null && (!scopeId || scopeId.length > 2048 || /[\\#\x00-\x1f\x7f]/.test(scopeId)))
+    return null;
+  return musicHref(base, route.kind, route.id, scopeQuery(route.query));
+}
+
 export function scopeQuery(query: URLSearchParams) {
   const scope = new URLSearchParams();
   const id = query.get('musicFolderId');

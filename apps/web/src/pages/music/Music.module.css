@@ -32,6 +32,12 @@
   gap: var(--space-3);
   align-items: end;
 }
+.searchActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
 .random {
   display: flex;
   align-items: center;
@@ -108,7 +114,7 @@
   .search {
     grid-template-columns: minmax(0, 1fr);
   }
-  .search button {
+  .searchActions {
     justify-self: start;
   }
   .page {
