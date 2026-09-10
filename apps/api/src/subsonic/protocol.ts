@@ -292,12 +292,19 @@ export function decodeGenres(value: unknown): Genre[] {
 }
 export function decodeArtistInfo(value: unknown): ArtistInfo {
   const source = record(value);
+  const rawSimilar = source.similarArtist;
+  if (rawSimilar !== undefined && rawSimilar !== null && !Array.isArray(rawSimilar))
+    return invalid();
   return {
     ...optional(source, 'biography', string),
     ...optional(source, 'musicBrainzId', string),
-    similarArtist: list(source.similarArtist, (item) => {
-      const artist = record(item);
-      return { id: id(artist.id), name: string(artist.name) };
+    similarArtist: (rawSimilar ?? []).flatMap((item) => {
+      try {
+        const artist = record(item);
+        return [{ id: id(artist.id), name: string(artist.name) }];
+      } catch {
+        return [];
+      }
     }),
   };
 }

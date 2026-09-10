@@ -9,6 +9,7 @@ import { registerImportRoutes } from './routes/imports.js';
 import { registerFoldersRoutes } from './routes/music/folders.js';
 import { registerSearchRoute } from './routes/music/search.js';
 import { registerArtistRoute } from './routes/music/artists.js';
+import { registerArtistInfoRoute } from './routes/music/artist-info.js';
 import { registerAlbumRoute } from './routes/music/albums.js';
 import { registerSongRoute } from './routes/music/songs.js';
 import { registerRandomRoute } from './routes/music/random.js';
@@ -104,6 +105,7 @@ export function createApp(options?: AuthOptions) {
     registerFoldersRoutes(app, service);
     registerSearchRoute(app, service);
     registerArtistRoute(app, service);
+    if (options.artistInfo) registerArtistInfoRoute(app, service);
     registerAlbumRoute(app, service);
     registerSongRoute(app, service);
     registerRandomRoute(app, service);

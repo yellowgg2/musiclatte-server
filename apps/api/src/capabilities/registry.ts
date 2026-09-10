@@ -27,6 +27,7 @@ export async function capabilities(
     availability: 'available',
   };
   if (service.options.streamQuality) features['music.streamQuality'] = { ...standard };
+  if (service.options.artistInfo) features['music.artistInfo'] = { ...standard };
   if (service.options.listening) features['listening.history'] = { ...standard };
   features['music.browse'] = { ...standard };
   features['music.stream'] = { ...standard };

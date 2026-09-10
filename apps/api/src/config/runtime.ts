@@ -40,3 +40,9 @@ export function readStreamQualityEnabled(env: Record<string, string | undefined>
     throw new Error('Invalid stream quality configuration');
   return env.STREAM_QUALITY_ENABLED === 'true';
 }
+
+export function readArtistInfoEnabled(env: Record<string, string | undefined>): boolean {
+  if (env.ARTIST_INFO_ENABLED !== undefined && !['true', 'false'].includes(env.ARTIST_INFO_ENABLED))
+    throw new Error('Invalid artist information configuration');
+  return env.ARTIST_INFO_ENABLED === 'true';
+}

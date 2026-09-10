@@ -3,6 +3,7 @@ import { createListeningRepository } from '../storage/listening-repository.js';
 import {
   readListeningConfig,
   readMixEnabled,
+  readArtistInfoEnabled,
   readStreamQualityEnabled,
 } from '../config/runtime.js';
 import { createMixRepository } from '../storage/mix-repository.js';
@@ -28,6 +29,7 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
   let database: ReturnType<typeof openDatabase> | undefined;
   try {
     const streamQuality = readStreamQualityEnabled(env);
+    const artistInfo = readArtistInfoEnabled(env);
     const listeningConfig = readListeningConfig(env);
     const mixesEnabled = readMixEnabled(env);
     const importConfig = readApiImportConfig(env);
@@ -78,6 +80,7 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
     if (importConfig.enabled && !isAbsolute(musicRoot)) throw new Error();
     const app = createApp({
       streamQuality,
+      artistInfo,
       ...(listeningConfig.enabled
         ? {
             listening: {

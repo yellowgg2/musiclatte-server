@@ -18,6 +18,7 @@ import type { MetadataOptions } from '../metadata/provider.js';
 
 export interface AuthOptions {
   streamQuality?: boolean;
+  artistInfo?: boolean;
   listening?: {
     repository: ReturnType<
       typeof import('../storage/listening-repository.js').createListeningRepository

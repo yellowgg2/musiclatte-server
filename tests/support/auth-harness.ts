@@ -38,6 +38,7 @@ export const browserHeaders = {
 };
 export interface AuthOptions {
   streamQuality?: boolean;
+  artistInfo?: boolean;
   sessions: Awaited<ReturnType<typeof storageContext>>['sessions'];
   instances: Awaited<ReturnType<typeof storageContext>>['instances'];
   playlistOperations: Awaited<ReturnType<typeof storageContext>>['playlistOperations'];
@@ -79,6 +80,10 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     emptyLibrary: false,
     libraryStall: false,
     malformedLibrary: false,
+    artistInfoError: 0,
+    artistInfoBody: undefined as Record<string, unknown> | undefined,
+    artistInfoStall: false,
+    artistCoverArt: '',
     closedLibraryRequests: 0,
     collectionError: 0,
     emptyCollections: false,
@@ -176,10 +181,14 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       'getMusicDirectory',
       'search3',
       'getArtist',
+      'getArtistInfo2',
       'getAlbum',
       'getRandomSongs',
     ].includes(operation);
-    if (isLibrary && state.libraryStall) {
+    if (
+      isLibrary &&
+      (state.libraryStall || (operation === 'getArtistInfo2' && state.artistInfoStall))
+    ) {
       res.on('close', () => {
         state.closedLibraryRequests += 1;
       });
@@ -360,8 +369,10 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
                   ? state.collectionError
                   : isCollectionWrite && currentMutationError
                     ? currentMutationError
-                    : isLibrary && state.libraryError
-                      ? state.libraryError
+                    : isLibrary &&
+                        (state.libraryError ||
+                          (operation === 'getArtistInfo2' && state.artistInfoError))
+                      ? state.libraryError || state.artistInfoError
                       : !valid
                         ? 40
                         : state.error ||
@@ -415,7 +426,24 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
                   operation === 'scrobble' ||
                   operation === 'getOpenSubsonicExtensions'
                 ? listeningFixture(operation)
-                : subsonicFixture(operation, state.emptyLibrary);
+                : operation === 'getArtistInfo2'
+                  ? {
+                      'subsonic-response': {
+                        status: 'ok',
+                        version: '1.15.0',
+                        artistInfo2: state.artistInfoBody ?? {},
+                      },
+                    }
+                  : subsonicFixture(operation, state.emptyLibrary);
+    if (
+      operation === 'getArtist' &&
+      state.artistCoverArt &&
+      'artist' in body['subsonic-response']
+    ) {
+      const artist = body['subsonic-response'].artist;
+      if (artist && typeof artist === 'object')
+        Reflect.set(artist, 'coverArt', state.artistCoverArt);
+    }
     if (
       operation === 'getSong' &&
       (state.songIdOverride || state.songIdFromRequest) &&
