@@ -1,6 +1,7 @@
 .page {
   display: grid;
   gap: var(--space-5);
+  padding: var(--space-5);
 }
 .topline {
   display: flex;
@@ -119,6 +120,7 @@
   }
   .page {
     gap: var(--space-4);
+    padding: var(--space-4);
   }
 }
 @media (min-width: 22rem) and (max-width: 30rem) {

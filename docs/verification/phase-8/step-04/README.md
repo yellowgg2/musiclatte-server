@@ -92,3 +92,7 @@ heading.
 - A second presentation follow-up standardized every music feature page heading at `2rem`, matching
   Recent downloads. The root page now uses `All music`/`모든 음악` as both its document heading and
   title and shows the existing localized browsing description directly below it.
+- A third presentation follow-up aligned the outer content inset on All music, Recent downloads and
+  Favorites with Recent listening and Saved mixes: `--space-5` at desktop widths and `--space-4`
+  through 30rem. A focused style-contract test covers all five page modules so the two groups cannot
+  drift apart again.

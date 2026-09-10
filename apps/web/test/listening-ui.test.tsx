@@ -34,6 +34,28 @@ it('should keep music feature page titles at one consistent size', () => {
   expect(sizes).toEqual(paths.map(() => '2rem'));
 });
 
+/** Top-level music pages share the same desktop and narrow content inset. */
+it('should keep all music, recent downloads and favorites aligned with listening pages', () => {
+  const paths = [
+    'apps/web/src/pages/music/Music.module.css',
+    'apps/web/src/pages/music/RecentDownloads.module.css',
+    'apps/web/src/pages/music/FavoritesPage.module.css',
+    'apps/web/src/pages/music/Listening.module.css',
+    'apps/web/src/pages/music/Mixes.module.css',
+  ];
+  const paddings = paths.map((path) => {
+    const css = readFileSync(resolve(path), 'utf8');
+    const base = css.match(/^\.page\s*\{([^}]*)\}/m)?.[1];
+    const narrow = css.slice(css.indexOf('@media (max-width: 30rem)'));
+    return {
+      base: base?.match(/padding:\s*([^;]+);/)?.[1],
+      narrow: narrow.match(/\.page\s*\{[^}]*padding:\s*([^;]+);/)?.[1],
+    };
+  });
+
+  expect(paddings).toEqual(paths.map(() => ({ base: 'var(--space-5)', narrow: 'var(--space-4)' })));
+});
+
 /** Repeated songs remain distinct history events and unavailable songs retain their timestamp. */
 it('should render repeated events and unavailable songs without autoplay', async () => {
   const path = resolve('apps/web/src/pages/music/ListeningHistoryPage.tsx');
