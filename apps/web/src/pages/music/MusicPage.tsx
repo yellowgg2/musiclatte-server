@@ -21,6 +21,7 @@ import { FavoriteAction } from '../../favorites/components/FavoriteAction';
 import { selectionScopeKey } from '../../selection/model';
 import type { ApiErrorCode, MusicEntry } from '@musiclatte/contracts';
 import styles from './Music.module.css';
+import { ArtistInfoPanel } from './ArtistInfoPanel';
 
 export function MusicPage({
   location,
@@ -38,6 +39,7 @@ export function MusicPage({
   canCuration = false,
   canMixes = false,
   canListening = false,
+  canArtistInfo = false,
   csrfToken,
 }: {
   location: string;
@@ -55,6 +57,7 @@ export function MusicPage({
   canCuration?: boolean;
   canMixes?: boolean;
   canListening?: boolean;
+  canArtistInfo?: boolean;
   csrfToken: string;
 }) {
   const player = usePlayer();
@@ -491,6 +494,18 @@ export function MusicPage({
             ))}
           </ul>
         </section>
+      )}
+      {data?.kind === 'artist' && canArtistInfo && (
+        <ArtistInfoPanel
+          artistId={data.artist.id}
+          artistName={data.artist.name}
+          base={base}
+          locale={locale}
+          fetcher={fetcher}
+          apiOrigin={apiOrigin}
+          coverUrl={player.coverUrl}
+          onUnauthenticated={onUnauthenticated}
+        />
       )}
       {data?.kind === 'album' && (
         <>

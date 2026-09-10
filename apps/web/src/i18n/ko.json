@@ -732,5 +732,16 @@
   "quality.reason.metadata_unknown": "곡 정보가 부족해 절약 모드를 사용할 수 없습니다.",
   "quality.reason.offset_unsupported": "이 서버는 절약 모드 탐색을 지원하지 않습니다.",
   "quality.error": "절약 모드를 계속 재생할 수 없습니다. 원본 형식으로 다시 들을 수 있습니다.",
-  "quality.retryOriginal": "원본으로 다시 듣기"
+  "quality.retryOriginal": "원본으로 다시 듣기",
+  "artistInfo.title": "서버 제공 정보",
+  "artistInfo.loading": "아티스트 정보를 불러오는 중",
+  "artistInfo.loadingHelp": "앨범과 재생은 계속 사용할 수 있습니다.",
+  "artistInfo.empty": "아티스트 정보 없음",
+  "artistInfo.emptyHelp": "서버에서 제공하는 정보가 없습니다.",
+  "artistInfo.error": "아티스트 정보를 불러올 수 없음",
+  "artistInfo.errorHelp": "정보를 불러올 수 없습니다. 앨범과 재생은 계속 사용할 수 있습니다.",
+  "artistInfo.more": "더 보기",
+  "artistInfo.less": "접기",
+  "artistInfo.related": "내 라이브러리의 관련 아티스트",
+  "artistInfo.artwork": "{name} 아티스트 이미지"
 }

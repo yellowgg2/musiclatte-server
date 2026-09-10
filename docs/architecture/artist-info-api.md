@@ -23,3 +23,9 @@ disconnect aborts the current upstream work and a session/policy change during I
 the response. Reads are request-local: there is no persistent cache or response sharing between
 accounts. Because enrichment is a separate route, its failure cannot block the basic artist album
 response.
+
+The web consumer requests enrichment only on an artist route when the capability is available.
+`ArtistInfoPanel` owns its loading, empty, error, retry, and expansion state. An AbortController and
+monotonic generation prevent a late A response from replacing artist B. Album rendering remains in
+`MusicPage` independently. Artwork uses the player's existing same-origin cover URL builder, similar
+artists link only by server-returned IDs, and React text rendering never injects biography markup.

@@ -81,6 +81,7 @@ export function Router({
   const path = location.split('?')[0]!;
   const canBrowse = availableEntries(state.capabilities).includes('music.browse');
   const canListening = availableEntries(state.capabilities).includes('listening.history');
+  const canArtistInfo = availableEntries(state.capabilities).includes('music.artistInfo');
   const currentListening = listeningRoute(location, base);
   const canStream = availableEntries(state.capabilities).includes('music.stream');
   const canRandom = availableEntries(state.capabilities).includes('library.randomSongs');
@@ -621,6 +622,7 @@ export function Router({
                     canCuration={canCuration}
                     canMixes={canMixes}
                     canListening={canListening}
+                    canArtistInfo={canArtistInfo}
                     canWritePlaylists={canWritePlaylists}
                     canFavorites={canFavorites}
                     csrfToken={state.session.csrfToken}

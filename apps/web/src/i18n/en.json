@@ -732,5 +732,16 @@
   "quality.reason.metadata_unknown": "Economy playback is unavailable because track information is incomplete.",
   "quality.reason.offset_unsupported": "This server does not support seeking in economy playback.",
   "quality.error": "Economy playback could not continue. You can retry in the original format.",
-  "quality.retryOriginal": "Retry with original"
+  "quality.retryOriginal": "Retry with original",
+  "artistInfo.title": "Server information",
+  "artistInfo.loading": "Loading artist information",
+  "artistInfo.loadingHelp": "Albums and playback remain available.",
+  "artistInfo.empty": "No artist information",
+  "artistInfo.emptyHelp": "No server information is available.",
+  "artistInfo.error": "Artist information unavailable",
+  "artistInfo.errorHelp": "Information is unavailable. Albums and playback remain available.",
+  "artistInfo.more": "Show more",
+  "artistInfo.less": "Show less",
+  "artistInfo.related": "Related artists in your library",
+  "artistInfo.artwork": "{name} artwork"
 }

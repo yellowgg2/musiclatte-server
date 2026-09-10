@@ -18,7 +18,7 @@ export const clientFeatures = {
   'mixes.saved': true,
   'listening.history': true,
   'music.streamQuality': true,
-  'music.artistInfo': false,
+  'music.artistInfo': true,
 } satisfies Record<FeatureKey, boolean>;
 export function featureState(feature: FeatureCapability | undefined) {
   if (feature?.supported === false) return 'unsupported';
