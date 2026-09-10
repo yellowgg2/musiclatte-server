@@ -25,7 +25,8 @@ interface QueueState {
 
 interface QueueModule {
   createQueue(items: readonly MusicEntry[], currentId: string, source: string): QueueState;
-  currentSong(queue: QueueState): MusicEntry | null;
+  currentSong(queue: QueueState | null): MusicEntry | null;
+  nextRepeatMode(mode: QueueState['repeat']): QueueState['repeat'];
   advanceQueue(
     queue: QueueState,
     direction: 'next' | 'previous',
@@ -33,7 +34,8 @@ interface QueueModule {
   ): QueueState | null;
   setRepeat(queue: QueueState, repeat: QueueState['repeat']): QueueState;
   setShuffle(queue: QueueState, enabled: boolean, random?: () => number): QueueState;
-  replaceWithRandom(queue: QueueState, songs: readonly MusicEntry[]): QueueState;
+  replaceWithRandom(queue: QueueState | null, songs: readonly MusicEntry[]): QueueState | null;
+  appendQueue(queue: QueueState | null, songs: readonly MusicEntry[]): QueueState | null;
 }
 
 async function moduleAt(path: string) {
@@ -43,6 +45,15 @@ async function moduleAt(path: string) {
 }
 
 describe('player queue', () => {
+  /** Exposes the product-defined three-state repeat order as one pure transition table. */
+  it('should cycle repeat off to one to all to off', async () => {
+    const queue = await moduleAt('player/queue.ts');
+
+    expect(
+      ['off', 'one', 'all'].map((mode) => queue.nextRepeatMode(mode as QueueState['repeat'])),
+    ).toEqual(['one', 'all', 'off']);
+  });
+
   /** Starts at the selected song while preserving the source list order. */
   it('should activate the selected song and move through its source queue', async () => {
     const queue = await moduleAt('player/queue.ts');
@@ -70,6 +81,7 @@ describe('player queue', () => {
 
     expect(queue.currentSong(queue.advanceQueue(repeatOne, 'next', true)!)?.id).toBe('two');
     expect(queue.currentSong(queue.advanceQueue(repeatOne, 'next', false)!)?.id).toBe('three');
+    expect(queue.currentSong(queue.advanceQueue(repeatOne, 'previous', false)!)?.id).toBe('one');
   });
 
   /** Keeps the current song while producing a deterministic non-repeating shuffle order. */
@@ -81,6 +93,17 @@ describe('player queue', () => {
     expect(queue.currentSong(shuffled)?.id).toBe('two');
     expect(new Set(shuffled.order)).toEqual(new Set([0, 1, 2]));
     expect(queue.currentSong(queue.advanceQueue(shuffled, 'next')!)?.id).not.toBe('two');
+    const repeatAll = queue.setRepeat(shuffled, 'all');
+    const last = { ...repeatAll, position: repeatAll.order.length - 1 };
+    expect(queue.advanceQueue(last, 'next')?.position).toBe(0);
+    expect(queue.advanceQueue({ ...repeatAll, position: 0 }, 'previous')?.position).toBe(
+      repeatAll.order.length - 1,
+    );
+    expect(queue.setRepeat(repeatAll, 'off')).toMatchObject({
+      order: repeatAll.order,
+      position: repeatAll.position,
+      shuffled: true,
+    });
     expect(queue.currentSong(queue.setShuffle(shuffled, false))?.id).toBe('two');
   });
 
@@ -92,6 +115,12 @@ describe('player queue', () => {
     expect(queue.replaceWithRandom(initial, [])).toBe(initial);
     const replacement = queue.replaceWithRandom(initial, [songs[2]!, songs[0]!]);
     expect(queue.currentSong(replacement)?.id).toBe('three');
-    expect(replacement.source).toBe('random');
+    expect(replacement?.source).toBe('random');
+    expect(replacement?.repeat).toBe('off');
+
+    const repeatOne = queue.setRepeat(initial, 'one');
+    const appended = queue.appendQueue(repeatOne, [songs[0]!]);
+    expect(appended?.repeat).toBe('one');
+    expect(appended?.position).toBe(repeatOne.position);
   });
 });

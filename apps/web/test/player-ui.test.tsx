@@ -269,6 +269,61 @@ describe('persistent player UI', () => {
     expect(screen.getByRole('region', { name: 'Queue' }).getAttribute('tabindex')).toBe('0');
   });
 
+  /** Restarts an ended song in repeat-one while keeping explicit next and previous available. */
+  it('should restart repeat-one on ended without trapping manual navigation', async () => {
+    const { audio, user } = await makeSUT();
+    await user.click(await screen.findByRole('button', { name: 'Play First patient song' }));
+    act(() => audio.emit('playing'));
+    await user.click(screen.getAllByRole('button', { name: 'Repeat: Off' })[0]!);
+    expect(screen.getAllByRole('button', { name: 'Repeat: One' }).length).toBeGreaterThan(0);
+
+    audio.currentTime = 73;
+    act(() => audio.emit('timeupdate'));
+    const source = audio.src;
+    const loads = audio.load.mock.calls.length;
+    const plays = audio.play.mock.calls.length;
+    act(() => audio.emit('ended'));
+
+    await waitFor(() => expect(audio.load).toHaveBeenCalledTimes(loads + 1));
+    expect(audio.src).toBe(source);
+    expect(audio.currentTime).toBe(0);
+    expect(audio.play).toHaveBeenCalledTimes(plays + 1);
+
+    await user.click(screen.getAllByRole('button', { name: 'Next track' })[0]!);
+    expect(audio.src).toContain('/songs/song-two/stream');
+    audio.currentTime = 0;
+    await user.click(screen.getAllByRole('button', { name: 'Previous track' })[0]!);
+    expect(audio.src).toContain('/songs/song%20%2F%20one/stream');
+  });
+
+  /** Wraps the final item in repeat-all and leaves it ended when repeat is off. */
+  it('should wrap repeat-all and stop repeat-off at the queue edge', async () => {
+    const { audio, user } = await makeSUT();
+    await user.click(await screen.findByRole('button', { name: 'Play First patient song' }));
+    act(() => audio.emit('playing'));
+    await user.click(screen.getAllByRole('button', { name: 'Next track' })[0]!);
+    await user.click(screen.getAllByRole('button', { name: 'Repeat: Off' })[0]!);
+    await user.click(screen.getAllByRole('button', { name: 'Repeat: One' })[0]!);
+
+    act(() => audio.emit('ended'));
+    await waitFor(() => expect(audio.src).toContain('/songs/song%20%2F%20one/stream'));
+
+    await user.click(screen.getAllByRole('button', { name: 'Repeat: All' })[0]!);
+    await user.click(screen.getAllByRole('button', { name: 'Next track' })[0]!);
+    const loads = audio.load.mock.calls.length;
+    const plays = audio.play.mock.calls.length;
+    act(() => audio.emit('ended'));
+
+    expect(audio.src).toContain('/songs/song-two/stream');
+    expect(audio.load).toHaveBeenCalledTimes(loads);
+    expect(audio.play).toHaveBeenCalledTimes(plays);
+    expect(
+      screen.getAllByRole('button', {
+        name: 'Play Second song with a deliberately long localized-player-safe title',
+      }).length,
+    ).toBeGreaterThan(0);
+  });
+
   /** A paused seek immediately updates the visible time and slider before delayed media events. */
   it('should reflect the requested seek position while paused', async () => {
     const { audio, user } = await makeSUT();

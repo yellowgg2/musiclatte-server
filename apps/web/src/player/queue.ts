@@ -60,6 +60,10 @@ export function setRepeat(queue: PlayerQueue, repeat: RepeatMode): PlayerQueue {
   return { ...queue, repeat };
 }
 
+export function nextRepeatMode(mode: RepeatMode): RepeatMode {
+  return mode === 'off' ? 'one' : mode === 'one' ? 'all' : 'off';
+}
+
 export function setShuffle(
   queue: PlayerQueue,
   enabled: boolean,

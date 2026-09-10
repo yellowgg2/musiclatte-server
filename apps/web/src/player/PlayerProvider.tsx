@@ -29,10 +29,10 @@ import {
   advanceQueue,
   createQueue,
   currentSong,
+  nextRepeatMode,
   replaceWithRandom,
   setRepeat,
   setShuffle,
-  type RepeatMode,
 } from './queue';
 import {
   initialPlayerState,
@@ -82,10 +82,6 @@ interface PlayerContextValue {
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
-
-function repeatAfter(mode: RepeatMode): RepeatMode {
-  return mode === 'off' ? 'all' : mode === 'all' ? 'one' : 'off';
-}
 
 export function PlayerProvider({
   children,
@@ -464,7 +460,7 @@ export function PlayerProvider({
   }, [commit]);
   const cycleRepeat = useCallback(() => {
     const queue = stateRef.current.queue;
-    if (queue) commit({ type: 'queue', queue: setRepeat(queue, repeatAfter(queue.repeat)) });
+    if (queue) commit({ type: 'queue', queue: setRepeat(queue, nextRepeatMode(queue.repeat)) });
   }, [commit]);
   const selectQueueSong = useCallback(
     (position: number) => {
