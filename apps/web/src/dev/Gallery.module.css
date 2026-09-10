@@ -116,6 +116,10 @@
   font-size: var(--text-small);
   margin-top: var(--space-1);
 }
+.navStack {
+  display: grid;
+  gap: var(--space-4);
+}
 .foundationGrid {
   display: grid;
   grid-template-columns: 1.15fr 1fr;

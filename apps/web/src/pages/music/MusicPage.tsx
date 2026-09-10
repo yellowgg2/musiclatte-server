@@ -11,7 +11,7 @@ import { SectionNav } from '../../design/components/SectionNav';
 import { LanguagePicker } from '../../app/LanguagePicker';
 import { messages, formatCount, type Locale } from '../../i18n';
 import { errorCode } from '../../auth/client';
-import { createMusicClient, type LibraryData } from '../../music/client';
+import { createMusicClient, type LibraryData, type MusicClient } from '../../music/client';
 import { musicHref, musicRoute, scopeQuery, pageOffset } from '../../music/queries';
 import { FolderRow } from '../../music/components/FolderRow';
 import { MusicRow } from '../../music/components/MusicRow';
@@ -20,9 +20,28 @@ import { useSelection } from '../../selection/SelectionProvider';
 import { SelectionBar } from '../../selection/components/SelectionBar';
 import { FavoriteAction } from '../../favorites/components/FavoriteAction';
 import { selectionScopeKey } from '../../selection/model';
-import type { ApiErrorCode, MusicEntry } from '@musiclatte/contracts';
+import type { ApiErrorCode, MusicDirectory, MusicEntry } from '@musiclatte/contracts';
 import styles from './Music.module.css';
 import { ArtistInfoPanel } from './ArtistInfoPanel';
+
+const MAX_FOLDER_TRAIL_DEPTH = 24;
+
+async function loadFolderTrail(client: MusicClient, current: MusicDirectory, signal: AbortSignal) {
+  const reversed = [current];
+  const visited = new Set([current.id]);
+  let parent = current.parent;
+  while (parent && reversed.length < MAX_FOLDER_TRAIL_DEPTH && !visited.has(parent)) {
+    visited.add(parent);
+    const data = await client.read(
+      { kind: 'folder', id: parent, query: new URLSearchParams() },
+      signal,
+    );
+    if (data.kind !== 'folder') break;
+    reversed.push(data.directory);
+    parent = data.directory.parent;
+  }
+  return reversed.reverse();
+}
 
 export function MusicPage({
   location,
@@ -163,6 +182,47 @@ export function MusicPage({
   const loading = state.key !== location || state.loading;
   const scope = scopeQuery(route.query);
   if (state.key === location && state.libraryId) scope.set('musicFolderId', state.libraryId);
+  const currentDirectory = data?.kind === 'folder' ? data.directory : undefined;
+  const [folderTrail, setFolderTrail] = useState<{
+    key: string;
+    currentId: string;
+    directories: MusicDirectory[];
+  }>();
+  useEffect(() => {
+    if (!currentDirectory) {
+      setFolderTrail(undefined);
+      return;
+    }
+    const controller = new AbortController();
+    let active = true;
+    setFolderTrail({
+      key: location,
+      currentId: currentDirectory.id,
+      directories: [currentDirectory],
+    });
+    if (currentDirectory.parent)
+      void loadFolderTrail(client, currentDirectory, controller.signal).then(
+        (directories) => {
+          if (active)
+            setFolderTrail({ key: location, currentId: currentDirectory.id, directories });
+        },
+        (error) => {
+          if (active && errorCode(error) === 'unauthenticated') onUnauthenticated();
+        },
+      );
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [client, currentDirectory, location, onUnauthenticated]);
+  const visibleFolderTrail =
+    currentDirectory &&
+    folderTrail?.key === location &&
+    folderTrail.currentId === currentDirectory.id
+      ? folderTrail.directories
+      : currentDirectory
+        ? [currentDirectory]
+        : [];
   const title =
     data?.kind === 'folder'
       ? data.directory.name
@@ -284,25 +344,37 @@ export function MusicPage({
       {route.kind !== 'folders' && (
         <SectionNav
           label={copy['music.breadcrumb']}
-          items={[
-            { label: copy['music.all'], href: `${base}music` },
-            ...(scope.size > 0
-              ? [{ label: copy['music.selectedLibrary'], href: link('folders') }]
-              : []),
-            ...(data?.kind === 'folder' && data.directory.parent
-              ? [{ label: copy['music.parent'], href: link('folder', data.directory.parent) }]
-              : []),
-            { label: title, current: true },
-          ]}
+          variant="breadcrumb"
+          items={
+            data?.kind === 'folder'
+              ? [
+                  { label: copy['music.all'], href: `${base}music` },
+                  ...visibleFolderTrail.map((directory, index) =>
+                    index === visibleFolderTrail.length - 1
+                      ? { label: directory.name, current: true }
+                      : { label: directory.name, href: link('folder', directory.id) },
+                  ),
+                ]
+              : [
+                  { label: copy['music.all'], href: `${base}music` },
+                  ...(scope.size > 0
+                    ? [{ label: copy['music.selectedLibrary'], href: link('folders') }]
+                    : []),
+                  { label: title, current: true },
+                ]
+          }
         />
       )}
       <div className={styles.toolbar}>
         <SectionNav
           label={copy['music.title']}
+          variant="tabs"
           items={[
-            ...(route.kind === 'folders'
-              ? [{ label: copy['music.all'], href: `${base}music`, current: true }]
-              : []),
+            {
+              label: copy['music.all'],
+              ...(route.kind === 'folders' ? { href: `${base}music` } : {}),
+              current: true,
+            },
             ...(canListening
               ? [
                   { label: copy['listening.history'], href: `${base}music/history` },

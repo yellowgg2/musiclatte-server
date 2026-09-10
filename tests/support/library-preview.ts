@@ -97,6 +97,12 @@ const upstream = createServer((request, response) => {
     song: songs,
   };
   const artist = { id: 'artist-1', name: 'Daylight', album: empty ? [] : [album] };
+  const previewDirectories: Record<string, { name: string; parent?: string }> = {
+    'folder-1': { name: 'jojo-music' },
+    'folder-2': { name: 'Jazz', parent: 'folder-1' },
+    'folder-3': { name: 'Late night', parent: 'folder-2' },
+  };
+  const previewDirectory = previewDirectories[id ?? 'folder-1'];
   const payload: Record<string, object> = {
     ping: {},
     getUser: { user: { username: password.username, adminRole: false } },
@@ -109,8 +115,12 @@ const upstream = createServer((request, response) => {
     getMusicDirectory: {
       directory: {
         id: id ?? 'folder-1',
-        name: id === 'empty' ? 'Empty folder' : 'Daylight folder',
-        ...(id === 'empty' ? { parent: 'folder-1' } : {}),
+        name: id === 'empty' ? 'Empty folder' : (previewDirectory?.name ?? 'Daylight folder'),
+        ...(id === 'empty'
+          ? { parent: 'folder-1' }
+          : previewDirectory?.parent
+            ? { parent: previewDirectory.parent }
+            : {}),
         child: empty ? [] : [{ id: 'empty', title: 'Empty folder', isDir: true }, ...songs],
       },
     },
@@ -159,7 +169,7 @@ const context = await createTestContext({
 const mobilePreview = (width: number) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>S10 ${width}px preview</title>
 <style>html,body{margin:0;min-height:100%;background:#dedbe4}body{display:grid;place-items:start center;padding:24px}iframe{width:${width}px;height:844px;border:1px solid #777;border-radius:20px;background:white;box-shadow:0 12px 40px #29263333}</style>
-</head><body><iframe title="Musiclatte ${width}px player preview" src="http://127.0.0.1:5173/music/folders/folder-1?musicFolderId=0"></iframe></body></html>`;
+</head><body><iframe title="Musiclatte ${width}px player preview" src="http://127.0.0.1:5173/music/folders/folder-3?musicFolderId=0"></iframe></body></html>`;
 context.app.get('/__preview/mobile', async (_request, reply) =>
   reply.type('text/html').send(mobilePreview(390)),
 );

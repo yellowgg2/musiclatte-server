@@ -152,6 +152,33 @@ function createTestContext(libraries = [{ id: 'root & 1', name: 'My music' }]) {
       ),
   };
 }
+
+function withDirectoryTree(
+  context: ReturnType<typeof createTestContext>,
+  directories: Record<string, { name: string; parent?: string }>,
+  failedIds: readonly string[] = [],
+) {
+  const originalFetch = context.fetcher;
+  context.fetcher = async (input, init) => {
+    const url = new URL(String(input), 'http://localhost');
+    const match = url.pathname.match(/\/music\/folders\/([^/]+)$/);
+    if (!match) return originalFetch(input, init);
+    const id = decodeURIComponent(match[1]!);
+    if (failedIds.includes(id)) {
+      context.calls.push({ url, ...(init ? { init } : {}) });
+      return Response.json({ error: { code: 'upstream_unavailable' } }, { status: 503 });
+    }
+    const directory = directories[id];
+    if (!directory) return originalFetch(input, init);
+    context.calls.push({ url, ...(init ? { init } : {}) });
+    return Response.json({
+      schemaVersion: 1,
+      directory: { id, ...directory, child: [] },
+    });
+  };
+  return context;
+}
+
 function makeSUT(path = '/music', context = createTestContext(), base = '/') {
   localStorage.setItem('musiclatte.locale', 'en');
   window.history.replaceState(null, '', path);
@@ -228,6 +255,82 @@ describe('library UI', () => {
     await user.click(screen.getByRole('link', { name: 'My music' }));
     expect(await screen.findByRole('link', { name: 'Daylight folder' })).toBeTruthy();
     expect(window.location.search).toContain('musicFolderId=root');
+  });
+
+  /** Folder navigation presents every named ancestor as a breadcrumb, distinct from feature tabs. */
+  it('should show the complete folder path as breadcrumbs', async () => {
+    const context = withDirectoryTree(createTestContext(), {
+      leaf: { name: 'Late night', parent: 'jazz' },
+      jazz: { name: 'Jazz', parent: 'root-directory' },
+      'root-directory': { name: 'jojo-music' },
+    });
+    makeSUT('/music/folders/leaf?musicFolderId=root%20%26%201', context);
+    await screen.findByRole('heading', { name: 'Late night' });
+
+    const breadcrumb = await screen.findByRole('navigation', { name: 'Current location' });
+    await waitFor(() =>
+      expect(
+        within(breadcrumb)
+          .getAllByRole('link')
+          .map((link) => link.textContent),
+      ).toEqual(['All music', 'jojo-music', 'Jazz']),
+    );
+    expect(breadcrumb.getAttribute('data-variant')).toBe('breadcrumb');
+    expect(within(breadcrumb).getAllByText('›')).toHaveLength(3);
+    expect(
+      within(breadcrumb)
+        .getByText('Late night')
+        .closest('[aria-current]')
+        ?.getAttribute('aria-current'),
+    ).toBe('page');
+    expect(within(breadcrumb).getByRole('link', { name: 'Jazz' }).getAttribute('href')).toContain(
+      '/music/folders/jazz?musicFolderId=root',
+    );
+    expect(within(breadcrumb).getByRole('link', { name: 'Jazz' }).parentElement?.textContent).toBe(
+      '›Jazz',
+    );
+    const featureTabs = screen.getByRole('navigation', { name: 'Music' });
+    expect(featureTabs.getAttribute('data-variant')).toBe('tabs');
+    expect(
+      within(featureTabs)
+        .getByText('All music')
+        .closest('[aria-current]')
+        ?.getAttribute('aria-current'),
+    ).toBe('page');
+    expect(screen.queryByRole('link', { name: 'Selected library' })).toBeNull();
+  });
+
+  /** A cyclic parent response is bounded and never repeats a folder in the visible trail. */
+  it('should stop a cyclic folder breadcrumb safely', async () => {
+    const context = withDirectoryTree(createTestContext(), {
+      leaf: { name: 'Late night', parent: 'loop' },
+      loop: { name: 'Loop', parent: 'leaf' },
+    });
+    makeSUT('/music/folders/leaf?musicFolderId=root', context);
+
+    const breadcrumb = await screen.findByRole('navigation', { name: 'Current location' });
+    expect(await within(breadcrumb).findByRole('link', { name: 'Loop' })).toBeTruthy();
+    expect(within(breadcrumb).getAllByText('Late night')).toHaveLength(1);
+  });
+
+  /** Ancestor lookup failure leaves the current folder usable instead of replacing it with an error. */
+  it('should keep the current folder when breadcrumb ancestry is unavailable', async () => {
+    const context = withDirectoryTree(
+      createTestContext(),
+      { leaf: { name: 'Late night', parent: 'missing-parent' } },
+      ['missing-parent'],
+    );
+    makeSUT('/music/folders/leaf?musicFolderId=root', context);
+
+    expect(await screen.findByRole('heading', { name: 'Late night' })).toBeTruthy();
+    const breadcrumb = screen.getByRole('navigation', { name: 'Current location' });
+    expect(within(breadcrumb).getByText('Late night')).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        context.calls.some(({ url }) => url.pathname.endsWith('/folders/missing-parent')),
+      ).toBe(true),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
   });
   /** No library must not trigger a fabricated scoped request. */
   it('should keep an empty library response recoverable', async () => {
@@ -379,6 +482,11 @@ describe('library regression boundaries', () => {
     expect((select as HTMLInputElement).checked).toBe(true);
     const sectionNavigation = document.querySelector<HTMLElement>('#section-nav');
     expect(sectionNavigation).not.toBeNull();
+    expect(
+      within(sectionNavigation!)
+        .getAllByRole('navigation')
+        .map((navigation) => navigation.getAttribute('data-variant')),
+    ).toEqual(['breadcrumb', 'tabs']);
     expect(
       within(sectionNavigation!)
         .getByRole('link', { name: '최근 감상' })

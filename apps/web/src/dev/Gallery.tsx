@@ -296,14 +296,26 @@ export function Gallery() {
               <p>{t['gallery.sectionNavNote']}</p>
             </div>
           </div>
-          <SectionNav
-            label={t['listening.navigation']}
-            items={[
-              { label: t['music.all'], href: '#section-nav' },
-              { label: t['listening.history'], href: '#section-nav', current: true },
-              { label: t['listening.top'], href: '#section-nav' },
-            ]}
-          />
+          <div className={styles.navStack}>
+            <SectionNav
+              label={t['music.breadcrumb']}
+              variant="breadcrumb"
+              items={[
+                { label: t['music.all'], href: '#section-nav' },
+                { label: t['music.folder'], href: '#section-nav' },
+                { label: librarySongs[0]!.album ?? t['music.albums'], current: true },
+              ]}
+            />
+            <SectionNav
+              label={t['listening.navigation']}
+              variant="tabs"
+              items={[
+                { label: t['music.all'], href: '#section-nav' },
+                { label: t['listening.history'], href: '#section-nav', current: true },
+                { label: t['listening.top'], href: '#section-nav' },
+              ]}
+            />
+          </div>
         </section>
         <section id="music-row" className={styles.section}>
           <h2>{t['music.songs']}</h2>
