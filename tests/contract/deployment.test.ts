@@ -153,6 +153,102 @@ describe('source-only deployment', () => {
       ),
     ).toBe(true);
   });
+
+  /** Gonic administration is exposed only when its separate, attested LAN overlay is selected. */
+  it('should opt into gonic administration on one explicit LAN address', () => {
+    const validator = read('deploy/validate-lan-admin.sh');
+    expect(validator).not.toContain('echo "$LAN_BIND_ADDRESS"');
+    for (const env of [
+      { LAN_BIND_ADDRESS: '192.168.50.2', ADMIN_SETUP_COMPLETE: 'false' },
+      { LAN_BIND_ADDRESS: '0.0.0.0', ADMIN_SETUP_COMPLETE: 'true' },
+      { LAN_BIND_ADDRESS: '8.8.8.8', ADMIN_SETUP_COMPLETE: 'true' },
+      { LAN_BIND_ADDRESS: '172.15.0.1', ADMIN_SETUP_COMPLETE: 'true' },
+    ]) {
+      expect(() =>
+        execFileSync('sh', ['deploy/validate-lan-admin.sh'], {
+          env: { ...process.env, ...env },
+          stdio: 'pipe',
+        }),
+      ).toThrow();
+    }
+    for (const address of ['10.0.0.2', '172.16.0.2', '172.31.255.254', '192.168.50.2'])
+      expect(() =>
+        execFileSync('sh', ['deploy/validate-lan-admin.sh'], {
+          env: {
+            ...process.env,
+            LAN_BIND_ADDRESS: address,
+            ADMIN_SETUP_COMPLETE: 'true',
+          },
+          stdio: 'pipe',
+        }),
+      ).not.toThrow();
+
+    read('deploy/compose.lan-admin.yaml');
+    const config = JSON.parse(
+      execFileSync(
+        'docker',
+        [
+          'compose',
+          '-f',
+          'compose.yaml',
+          '-f',
+          'deploy/compose.lan-admin.yaml',
+          'config',
+          '--format',
+          'json',
+        ],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            MUSIC_PATH: '/tmp/synthetic-music',
+            SESSION_MAX_AGE_SECONDS: '3600',
+            PUBLIC_ORIGIN: 'https://music.example.test',
+            IMPORT_POLICY_FILE: '/tmp/synthetic-policy.json',
+            IMPORT_CREDENTIAL_FILE: '/tmp/synthetic-credential.json',
+            LAN_BIND_ADDRESS: '192.168.50.2',
+            GONIC_LAN_ADMIN_PORT: '4750',
+            ADMIN_SETUP_COMPLETE: 'true',
+          },
+        },
+      ),
+    );
+    const ports = config.services.gonic.ports as {
+      host_ip: string;
+      published: string | number;
+      target: number;
+    }[];
+    expect(ports).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ host_ip: '127.0.0.1', target: 80 }),
+        expect.objectContaining({ host_ip: '192.168.50.2', target: 80 }),
+      ]),
+    );
+    expect(
+      ports.some(
+        ({ host_ip, published }) => host_ip === '192.168.50.2' && String(published) === '4750',
+      ),
+    ).toBe(true);
+    expect(config.services.gonic.labels['musiclatte.admin-setup-complete']).toBe('true');
+    expect(config.services.gonic.depends_on['lan-admin-check'].condition).toBe(
+      'service_completed_successfully',
+    );
+    const guard = config.services['lan-admin-check'];
+    expect(guard.network_mode).toBe('none');
+    expect(guard.restart).toBe('no');
+    expect(guard.read_only).toBe(true);
+    expect(guard.cap_drop).toEqual(['ALL']);
+    expect(guard.security_opt).toContain('no-new-privileges:true');
+    expect(guard.user).not.toBe('0');
+
+    const overlay = read('deploy/compose.lan-admin.yaml');
+    expect(overlay).toContain('${LAN_BIND_ADDRESS:?');
+    expect(overlay).toContain('${ADMIN_SETUP_COMPLETE:?');
+    expect(overlay).not.toContain('0.0.0.0');
+    expect(read('.env.example')).toContain('GONIC_LAN_ADMIN_PORT=4749');
+    for (const path of ['README.md', 'README.ko.md'])
+      expect(read(path)).toContain('deploy/compose.lan-admin.yaml');
+  });
   /** Public setup examples hold no account secrets and distinguish bootstrap, TLS and deliberate LAN development. */
   it('should document safe setup and non-destructive backup rollback in both languages', () => {
     const env = read('.env.example');

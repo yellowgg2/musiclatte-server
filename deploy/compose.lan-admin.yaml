@@ -1,0 +1,26 @@
+# Optional trusted-LAN access to gonic administration.
+# Use only AFTER changing the upstream administrator password through loopback.
+# The base loopback port remains available; omit this file to keep administration local-only.
+services:
+  lan-admin-check:
+    image: node:24.20.0-bookworm-slim
+    user: '65534:65534'
+    restart: 'no'
+    network_mode: none
+    entrypoint: ['sh', '/validate-lan-admin.sh']
+    environment:
+      LAN_BIND_ADDRESS: ${LAN_BIND_ADDRESS:?Set an explicit private LAN address}
+      ADMIN_SETUP_COMPLETE: ${ADMIN_SETUP_COMPLETE:?Confirm completed loopback administrator setup with true}
+    volumes:
+      - ./deploy/validate-lan-admin.sh:/validate-lan-admin.sh:ro
+    read_only: true
+    security_opt: ['no-new-privileges:true']
+    cap_drop: ['ALL']
+  gonic:
+    ports:
+      - '${LAN_BIND_ADDRESS:?Set an explicit private LAN address}:${GONIC_LAN_ADMIN_PORT:-4749}:80'
+    labels:
+      musiclatte.admin-setup-complete: '${ADMIN_SETUP_COMPLETE:?Confirm completed loopback administrator setup with true}'
+    depends_on:
+      lan-admin-check:
+        condition: service_completed_successfully

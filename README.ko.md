@@ -20,11 +20,18 @@ docker compose ps
 
 gateway는 `127.0.0.1:8080`, gonic 관리 화면은 `127.0.0.1:4748`에만 bind하며 API host port는 없다. network가 없는 일회성 helper는 비어 있는 gonic volume만 초기 소유권을 설정한다. 기존 비어 있지 않은 volume의 소유권이 다르면 재귀 변경 없이 실패한다. 6개 named volume은 `COMPOSE_PROJECT_NAME`으로 분리하고 실제 저장 경로는 `docker volume inspect`로 확인한다. 업그레이드에도 project 이름을 유지하며 기존 demo volume을 재사용하지 않는다. 음악은 read-only다. gonic UID/GID를 읽기 권한에 맞추되 음악 전체를 world-writable로 바꾸지 않는다. API는 비어 있는 최초 관리 저장소에만 private key를 생성하며 기존 데이터에 key가 없으면 시작을 거부한다.
 
-외부 reverse proxy·LAN 연결 **전에** loopback gonic 관리 화면에서 초기 관리자 비밀번호를 변경한다. 초기 계정 안내는 upstream gonic 문서를 참조하며 공유 로그에 복사하지 않는다. 원격 서버라면 SSH tunnel `ssh -L 4748:127.0.0.1:4748 <your-host>`을 열고 `http://127.0.0.1:4748`에서 설정한다. 별도 비관리자 감상 계정도 여기서 만든다. 관리 port는 외부에 게시하지 않는다. 한 명령 설치는 필수 초기 계정 설정을 생략한다는 의미가 아니다.
+외부 reverse proxy·LAN 연결 **전에** loopback gonic 관리 화면에서 초기 관리자 비밀번호를 변경한다. 초기 계정 안내는 upstream gonic 문서를 참조하며 공유 로그에 복사하지 않는다. 원격 서버라면 SSH tunnel `ssh -L 4748:127.0.0.1:4748 <your-host>`을 열고 `http://127.0.0.1:4748`에서 설정한다. 별도 비관리자 감상 계정도 여기서 만든다. 관리 port는 production reverse proxy나 공인 interface에 게시하지 않는다. 한 명령 설치는 필수 초기 계정 설정을 생략한다는 의미가 아니다.
 
 production은 운영자가 구성한 **HTTPS** reverse proxy가 public origin을 loopback gateway로 전달한다. 해당 proxy 로그에서도 credential·query·개인 음악 metadata를 제외하고 관리 port는 전달하지 않는다. `PUBLIC_ORIGIN`은 정확한 HTTPS origin이어야 한다. 이 저장소는 TLS·DNS·운영 서비스를 자동 변경하지 않으며 production Secure cookie를 요구한다.
 
 격리 local HTTP 시험만 `docker compose -f compose.yaml -f deploy/compose.test.yaml up -d --build`를 사용한다. development cookie와 비어 있는 SPA opt-in을 명시한다. 별도 private LAN 개발 예외는 loopback 비밀번호 변경 완료 후 LAN 변수와 `ADMIN_SETUP_COMPLETE=true`를 설정하고 `docker compose -f compose.yaml -f deploy/compose.lan-development.yaml up -d --build`로 실행한다. flag는 운영자 확인 기록이며 비밀번호를 변경하거나 검사하지 않는다. production에 HTTP 예외를 쓰지 않는다. 기존 Musiclatte profile은 보존하고 gateway origin만 사용한 opt-in profile을 추가한다. `/api`나 admin port를 넣지 않는다.
+
+신뢰할 수 있는 내부 LAN에서만 gonic 계정을 드물게 관리해야 한다면 `GONIC_LAN_ADMIN_PORT`를 설정하고 `deploy/compose.lan-admin.yaml`을 시작 명령에 추가한다. 이 파일은 기존 loopback 관리 port를 보존하면서 `LAN_BIND_ADDRESS` 한 주소에만 두 번째 관리 port를 연다. 기본 설치나 LAN 웹 오버레이만으로는 열리지 않는다. 네트워크 없는 사전 점검이 RFC 1918 IPv4와 정확한 `ADMIN_SETUP_COMPLETE=true`를 확인해야 gonic이 시작된다. 비밀번호 변경 후에만 확인값을 설정하고, 방화벽에서도 해당 사설망으로 제한한다.
+
+```sh
+docker compose -f compose.yaml -f deploy/compose.lan-development.yaml -f deploy/compose.lan-admin.yaml config --quiet
+docker compose -f compose.yaml -f deploy/compose.lan-development.yaml -f deploy/compose.lan-admin.yaml up -d --build
+```
 
 `/rest/*`는 native 응답·Range 재생을 보존한다. `/api/*`와 discovery는 오류에도 SPA HTML을 반환하지 않는다. `/health/live`는 gateway process, `/health/ready`는 관리 DB·gonic 연결을 확인하며 로그인이나 scan을 수행하지 않는다. 장애 시 readiness가 실패해도 표준 routing·discovery는 별개이며 restart와 DNS 재조회로 복구를 지원한다. S04 UI는 시험용 `WEB_UI_ENABLED=true`를 명시하기 전 비활성화하고 production 개발 경로를 제외한다.
 
