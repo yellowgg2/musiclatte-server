@@ -16,8 +16,8 @@ it('should keep the listening refresh action compact when mobile controls wrap',
   );
 });
 
-/** Every music destination uses the same page-title scale as Recent downloads. */
-it('should keep music feature page titles at one consistent size', () => {
+/** Every music destination uses the same page-title metrics as Recent downloads. */
+it('should keep music feature page titles at one consistent height', () => {
   const paths = [
     'apps/web/src/pages/music/Listening.module.css',
     'apps/web/src/pages/music/Mixes.module.css',
@@ -26,20 +26,27 @@ it('should keep music feature page titles at one consistent size', () => {
     'apps/web/src/pages/music/FavoritesPage.module.css',
     'apps/web/src/pages/music/Music.module.css',
   ];
-  const sizes = paths.map(
-    (path) =>
-      readFileSync(resolve(path), 'utf8').match(/\.heading h1\s*\{[^}]*font-size:\s*([^;]+);/)?.[1],
-  );
+  const titleStyles = paths.map((path) => {
+    const rule = readFileSync(resolve(path), 'utf8').match(/\.heading h1\s*\{([^}]*)\}/)?.[1];
+    return {
+      fontSize: rule?.match(/font-size:\s*([^;]+);/)?.[1],
+      letterSpacing: rule?.match(/letter-spacing:\s*([^;]+);/)?.[1],
+      lineHeight: rule?.match(/line-height:\s*([^;]+);/)?.[1],
+    };
+  });
 
-  expect(sizes).toEqual(paths.map(() => '2rem'));
+  expect(titleStyles).toEqual(
+    paths.map(() => ({ fontSize: '2rem', letterSpacing: '-0.04em', lineHeight: '1.2' })),
+  );
 });
 
 /** Top-level music pages share the same desktop and narrow content inset. */
-it('should keep all music, recent downloads and favorites aligned with listening pages', () => {
+it('should keep all top-level music pages aligned', () => {
   const paths = [
     'apps/web/src/pages/music/Music.module.css',
     'apps/web/src/pages/music/RecentDownloads.module.css',
     'apps/web/src/pages/music/FavoritesPage.module.css',
+    'apps/web/src/pages/music/CurationPage.module.css',
     'apps/web/src/pages/music/Listening.module.css',
     'apps/web/src/pages/music/Mixes.module.css',
   ];
