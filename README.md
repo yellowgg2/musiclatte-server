@@ -82,6 +82,23 @@ The same one-command startup builds all required worker tools locally. Check-con
 
 Before updating, stop the worker and make the [matching management+key+gonic+engine+host-music backup](deploy/backup/README.md), then rebuild with the same two-file command. Staging is recoverable workspace, excluded from backup. Phase 3 currently uses schema v8 (initial migration v3); even base startup migrates the DB. Disabling the overlay preserves files but does not downgrade schema. A v2 rollback requires its matching pre-upgrade snapshot and old build. See the [deployment guide](docs/architecture/import-deployment.md) for update/rollback and volume initialization probes.
 
+## Optional listening experience
+
+The base stack passes mixes, local listening history, gonic scrobble forwarding, economy playback,
+and artist information as explicit `false` flags. Enable the completed set with:
+
+```sh
+docker compose -f compose.yaml -f deploy/compose.listening.yaml config --quiet
+docker compose -f compose.yaml -f deploy/compose.listening.yaml up -d --build
+```
+
+The overlay changes only API feature flags. It reuses gonic's existing ffmpeg cache and artist
+lookup; it adds no provider account, key, daemon, or worker. With scrobble forwarding enabled,
+qualified plays can be sent to an external service already connected by the user in gonic. Turning
+the overlay off hides new entries and stops new local listening writes, but retains schema v21 and
+existing data. A historical rollback requires the matching management DB/key and gonic/music
+snapshot described in [backup and restore](deploy/backup/README.md); do not downgrade only an image.
+
 ## Optional metadata editing
 
 Use `docker compose -f compose.yaml -f deploy/compose.metadata.yaml up -d --build` after configuring private policy and scan credentials. Metadata is independent of imports; add the imports overlay before the metadata overlay when both are needed. The API reads music only; the dedicated worker owns file writes and private backups. Follow the [metadata deployment guide](docs/architecture/metadata-deployment.md) and [matching v11 backup/restore procedure](deploy/backup/README.md). Worker downtime keeps existing music playback available. File save and gonic reflection are separate outcomes; warmed gonic cover caches can delay verified reflection. Web metadata entry points remain disabled until Phase 4 S09.

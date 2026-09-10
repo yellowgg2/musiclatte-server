@@ -68,6 +68,11 @@ services:
       CREDENTIAL_KEY_PATH: /keys/credential.key
       SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:?Choose a positive session lifetime in seconds}
       ALLOW_SCAN: ${ALLOW_SCAN:-false}
+      MIXES_ENABLED: ${MIXES_ENABLED:-false}
+      LISTENING_ENABLED: ${LISTENING_ENABLED:-false}
+      LISTENING_SCROBBLE_ENABLED: ${LISTENING_SCROBBLE_ENABLED:-false}
+      STREAM_QUALITY_ENABLED: ${STREAM_QUALITY_ENABLED:-false}
+      ARTIST_INFO_ENABLED: ${ARTIST_INFO_ENABLED:-false}
       SUBSONIC_TIMEOUT_MS: '5000'
     volumes:
       - management-data:/management

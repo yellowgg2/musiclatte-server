@@ -1,0 +1,9 @@
+# Optional Phase 7 listening experience. Applies only API feature flags; gonic and volumes are unchanged.
+services:
+  api:
+    environment:
+      MIXES_ENABLED: 'true'
+      LISTENING_ENABLED: 'true'
+      LISTENING_SCROBBLE_ENABLED: 'true'
+      STREAM_QUALITY_ENABLED: 'true'
+      ARTIST_INFO_ENABLED: 'true'

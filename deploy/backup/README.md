@@ -149,6 +149,21 @@ For a historical rollback, invalidate old management sessions as described above
 
 한국어: 현재 schema는 v11이다. worker를 정상 정지한 뒤 DB·원래 key·metadata-data 원본/intent·참조 cover upload를 함께 백업한다. 실제 음악과 gonic 상태는 같은 경계의 별도 snapshot이 필요하다. 복원은 새 빈 volume에서만 실행하며 key volume 쓰기는 복원 컨테이너에만 허용한다. 파일 hash와 현재 음악이 다르면 중단한다. 구버전 image만 교체하거나 운영 volume을 덮어쓰지 않는다.
 
+### Phase 7 listening overlay and schema v21
+
+`deploy/compose.listening.yaml` adds no volume, worker, or gonic image. It enables API consumers over
+the existing management database, whose current schema v21 includes listening events and saved
+mixes. Disabling the overlay is a capability change; it does not remove tables or make an older
+binary safe. For a binary rollback, restore the matching management-data, management-keys,
+gonic/music snapshot and image set into a fresh project. Records created after the snapshot can be
+lost.
+
+An ordinary restart preserves terminal listening events. A historical restore invalidates old
+sessions through the policy revision procedure above. Recovery converts `dispatching` events to
+`uncertain`; neither `dispatching` nor `uncertain` may be automatically scrobbled again because the
+upstream service may already have accepted them. Verify fresh login, local history/top counts,
+existing playback and flag-off capabilities before exposing the restored gateway.
+
 ### Automation after an offline restore
 
 A matching offline restore into new management/key/metadata directories preserves the existing
