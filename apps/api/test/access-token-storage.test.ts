@@ -126,7 +126,7 @@ describe('personal access token storage', () => {
       const migrated = c.open(good.directory);
       expect(c.sessionsFor(migrated).find(good.source.token)?.proof).toEqual(proof);
       expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({
-        user_version: 19,
+        user_version: 24,
       });
       const broken = legacy('v14-conflict', true);
       expect(() => c.open(broken.directory)).toThrow();
@@ -147,7 +147,7 @@ describe('personal access token storage', () => {
   it('should migrate to the token ledger and preserve existing session tables', async () => {
     const c = await createTestContext();
     try {
-      expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 19 });
+      expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 24 });
       const tables = c.db.connection
         .prepare("SELECT name FROM sqlite_schema WHERE type='table'")
         .all()
@@ -204,6 +204,18 @@ describe('personal access token storage', () => {
       const next = repository.listOwned(proof.username, { limit: 1, cursor: page.nextCursor });
       expect(next.accessTokens[0].id).not.toBe(page.accessTokens[0].id);
       expect(next.nextCursor).toBeNull();
+      const collection = repository.create({
+        ...input,
+        scopes: ['metadata:read', 'collections:read'],
+      });
+      expect(
+        repository.findByHash(createHash('sha256').update(collection.token).digest('hex')),
+      ).toMatchObject({
+        accessToken: { scopes: ['collections:read', 'metadata:read'] },
+      });
+      expect(repository.listOwned(proof.username).accessTokens).toContainEqual(
+        collection.accessToken,
+      );
       expect(() => repository.listOwned('another-user', { cursor: page.nextCursor })).toThrow();
       expect(repository.revokeOwned('another-user', a.accessToken.id)).toBe(false);
       expect(repository.revokeOwned(proof.username, a.accessToken.id)).toBe(true);
@@ -231,6 +243,7 @@ describe('personal access token storage', () => {
       for (const scopes of [
         ['lyrics:write'],
         ['curation:write'],
+        ['collections:read'],
         ['unknown'],
         ['metadata:read', 'metadata:read'],
       ]) {

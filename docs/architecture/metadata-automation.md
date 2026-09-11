@@ -22,10 +22,13 @@ The shipped deployment example permits expiry choices up to 30 days; the setting
 1 day, 7 days, and 30 days without exceeding the deployed `maxTokenAgeMs` policy.
 
 Name is trimmed and restricted to 1–120 code points without controls. Scopes are `metadata:read`,
-`metadata:write`, `lyrics:write`, `curation:write`, and `media:organize`; every write requires read,
-lyrics also requires metadata write, and organization requires both metadata read and write. Scope
-and library arrays must be nonempty and unique. Requests never silently gain scopes. Expiry is
-greater than server time and within configured max age.
+`metadata:write`, `lyrics:write`, `curation:write`, `media:organize`, and `collections:read`; every
+write requires read, lyrics also requires metadata write, organization requires both metadata read
+and write, and collection reads require metadata read. `collections:read` is reserved for the
+PAT-only metadata organization selection API and does not make ordinary favorites or playlist
+routes accept PATs. Scope and library arrays must be nonempty and unique. Requests never silently
+gain scopes, so existing tokens keep their stored scope sets. Expiry is greater than server time and
+within configured max age.
 
 Issuance intersects the current canonical upstream account, configured metadata editor allowlist and actually accessible upstream music folders. An upstream folder list or admin label alone does not grant edit permissions. A PAT can only narrow these libraries/scopes further.
 

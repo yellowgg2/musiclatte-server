@@ -38,6 +38,7 @@ describe('personal access token API', () => {
           'lyrics:write',
           'curation:write',
           'media:organize',
+          'collections:read',
         ],
       });
       expect(response.json().maxTokenAgeMs).toBeGreaterThan(0);
@@ -55,6 +56,41 @@ describe('personal access token API', () => {
           })
         ).statusCode,
       ).toBe(403);
+    } finally {
+      await c.cleanup();
+    }
+  });
+  /** Collection access is explicit, roundtrips through owner APIs, and never grants session routes. */
+  it('should issue collection read scope without widening ordinary collection APIs', async () => {
+    const c = await makeSUT();
+    try {
+      const created = await c.app.inject({
+        method: 'POST',
+        url: '/api/v1/access-tokens',
+        headers: c.headers,
+        payload: { ...c.payload, scopes: ['metadata:read', 'collections:read'] },
+      });
+      expect(created.statusCode).toBe(201);
+      expect(created.json().accessToken.scopes).toEqual(['collections:read', 'metadata:read']);
+      const listed = await c.app.inject({ url: '/api/v1/access-tokens', headers: c.headers });
+      expect(listed.json().accessTokens[0]?.scopes).toEqual(['collections:read', 'metadata:read']);
+      const patHeaders = { authorization: `Bearer ${created.json().token}` };
+      expect(
+        (await c.app.inject({ url: '/api/v1/favorites/songs', headers: patHeaders })).statusCode,
+      ).toBe(403);
+      expect(
+        (await c.app.inject({ url: '/api/v1/playlists', headers: patHeaders })).statusCode,
+      ).toBe(403);
+      expect(
+        (
+          await c.app.inject({
+            method: 'POST',
+            url: '/api/v1/access-tokens',
+            headers: c.headers,
+            payload: { ...c.payload, scopes: ['collections:read'] },
+          })
+        ).statusCode,
+      ).toBe(400);
     } finally {
       await c.cleanup();
     }

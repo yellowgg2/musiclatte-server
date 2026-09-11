@@ -16,6 +16,7 @@ it('roundtrips the settings client through session-authenticated token options, 
     const options = await client.options(signal);
     expect(options.libraryIds).toEqual(['library-1']);
     expect(options.scopes).toContain('media:organize');
+    expect(options.scopes).toContain('collections:read');
     const issued = await client.create(
       {
         ...c.payload,

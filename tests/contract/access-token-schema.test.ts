@@ -40,5 +40,10 @@ describe('access token public metadata', () => {
       'metadata:read',
       'metadata:write',
     ]);
+    expect(validateTokenScopes(['metadata:read', 'collections:read'])).toEqual([
+      'collections:read',
+      'metadata:read',
+    ]);
+    expect(() => validateTokenScopes(['collections:read'])).toThrow();
   });
 });
