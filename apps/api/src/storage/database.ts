@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -28,6 +28,7 @@ const MIGRATIONS = [
   new URL('./migrations/021-listening-history.sql', import.meta.url),
   new URL('./migrations/022-curation-metadata-fields.sql', import.meta.url),
   new URL('./migrations/023-metadata-organization.sql', import.meta.url),
+  new URL('./migrations/024-organization-file-preimage.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;

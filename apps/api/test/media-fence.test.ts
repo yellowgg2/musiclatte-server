@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { createTestContext } from '../../../tests/support/session-storage-harness.js';
 
 it('holds a real OS fence through commit acknowledgement and releases it on crash', async () => {
-  const { createMediaFence } = await import('../src/metadata/media-fence.js');
+  const { createMediaFence, withMediaFences } = await import('../src/metadata/media-fence.js');
   const c = await createTestContext();
   try {
     const root = join(realpathSync(c.root), 'locks');
@@ -27,14 +27,25 @@ it('holds a real OS fence through commit acknowledgement and releases it on cras
     expect(() => held.assertHeld()).toThrow('fence_lost');
     const next = await fence.acquire(identity, 'publish');
     await next.release();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = withMediaFences(fence, ['b'.repeat(64), identity], 'publish', async () => gate);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await expect(
+      withMediaFences(fence, [identity, 'b'.repeat(64)], 'publish', async () => {}),
+    ).rejects.toThrow('file_busy');
+    release();
+    await first;
     await expect(
       fence.withMediaFence(identity, 'verify', async (current) => {
         await current.validate();
         return 7;
       }),
     ).resolves.toBe(7);
-    symlinkSync(join(root, identity + '.lock'), join(root, 'b'.repeat(64) + '.lock'));
-    await expect(fence.acquire('b'.repeat(64), 'verify')).rejects.toThrow();
+    symlinkSync(join(root, identity + '.lock'), join(root, 'c'.repeat(64) + '.lock'));
+    await expect(fence.acquire('c'.repeat(64), 'verify')).rejects.toThrow();
     chmodSync(root, 0o777);
     await expect(fence.acquire(identity, 'verify')).rejects.toThrow();
   } finally {

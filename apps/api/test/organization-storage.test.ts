@@ -71,19 +71,31 @@ async function setup() {
     proof,
     organizationGrantContext(c.db.connection, base.actorTokenId, base, grantEpoch).context,
   );
+  const preimage = {
+    device: '1',
+    inode: '2',
+    digest: '9'.repeat(64),
+    mode: 0o640,
+    uid: 1000,
+    gid: 1000,
+    audioIdentity: base.audioIdentity,
+    targetParentDevice: '1',
+    targetParentInode: '3',
+  };
   return {
     c,
     tokens,
     issued,
     input: { ...base, grantEpoch, encryptedJobGrant },
+    preimage,
     repository: createOrganizationRepository({ database: c.db, clock: () => 1_000 }),
   };
 }
 
 describe('organization storage', () => {
-  it('migrates to v23 and keeps immutable intent idempotent', async () => {
+  it('migrates through the organization schemas and keeps immutable intent idempotent', async () => {
     const s = await setup();
-    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 23 });
+    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 24 });
     const first = s.repository.createOrReplay(s.input);
     expect(
       s.repository.createOrReplay({ ...s.input, id: 'discarded', itemId: 'discarded-item' }),
@@ -112,20 +124,23 @@ describe('organization storage', () => {
       ...claim,
       baseline: { starred: true, playlists: [{ id: 'playlist', songIds: ['song-1', 'b'] }] },
     });
+    s.repository.recordMovePreimage({ ...claim, preimage: s.preimage });
     s.repository.transition({ ...claim, stage: 'moving' });
     s.repository.transition({ ...claim, stage: 'moved' });
-    s.repository.transition({ ...claim, stage: 'scanning' });
-    s.repository.transition({ ...claim, stage: 'rebound', newTrackId: 'song-2' });
-    s.repository.transition({ ...claim, stage: 'migrating_references' });
+    const downstream = s.repository.claimNext({ workerId: 'worker-a', leaseDurationMs: 100 })!;
+    expect(downstream).toMatchObject({ stage: 'moved', generation: 2 });
+    s.repository.transition({ ...downstream, stage: 'scanning' });
+    s.repository.transition({ ...downstream, stage: 'rebound', newTrackId: 'song-2' });
+    s.repository.transition({ ...downstream, stage: 'migrating_references' });
     s.repository.putReferenceCheckpoint({
-      ...claim,
+      ...downstream,
       kind: 'playlist',
       referenceId: 'playlist',
       baseline: ['song-1', 'b'],
       desired: ['song-2', 'b'],
     });
     s.repository.completeReferenceCheckpoint({
-      ...claim,
+      ...downstream,
       kind: 'playlist',
       referenceId: 'playlist',
     });
@@ -142,9 +157,9 @@ describe('organization storage', () => {
       mediaLinkId: s.input.mediaLinkId,
       managedKey: s.input.targetKey,
     });
-    expect(() => other.transition({ ...claim, workerId: 'worker-b', stage: 'verifying' })).toThrow(
-      'conflict',
-    );
+    expect(() =>
+      other.transition({ ...downstream, workerId: 'worker-b', stage: 'verifying' }),
+    ).toThrow('conflict');
   });
 
   it('keeps accepted work after revocation and restores active work to safe states', async () => {
@@ -153,6 +168,7 @@ describe('organization storage', () => {
     expect(s.tokens.revokeOwned(proof.username, s.issued.accessToken.id)).toBe(true);
     const claim = s.repository.claimNext({ workerId: 'worker', leaseDurationMs: 100 })!;
     s.repository.recordReferences({ ...claim, baseline: { starred: false, playlists: [] } });
+    s.repository.recordMovePreimage({ ...claim, preimage: s.preimage });
     s.repository.transition({ ...claim, stage: 'moving' });
     s.repository.transition({ ...claim, stage: 'moved' });
 
@@ -177,5 +193,32 @@ describe('organization storage', () => {
       restored.connection.prepare('SELECT encrypted_proof FROM access_tokens').get()
         ?.encrypted_proof,
     ).toBeNull();
+  });
+
+  it('turns an expired moving lease into filesystem-owned recovery', async () => {
+    const s = await setup();
+    s.repository.createOrReplay(s.input);
+    const claim = s.repository.claimNext({ workerId: 'dead-worker', leaseDurationMs: 100 })!;
+    s.repository.recordReferences({ ...claim, baseline: { starred: false, playlists: [] } });
+    s.repository.recordMovePreimage({ ...claim, preimage: s.preimage });
+    s.repository.transition({ ...claim, stage: 'moving' });
+    const recoveryRepository = createOrganizationRepository({
+      database: s.c.open(),
+      clock: () => 1_101,
+    });
+    expect(
+      recoveryRepository.claimNext({
+        workerId: 'recovery-worker',
+        leaseDurationMs: 100,
+        recoveryOnly: true,
+      }),
+    ).toMatchObject({
+      stage: 'recovery_required',
+      generation: 2,
+      workerId: 'recovery-worker',
+    });
+    expect(
+      s.c.db.connection.prepare('SELECT error_code,next_owner FROM organization_items').get(),
+    ).toEqual({ error_code: 'worker_interrupted', next_owner: 'filesystem' });
   });
 });

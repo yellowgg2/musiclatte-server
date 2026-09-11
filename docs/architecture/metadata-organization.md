@@ -66,3 +66,22 @@ requeues work known to be before rename, and marks any possibly moved work `reco
 Backups validate organization rows and encrypted grants. A metadata backup refuses the ambiguous
 `moving` stage; otherwise it snapshots the source key before move and target key after move. No
 media bytes, cover bytes, lyrics text, passwords, or raw tokens enter the management database.
+
+## Atomic move checkpoint
+
+The metadata worker gives organization filesystem work one bounded turn per scheduler cycle.
+Before rename it revalidates the accepted account grant and current gonic user/library access,
+captures that account's star and playlist baseline, and durably records a v24 move preimage. A
+crash after baseline capture resumes from `references_captured` without recapturing a possibly
+changed post-move view.
+
+Source and target file identities share the OS media-fence namespace used by import, metadata,
+and curation. They are acquired in sorted order and the database publication state is checked
+while held. The Python helper prepares and pins a real target-parent identity, performs only a
+same-filesystem atomic rename, fsyncs the parents, and proves the source disappeared while file
+and audio identities were preserved.
+
+Injected crashes before rename classify as source-only; crashes immediately after rename or
+after fsync classify as target-only. An expired hard-crash lease left in `moving` is promoted to
+filesystem-owned recovery. Both paths present, neither path present, a replaced target parent, or
+an identity mismatch never trigger an automatic reverse or overwrite.

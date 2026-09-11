@@ -31,6 +31,22 @@ describe('metadata runtime', () => {
     await scheduler.cycle(stopped.signal);
     expect(calls).toHaveLength(6);
   });
+  it('gives organization filesystem work a bounded turn after metadata recovery', async () => {
+    const { createMetadataScheduler } = await import('../src/metadata-worker-runtime.js');
+    const calls: string[] = [];
+    const task = (name: string) => async () => {
+      calls.push(name);
+      return false;
+    };
+    const scheduler = createMetadataScheduler({
+      recover: task('recover'),
+      organize: task('organize'),
+      file: task('file'),
+      reflect: task('reflect'),
+    });
+    await scheduler.cycle(new AbortController().signal);
+    expect(calls).toEqual(['recover', 'organize', 'file', 'reflect']);
+  });
   /** Health inspection cannot create management storage or execute a helper. */
   it('should report disabled or missing worker state without creating it', async () => {
     const path = resolve('apps/api/src/metadata-worker-runtime.ts');

@@ -54,3 +54,21 @@ writer requirement. No filename moves, actual tag edits or public path fields ar
 Reference: Python's [descriptor-relative filesystem API](https://docs.python.org/3/library/os.html#os.open).
 The helper retains descriptors inside one process; it never treats a JSON fd number as a
 transferable operating-system handle.
+
+## Organization rename boundary
+
+Schema v24 records the source device, inode, full digest, mode, uid/gid, audio identity, and the
+prepared target-parent device/inode before the organization item may enter `moving`. The
+organization helper creates target parents descriptor-relatively at mode 0750, rejects symlinks
+and Unicode/case-equivalent names, and later requires the same retained parent identity. It never
+uses a copy/delete fallback: source and target parents must be on one filesystem.
+
+The worker acquires source and target OS fences in canonical file-identity order, then rechecks
+the shared publication ledger for active import, metadata, or curation writers. The helper performs
+one directory-relative rename, fsyncs both parents, and verifies source absence plus unchanged
+target inode, digest, ownership, mode, and audio-packet identity. Empty legacy parents are retained.
+
+An interrupted `moving` lease becomes filesystem-owned `recovery_required`. Descriptor inspection
+classifies only a matching source as `source_only` and only a matching target as `target_only`;
+both, neither, or any identity mismatch remain ambiguous. Source-only retries the same guarded
+rename and target-only advances without renaming again. Reverse movement is never automatic.

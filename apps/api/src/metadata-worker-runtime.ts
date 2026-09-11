@@ -29,11 +29,16 @@ import {
 } from './metadata/runtime-config.js';
 import { createSubsonicClient } from './subsonic/client.js';
 import { createMetadataJobAuthorizer } from './auth/metadata-job-authorizer.js';
+import { createOrganizationRepository } from './storage/organization-repository.js';
+import { createOrganizationFileStore } from './metadata/organization-file-store.js';
+import { createOrganizationWorker } from './metadata/organization-worker.js';
+import { captureMetadataReferences } from './metadata/reference-check.js';
 
 export { readMetadataWorkerConfig } from './metadata/runtime-config.js';
 
 export function createMetadataScheduler(tasks: {
   recover(signal: AbortSignal): Promise<boolean>;
+  organize?(signal: AbortSignal): Promise<boolean>;
   file(signal: AbortSignal): Promise<boolean>;
   reflect(signal: AbortSignal): Promise<boolean>;
   inventory?(signal: AbortSignal): Promise<boolean>;
@@ -47,6 +52,7 @@ export function createMetadataScheduler(tasks: {
       try {
         for (const work of [
           tasks.recover,
+          ...(tasks.organize ? [tasks.organize] : []),
           tasks.file,
           tasks.reflect,
           ...(tasks.inventory ? [tasks.inventory] : []),
@@ -92,7 +98,7 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
     throw new Error('unsupported_metadata_profile');
   const automation = readAutomationConfig(env);
   const fence =
-    automation.enabled && automation.curation
+    automation.enabled && (automation.curation || automation.organization)
       ? configuredMediaFence(env, { ...config, timeoutMs: config.policy.limits.timeoutMs }, [
           config.privateRoot,
           config.uploadRoot,
@@ -195,6 +201,7 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
     const repository = createMetadataRepository({ database, clock: Date.now });
     const revisions = createMetadataRevision(key);
     const grants = createMetadataJobAuthorizer({ database, vault: createCredentialVault(key) });
+    const publications = createMediaPublicationLedger(database, Date.now);
     const account = async (work: MetadataWork) => {
       const credential = () =>
         work.actorTokenId
@@ -322,8 +329,93 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
             },
           })
         : undefined;
+    const organizationPolicy = automation.enabled ? automation.organization : undefined;
+    const organizationRepository = createOrganizationRepository({ database, clock: Date.now });
+    const organizationWorker =
+      organizationPolicy && fence
+        ? createOrganizationWorker({
+            repository: organizationRepository,
+            fileStore: createOrganizationFileStore({
+              musicRoot: config.musicRoot,
+              python: config.python,
+              helperPath: join(dirname(config.helperPath), 'organization_move.py'),
+              accessHelperPath: join(dirname(config.helperPath), 'file_access.py'),
+              timeoutMs: config.policy.limits.timeoutMs,
+              maxFileBytes: config.policy.limits.maxFileBytes,
+              fence,
+              fileIdentity: (libraryId, relativeFileKey) =>
+                revisions.fileIdentity({ libraryId, relativeFileKey }),
+              inspectAudio: async (relativeFileKey) =>
+                (await helper.read({ key: relativeFileKey, signal })).audio.packetHash,
+              assertAvailable: (fileIdentity) => publications.assertAvailable(fileIdentity),
+            }),
+            fileIdentity: (libraryId, relativeFileKey) =>
+              revisions.fileIdentity({ libraryId, relativeFileKey }),
+            authorize: async (claim) => {
+              const accepted = grants.authorizeAcceptedOrganization(claim.itemId);
+              if (
+                accepted.intent.libraryId !== claim.libraryId ||
+                accepted.intent.sourceKey !== claim.sourceKey ||
+                accepted.intent.targetKey !== claim.targetKey ||
+                accepted.intent.fileIdentity !== claim.fileIdentity ||
+                accepted.intent.audioIdentity !== claim.audioIdentity ||
+                accepted.intent.oldTrackId !== claim.oldTrackId
+              )
+                throw new Error('permission_changed');
+              const client = createSubsonicClient({
+                upstream: config.upstream,
+                timeoutMs: 5000,
+                proof: accepted.proof,
+              });
+              const user = await client.currentUser({ signal });
+              const folders = (await client.folders({ signal })).map((folder) => folder.id);
+              const library = config.policy.libraries.find((entry) => entry.id === claim.libraryId);
+              const account = organizationPolicy.accounts.find(
+                (entry) => entry.username === accepted.username,
+              );
+              if (
+                user.username !== accepted.username ||
+                !library ||
+                !account ||
+                !folders.includes(library.musicFolderId) ||
+                !canEditMetadata(config.policy, accepted.username, claim.libraryId)
+              )
+                throw new Error('permission_changed');
+              return { client };
+            },
+            captureReferences: (client, trackId) =>
+              captureMetadataReferences(
+                client as ReturnType<typeof createSubsonicClient>,
+                trackId,
+                signal,
+              ),
+          })
+        : undefined;
     const scheduler = createMetadataScheduler({
       ...(curation ? { inventory: (abort: AbortSignal) => curation.cycle(abort) } : {}),
+      ...(organizationWorker
+        ? {
+            organize: async () => {
+              const recovery = organizationRepository.claimNext({
+                workerId,
+                leaseDurationMs: 30000,
+                recoveryOnly: true,
+              });
+              if (recovery) {
+                await organizationWorker.recover(recovery);
+                return true;
+              }
+              const claim = organizationRepository.claimNext({
+                workerId,
+                leaseDurationMs: 30000,
+                fileOnly: true,
+              });
+              if (!claim) return false;
+              await organizationWorker.process(claim);
+              return true;
+            },
+          }
+        : {}),
       recover: async (abort) => (await worker.recoverPending(abort)).processed > 0,
       file: (abort) => worker.runOnce(abort, 'file'),
       reflect: (abort) => reflector.runOnce(abort),

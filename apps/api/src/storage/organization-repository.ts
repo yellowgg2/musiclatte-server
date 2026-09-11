@@ -48,6 +48,7 @@ export interface OrganizationIntent {
 export interface OrganizationClaim {
   itemId: string;
   jobId: string;
+  libraryId: string;
   workerId: string;
   generation: number;
   stage: OrganizationStage;
@@ -57,6 +58,17 @@ export interface OrganizationClaim {
   audioIdentity: string;
   oldTrackId: string;
   newTrackId: string | null;
+  preimage: {
+    device: string;
+    inode: string;
+    digest: string;
+    mode: number;
+    uid: number;
+    gid: number;
+    audioIdentity: string;
+    targetParentDevice: string;
+    targetParentInode: string;
+  } | null;
 }
 
 function decodeItem(row: Row) {
@@ -79,6 +91,20 @@ function decodeItem(row: Row) {
     generation: integer(row.generation),
     errorCode: row.error_code === null ? null : text(row.error_code),
     nextOwner: row.next_owner as OrganizationRecoveryOwner | null,
+    preimage:
+      row.source_digest === null
+        ? null
+        : {
+            device: text(row.source_device),
+            inode: text(row.source_inode),
+            digest: text(row.source_digest),
+            mode: integer(row.source_mode),
+            uid: integer(row.source_uid),
+            gid: integer(row.source_gid),
+            audioIdentity: text(row.audio_identity),
+            targetParentDevice: text(row.target_parent_device),
+            targetParentInode: text(row.target_parent_inode),
+          },
   };
 }
 
@@ -97,6 +123,27 @@ export function validateOrganizationStorage(db: DatabaseSync): void {
     if (!Array.isArray(evidence) || Buffer.byteLength(text(row.source_evidence_json)) > 65536)
       throw new Error('Storage unavailable');
     if (row.baseline_json !== null && Buffer.byteLength(text(row.baseline_json)) > 1024 * 1024)
+      throw new Error('Storage unavailable');
+    if (
+      [
+        'moving',
+        'moved',
+        'scanning',
+        'rebound',
+        'migrating_references',
+        'verifying',
+        'succeeded',
+      ].includes(item.stage) &&
+      (!hex(row.source_digest) ||
+        typeof row.source_device !== 'string' ||
+        !/^\d+$/.test(row.source_device) ||
+        typeof row.source_inode !== 'string' ||
+        !/^\d+$/.test(row.source_inode) ||
+        typeof row.target_parent_device !== 'string' ||
+        !/^\d+$/.test(row.target_parent_device) ||
+        typeof row.target_parent_inode !== 'string' ||
+        !/^\d+$/.test(row.target_parent_inode))
+    )
       throw new Error('Storage unavailable');
   }
   for (const raw of db.prepare('SELECT * FROM organization_reference_checkpoints').iterate()) {
@@ -227,7 +274,12 @@ export function createOrganizationRepository(options: {
       });
     },
     getJob: readJob,
-    claimNext(input: { workerId: string; leaseDurationMs: number; recoveryOnly?: boolean }) {
+    claimNext(input: {
+      workerId: string;
+      leaseDurationMs: number;
+      recoveryOnly?: boolean;
+      fileOnly?: boolean;
+    }) {
       return atomic(() => {
         if (
           !input.workerId ||
@@ -236,26 +288,49 @@ export function createOrganizationRepository(options: {
         )
           throw new Error('invalid_claim');
         const timestamp = now();
+        if (input.recoveryOnly && input.fileOnly) throw new Error('invalid_claim');
         const stages = input.recoveryOnly
-          ? "stage='recovery_required'"
-          : "stage NOT IN ('succeeded','failed','conflict','recovery_required')";
+          ? "(stage='moving' OR (stage='recovery_required' AND next_owner='filesystem'))"
+          : input.fileOnly
+            ? "stage IN ('queued','validating','references_captured')"
+            : "stage NOT IN ('succeeded','failed','conflict','recovery_required')";
         const row = db
           .prepare(
             `SELECT * FROM organization_items WHERE ${stages} AND (lease_owner IS NULL OR lease_expires_at<=?) ORDER BY stage_changed_at,id LIMIT 1`,
           )
           .get(timestamp) as Row | undefined;
         if (!row) return null;
-        const stage = row.stage === 'queued' ? 'validating' : String(row.stage);
+        const stage =
+          row.stage === 'queued'
+            ? 'validating'
+            : input.recoveryOnly && row.stage === 'moving'
+              ? 'recovery_required'
+              : String(row.stage);
         const generation = integer(row.generation) + 1;
         const leaseExpiresAt = timestamp + input.leaseDurationMs;
         db.prepare(
-          'UPDATE organization_items SET stage=?,generation=?,lease_owner=?,lease_expires_at=?,stage_changed_at=? WHERE id=?',
-        ).run(stage, generation, input.workerId, leaseExpiresAt, timestamp, text(row.id));
+          'UPDATE organization_items SET stage=?,generation=?,lease_owner=?,lease_expires_at=?,stage_changed_at=?,error_code=CASE WHEN ? THEN ? ELSE error_code END,next_owner=CASE WHEN ? THEN ? ELSE next_owner END WHERE id=?',
+        ).run(
+          stage,
+          generation,
+          input.workerId,
+          leaseExpiresAt,
+          timestamp,
+          input.recoveryOnly && row.stage === 'moving' ? 1 : 0,
+          'worker_interrupted',
+          input.recoveryOnly && row.stage === 'moving' ? 1 : 0,
+          'filesystem',
+          text(row.id),
+        );
         db.prepare(
           'INSERT INTO organization_attempts(item_id,generation,owner,started_at) VALUES(?,?,?,?)',
         ).run(text(row.id), generation, input.workerId, timestamp);
         const claimed = decodeItem(rowFor(text(row.id))!);
-        return { ...claimed, workerId: input.workerId } as OrganizationClaim;
+        const libraryId = text(
+          db.prepare('SELECT library_id FROM organization_jobs WHERE id=?').get(claimed.jobId)
+            ?.library_id,
+        );
+        return { ...claimed, libraryId, workerId: input.workerId } as OrganizationClaim;
       });
     },
     recordReferences(
@@ -273,6 +348,64 @@ export function createOrganizationRepository(options: {
           'UPDATE organization_items SET baseline_json=?,stage=?,stage_changed_at=? WHERE id=?',
         ).run(baseline, state.stage, now(), input.itemId);
         event(input.itemId, 'references_captured', {});
+      });
+    },
+    recordMovePreimage(
+      input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
+        preimage: {
+          device: string;
+          inode: string;
+          digest: string;
+          mode: number;
+          uid: number;
+          gid: number;
+          audioIdentity: string;
+          targetParentDevice: string;
+          targetParentInode: string;
+        };
+      },
+    ) {
+      return atomic(() => {
+        const row = owned(input);
+        const value = input.preimage;
+        if (
+          row.stage !== 'references_captured' ||
+          !/^\d+$/.test(value.device) ||
+          !/^\d+$/.test(value.inode) ||
+          !/^\d+$/.test(value.targetParentDevice) ||
+          !/^\d+$/.test(value.targetParentInode) ||
+          !hex(value.digest) ||
+          !hex(value.audioIdentity) ||
+          value.audioIdentity !== row.audio_identity ||
+          ![value.mode, value.uid, value.gid].every(
+            (number) => Number.isSafeInteger(number) && number >= 0,
+          ) ||
+          value.mode > 4095
+        )
+          throw new Error('conflict');
+        db.prepare(
+          'UPDATE organization_items SET source_device=?,source_inode=?,source_digest=?,source_mode=?,source_uid=?,source_gid=?,target_parent_device=?,target_parent_inode=? WHERE id=?',
+        ).run(
+          value.device,
+          value.inode,
+          value.digest,
+          value.mode,
+          value.uid,
+          value.gid,
+          value.targetParentDevice,
+          value.targetParentInode,
+          input.itemId,
+        );
+        event(input.itemId, 'move_preimage_recorded', {
+          device: value.device,
+          inode: value.inode,
+          digest: value.digest,
+          mode: value.mode,
+          uid: value.uid,
+          gid: value.gid,
+          targetParentDevice: value.targetParentDevice,
+          targetParentInode: value.targetParentInode,
+        });
       });
     },
     transition(
@@ -293,6 +426,7 @@ export function createOrganizationRepository(options: {
               : advanceOrganizationState(current, input.stage);
         if (state.stage !== input.stage) throw new Error('invalid_transition');
         const terminal = ['succeeded', 'failed', 'conflict'].includes(state.stage);
+        const relinquish = terminal || state.stage === 'moved';
         db.prepare(
           'UPDATE organization_items SET stage=$stage,new_track_id=COALESCE($new_track_id,new_track_id),error_code=$error_code,next_owner=$next_owner,stage_changed_at=$changed_at,lease_owner=$lease_owner,lease_expires_at=$lease_expires_at,encrypted_job_grant=CASE WHEN $terminal THEN NULL ELSE encrypted_job_grant END,grant_epoch=CASE WHEN $terminal THEN NULL ELSE grant_epoch END WHERE id=$id',
         ).run({
@@ -301,12 +435,12 @@ export function createOrganizationRepository(options: {
           $error_code: state.errorCode ?? null,
           $next_owner: state.nextOwner ?? null,
           $changed_at: now(),
-          $lease_owner: terminal ? null : input.workerId,
-          $lease_expires_at: terminal ? null : Number(row.lease_expires_at),
+          $lease_owner: relinquish ? null : input.workerId,
+          $lease_expires_at: relinquish ? null : Number(row.lease_expires_at),
           $terminal: terminal ? 1 : 0,
           $id: input.itemId,
         });
-        if (terminal)
+        if (relinquish)
           db.prepare(
             'UPDATE organization_attempts SET finished_at=?,error_code=? WHERE item_id=? AND generation=?',
           ).run(now(), state.errorCode ?? null, input.itemId, input.generation);
@@ -396,6 +530,32 @@ export function createOrganizationRepository(options: {
             itemId: String(row.organization_item_id),
           }
         : null;
+    },
+    resumeRecovery(
+      input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
+        stage: 'moving' | 'moved';
+      },
+    ) {
+      return atomic(() => {
+        const row = owned(input);
+        if (row.stage !== 'recovery_required' || row.next_owner !== 'filesystem')
+          throw new Error('conflict');
+        db.prepare(
+          'UPDATE organization_items SET stage=$stage,error_code=NULL,next_owner=NULL,stage_changed_at=$changed_at,lease_owner=$lease_owner,lease_expires_at=$lease_expires_at WHERE id=$id',
+        ).run({
+          $stage: input.stage,
+          $changed_at: now(),
+          $lease_owner: input.stage === 'moved' ? null : input.workerId,
+          $lease_expires_at: input.stage === 'moved' ? null : Number(row.lease_expires_at),
+          $id: input.itemId,
+        });
+        if (input.stage === 'moved')
+          db.prepare(
+            'UPDATE organization_attempts SET finished_at=?,error_code=NULL WHERE item_id=? AND generation=?',
+          ).run(now(), input.itemId, input.generation);
+        event(input.itemId, 'filesystem_recovered', { stage: input.stage });
+        return decodeItem(rowFor(input.itemId)!);
+      });
     },
   };
 }

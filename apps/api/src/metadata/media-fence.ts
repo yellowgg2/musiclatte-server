@@ -189,6 +189,26 @@ export function createMediaFence(options: MediaFenceOptions) {
     },
   };
 }
+/** Acquire a set in canonical identity order so opposite caller order cannot deadlock. */
+export async function withMediaFences<T>(
+  fence: ReturnType<typeof createMediaFence>,
+  identities: readonly string[],
+  purpose: 'verify' | 'publish' | 'recover',
+  work: (held: readonly HeldMediaFence[]) => Promise<T>,
+): Promise<T> {
+  const held: HeldMediaFence[] = [];
+  try {
+    for (const identity of [...new Set(identities)].sort())
+      held.push(await fence.acquire(identity, purpose));
+    const result = await work(held);
+    for (const lock of held) await lock.validate();
+    for (const lock of [...held].reverse()) await lock.release();
+    return result;
+  } finally {
+    for (const lock of held) lock.kill();
+    await Promise.all(held.map((lock) => lock.closed));
+  }
+}
 export function validateHeldFence(held: HeldMediaFence) {
   held.assertHeld();
 }
