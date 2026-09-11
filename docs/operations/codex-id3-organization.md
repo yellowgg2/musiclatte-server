@@ -10,6 +10,10 @@ Store the PAT and manifest outside the repository. Both files must be regular, o
 `metadata:read`, `metadata:write`, `media:organize`, plus `curation:write` for title/artist and
 `lyrics:write` only when lyrics are actually written.
 
+Collection batches also require `collections:read`. Put the journal in a new absolute path inside
+an owner-owned mode-`0700` directory outside the repository. The state file is created with
+mode `0600`; state, temporary, lock, and parent symlinks are rejected.
+
 The strict manifest accepts `schemaVersion`, `metadata`, `sourceEvidence`, and optional `cover`.
 Omit fields that are unknown or not verified. A cover must be an absolute private JPEG path with a
 recorded usage basis. Every evidence URL must use HTTPS and name the fields it supports.
@@ -63,6 +67,42 @@ under its durable grant and file fence, so the next claim need not wait for the 
 Stop when candidate search is not exact, evidence is incomplete, metadata preview rejects a field,
 or organization preview reports a collision. `status` performs a read; `retry` is valid only for a
 server-reported `recovery_required` checkpoint. Polling and automatic recovery are bounded.
+
+## Collection batch lifecycle
+
+Freeze exactly one current-account collection before researching any item:
+
+```sh
+npm run id3:organize -- batch-start --api https://service.example/api/v1 --token-file /absolute/private/token --source favorites --state-file /absolute/private/batch.json
+npm run id3:organize -- batch-start --api https://service.example/api/v1 --token-file /absolute/private/token --source playlist --playlist-id OPAQUE_ID --state-file /absolute/private/batch.json
+npm run id3:organize -- batch-next --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json
+npm run id3:organize -- batch-status --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json
+```
+
+`batch-next` returns the first unfinished unique track and its occurrence count. Run the existing
+cover, metadata, organization submit, and status commands with both `--state-file` and that exact
+`--track-id`. The journal creates all stable operation IDs before mutation, reuses them after a
+lost response, and atomically checkpoints accepted upload/job IDs, result revision, new track ID,
+and server stage. A succeeded item is never selected again; an accepted item is returned for exact
+replay or status readback.
+
+Only a non-mutating research outcome may be skipped:
+
+```sh
+npm run id3:organize -- batch-skip --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID --skip-reason ambiguous_release
+```
+
+Allowed reasons are `ambiguous_release`, `official_evidence_missing`, `unsupported_format`,
+`metadata_incomplete`, and `destination_conflict`. A skip is refused after an accepted mutation.
+Item-local failures leave the next item available. Authentication, authorization, upstream, policy,
+or scope failures stop the batch with all checkpoints preserved; after correcting the cause, an
+explicit `batch-next` resumes the same unfinished item. Concurrency is one journal command at a
+time via the private lock file.
+
+The journal contains only API/credential fingerprints, the frozen selection revision, redacted
+source and display metadata, occurrence indexes, stable operation IDs, opaque server IDs, and
+state/error codes. It never contains the PAT, manifest or evidence body, JPEG/lyrics bytes, or a
+private media path. `batch-next` and `batch-status` likewise emit only safe display/checkpoint data.
 
 ## Deployment and recovery
 

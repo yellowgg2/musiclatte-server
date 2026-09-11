@@ -14,6 +14,7 @@ import {
   decodeOrganizationCandidates,
   decodeOrganizationJobResponse,
   decodeOrganizationPreview,
+  decodeOrganizationSelection,
   metadataFields,
   organizationEvidenceKinds,
   type MetadataField,
@@ -21,6 +22,16 @@ import {
   type OrganizationJob,
   type OrganizationSourceEvidence,
 } from '@musiclatte/contracts';
+import {
+  checkpointId3OrganizationBatch,
+  createId3OrganizationBatchJournal,
+  id3OrganizationBatchBinding,
+  id3OrganizationBatchStatus,
+  nextId3OrganizationBatchItem,
+  recordId3OrganizationBatchFailure,
+  skipId3OrganizationBatchItem,
+  verifyId3OrganizationBatchContext,
+} from './id3-organize-batch-journal.js';
 
 type MetadataValues = Partial<{
   title: string;
@@ -53,7 +64,11 @@ export interface Id3OrganizeCommandOptions {
     | 'organization-preview'
     | 'organization-submit'
     | 'status'
-    | 'retry';
+    | 'retry'
+    | 'batch-start'
+    | 'batch-next'
+    | 'batch-skip'
+    | 'batch-status';
   title?: string;
   libraryId?: string;
   trackId?: string;
@@ -64,6 +79,10 @@ export interface Id3OrganizeCommandOptions {
   manifest?: Id3OrganizationManifest;
   sourceEvidence?: OrganizationSourceEvidence[];
   coverUploadId?: string;
+  stateFile?: string;
+  source?: 'favorites' | 'playlist';
+  playlistId?: string;
+  skipReason?: string;
   poll?: PollOptions;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -228,6 +247,10 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
   const token = readPrivateToken(options.tokenFile);
   const base = apiRoot(options.api);
   const headers = { authorization: `Bearer ${token}` };
+  const stopBoundBatch = (code: string) => {
+    if (options.stateFile && options.trackId)
+      recordId3OrganizationBatchFailure(options.stateFile, options.trackId, code);
+  };
   const call = async (
     path: string,
     init: RequestInit = {},
@@ -240,14 +263,23 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     try {
       response = await execute();
     } catch {
-      if (!replayLost) return fail('network');
+      if (!replayLost) {
+        stopBoundBatch('upstream_unavailable');
+        return fail('network');
+      }
       try {
         response = await execute();
       } catch {
+        stopBoundBatch('upstream_unavailable');
         return fail('network');
       }
     }
-    if (!expected.includes(response.status)) fail(`http_${response.status}`);
+    if (!expected.includes(response.status)) {
+      if (response.status === 401) stopBoundBatch('unauthenticated');
+      else if (response.status === 403) stopBoundBatch('forbidden');
+      else if ([502, 503, 504].includes(response.status)) stopBoundBatch('upstream_unavailable');
+      fail(`http_${response.status}`);
+    }
     if (response.status === 204) return undefined;
     try {
       return await response.json();
@@ -270,6 +302,52 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     trackId: required(options.trackId, 'target'),
     expectedRevision: required(options.revision, 'target'),
   });
+
+  if (options.command === 'batch-start') {
+    const stateFile = required(options.stateFile, 'state_file');
+    const source = options.source;
+    if (!source || (source === 'playlist' && !options.playlistId)) fail('source');
+    const selection = decodeOrganizationSelection(
+      await jsonPost(
+        '/metadata-organization/selections',
+        {
+          source:
+            source === 'favorites'
+              ? { kind: 'favorites' }
+              : { kind: 'playlist', playlistId: options.playlistId },
+        },
+        [200],
+      ),
+    );
+    createId3OrganizationBatchJournal({ path: stateFile, api: base, token, selection });
+    return id3OrganizationBatchStatus(stateFile);
+  }
+  if (options.command === 'batch-next') {
+    const stateFile = required(options.stateFile, 'state_file');
+    verifyId3OrganizationBatchContext(stateFile, base, token);
+    return nextId3OrganizationBatchItem(stateFile);
+  }
+  if (options.command === 'batch-skip') {
+    const stateFile = required(options.stateFile, 'state_file');
+    verifyId3OrganizationBatchContext(stateFile, base, token);
+    skipId3OrganizationBatchItem(
+      stateFile,
+      required(options.trackId, 'target'),
+      required(options.skipReason, 'skip_reason'),
+    );
+    return id3OrganizationBatchStatus(stateFile);
+  }
+  if (options.command === 'batch-status') {
+    const stateFile = required(options.stateFile, 'state_file');
+    verifyId3OrganizationBatchContext(stateFile, base, token);
+    return id3OrganizationBatchStatus(stateFile);
+  }
+
+  const batchBinding = () => {
+    if (!options.stateFile) return undefined;
+    verifyId3OrganizationBatchContext(options.stateFile, base, token);
+    return id3OrganizationBatchBinding(options.stateFile, required(options.trackId, 'target'));
+  };
 
   if (options.command === 'candidates') {
     const query = new URLSearchParams({ title: required(options.title, 'title') });
@@ -307,14 +385,21 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const image = privateFile(options.manifest.cover.path, 8 * 1024 * 1024, 'cover');
     if (!(image[0] === 0xff && image[1] === 0xd8 && image.at(-2) === 0xff && image.at(-1) === 0xd9))
       fail('cover');
-    return decodeMetadataCoverUpload(
+    const binding = batchBinding();
+    if (
+      binding &&
+      (binding.state !== 'researching' ||
+        (options.operationId !== undefined && options.operationId !== binding.operations.cover))
+    )
+      fail('journal_binding');
+    const upload = decodeMetadataCoverUpload(
       await call(
         '/metadata-covers',
         {
           method: 'POST',
           headers: {
             'content-type': 'image/jpeg',
-            'x-operation-id': options.operationId ?? randomUUID(),
+            'x-operation-id': binding?.operations.cover ?? options.operationId ?? randomUUID(),
             'x-metadata-library-id': required(options.libraryId, 'library'),
           },
           body: image,
@@ -323,6 +408,12 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         true,
       ),
     );
+    if (binding && options.stateFile)
+      checkpointId3OrganizationBatch(options.stateFile, binding.trackId, {
+        kind: 'cover',
+        uploadId: upload.uploadId,
+      });
+    return upload;
   }
   if (options.command === 'metadata-submit') {
     if (!options.manifest) fail('manifest');
@@ -332,6 +423,15 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const optionalFields = fields.filter((field) => !['title', 'artist'].includes(field));
     if (requiredFields.length && optionalFields.length) fail('mixed_claim_purpose');
     const purpose = requiredFields.length ? 'required_review' : 'optional_enrichment';
+    const binding = batchBinding();
+    if (
+      binding &&
+      (!['researching', 'metadata_accepted'].includes(binding.state) ||
+        (options.operationId !== undefined &&
+          options.operationId !== binding.operations.metadata) ||
+        (binding.coverUploadId !== null && binding.coverUploadId !== options.coverUploadId))
+    )
+      fail('journal_binding');
     const claim = decodeCurationClaimResult(
       await jsonPost(
         '/curation-claims',
@@ -349,7 +449,7 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const claimId = claim.claimId;
     try {
       const body = {
-        operationId: options.operationId ?? randomUUID(),
+        operationId: binding?.operations.metadata ?? options.operationId ?? randomUUID(),
         targets: [target()],
         patch,
         automation: {
@@ -368,6 +468,15 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         await jsonPost('/metadata-jobs', body, [202], true),
       );
       if (!accepted.job || accepted.admissionResults[0]?.status !== 'accepted') fail('admission');
+      if (binding && options.stateFile) {
+        const result = accepted.job.items.find((item) => item.originalTrackId === binding.trackId);
+        checkpointId3OrganizationBatch(options.stateFile, binding.trackId, {
+          kind: 'metadata',
+          jobId: accepted.job.id,
+          resultRevision: result?.resultRevision ?? null,
+          serverStage: result?.stage ?? accepted.job.status,
+        });
+      }
       return accepted;
     } finally {
       await call(
@@ -379,6 +488,16 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     }
   }
   if (options.command === 'organization-submit') {
+    const binding = batchBinding();
+    if (
+      binding &&
+      (!['metadata_accepted', 'organization_accepted'].includes(binding.state) ||
+        binding.metadataJobId !== options.metadataJobId ||
+        (binding.resultRevision !== null && binding.resultRevision !== options.revision) ||
+        (options.operationId !== undefined &&
+          options.operationId !== binding.operations.organization))
+    )
+      fail('journal_binding');
     const evidence = decodeEvidence(options.sourceEvidence ?? options.manifest?.sourceEvidence);
     const accepted = decodeOrganizationJobResponse(
       await jsonPost(
@@ -386,7 +505,7 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         {
           ...target(),
           destinationPolicy: 'id3-managed-v1',
-          operationId: options.operationId ?? randomUUID(),
+          operationId: binding?.operations.organization ?? options.operationId ?? randomUUID(),
           metadataJobId: required(options.metadataJobId, 'metadata_job'),
           sourceEvidence: evidence,
         },
@@ -394,20 +513,46 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         true,
       ),
     );
+    if (binding && options.stateFile)
+      checkpointId3OrganizationBatch(options.stateFile, binding.trackId, {
+        kind: 'organization',
+        jobId: accepted.job.id,
+        newTrackId: accepted.job.newTrackId,
+        serverStage: accepted.job.stage,
+      });
     if (!options.poll) return accepted;
-    return {
+    const completed = {
       schemaVersion: 1,
       job: await pollOrganization(accepted.job, options.poll),
     };
+    if (binding && options.stateFile)
+      checkpointId3OrganizationBatch(options.stateFile, binding.trackId, {
+        kind: 'organization',
+        jobId: completed.job.id,
+        newTrackId: completed.job.newTrackId,
+        serverStage: completed.job.stage,
+      });
+    return completed;
   }
   if (options.command === 'status') {
+    const binding = batchBinding();
+    if (binding && binding.organizationJobId !== options.jobId) fail('journal_binding');
     const first = decodeOrganizationJobResponse(
       await call(
         '/metadata-organization-jobs/' + encodeURIComponent(required(options.jobId, 'job')),
       ),
     );
-    if (!options.poll) return first;
-    return { schemaVersion: 1, job: await pollOrganization(first.job, options.poll) };
+    const result = options.poll
+      ? { schemaVersion: 1 as const, job: await pollOrganization(first.job, options.poll) }
+      : first;
+    if (binding && options.stateFile)
+      checkpointId3OrganizationBatch(options.stateFile, binding.trackId, {
+        kind: 'organization',
+        jobId: result.job.id,
+        newTrackId: result.job.newTrackId,
+        serverStage: result.job.stage,
+      });
+    return result;
   }
   if (options.command === 'retry')
     return decodeOrganizationJobResponse(
@@ -490,10 +635,18 @@ function parseArgs(argv: string[]) {
     ['metadata-job-id', 'metadataJobId'],
     ['operation-id', 'operationId'],
     ['cover-upload-id', 'coverUploadId'],
+    ['state-file', 'stateFile'],
+    ['playlist-id', 'playlistId'],
+    ['skip-reason', 'skipReason'],
   ] as const;
   for (const [flag, property] of optional) {
     const value = values.get(flag);
     if (value) result[property] = value;
+  }
+  const source = values.get('source');
+  if (source !== undefined) {
+    if (!['favorites', 'playlist'].includes(source)) fail('source');
+    result.source = source as 'favorites' | 'playlist';
   }
   if (manifest) result.manifest = manifest;
   if (values.get('poll-attempts'))
