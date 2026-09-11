@@ -197,9 +197,12 @@ def apply_patch(tags, major, patch, request):
     touched = set()
     encoding = 1 if major == 3 else 3
     for field, operation in patch.items():
-        if not isinstance(operation, dict) or operation.get("op") not in ("set", "clear"):
+        if not isinstance(operation, dict):
             fail()
-        setting = operation["op"] == "set"
+        allowed = ("set", "clear", "replaceAll", "clearAll") if field == "cover" else ("set", "clear")
+        if operation.get("op") not in allowed:
+            fail()
+        setting = operation["op"] in ("set", "replaceAll")
         if field in FIELDS or field == "year":
             closed(operation, ["op", "value"] if setting else ["op"])
             klass = (TYER if major == 3 else TDRC) if field == "year" else FIELDS[field]
@@ -253,6 +256,20 @@ def apply_patch(tags, major, patch, request):
                     fail()
                 tags.add(USLT(encoding=encoding, lang=language, desc=description, text=words))
         else:
+            if operation["op"] in ("replaceAll", "clearAll"):
+                closed(operation, ["op", "uploadId"] if setting else ["op"])
+                data, mime = image_data(request) if setting else (None, None)
+                if setting and mime != "image/jpeg":
+                    fail("invalid_cover")
+                existing = list(tags.getall("APIC"))
+                touched.update(frame.HashKey for frame in existing)
+                tags.delall("APIC")
+                if setting:
+                    frame = APIC(encoding=encoding, mime="image/jpeg", type=3,
+                                 desc="Musiclatte official front cover", data=data)
+                    tags.add(frame)
+                    touched.add(frame.HashKey)
+                continue
             closed(operation, ["op", "selector", "uploadId"] if setting else ["op", "selector"])
             selector = operation["selector"]
             if not isinstance(selector, dict) or selector.get("kind") not in ("front", "new"):
@@ -282,7 +299,7 @@ def apply_patch(tags, major, patch, request):
 
 def preview_values(tags, major, field, patch):
     if field == "cover":
-        frames = sorted(tags.getall("APIC"), key=lambda f: f.HashKey)
+        frames = sorted(tags.getall("APIC"), key=lambda f: (f.desc, f.HashKey))
         return ([f.desc for f in frames], [(f.HashKey, hashlib.sha256(f.data).hexdigest()) for f in frames])
     if field == "lyrics":
         frames = sorted(tags.getall("USLT"), key=lambda f: f.HashKey)

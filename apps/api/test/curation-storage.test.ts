@@ -73,7 +73,7 @@ describe('durable curation storage', () => {
         repo.attempt(a, field, 'unavailable', `No ${field} source`, null, 'actor');
       expect(
         Object.fromEntries(
-          ['albumArtist', 'trackNumber', 'year', 'genre'].map((field) => [
+          (['albumArtist', 'trackNumber', 'year', 'genre'] as const).map((field) => [
             field,
             repo.get(a)?.fieldStates[field].status,
           ]),

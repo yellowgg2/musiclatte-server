@@ -59,7 +59,7 @@ export function createMetadataCoverVerifier(options: {
     if (!snapshot.coverFrames.length) return !song.coverArt;
     if (!song.coverArt) return false;
     let frames = snapshot.coverFrames;
-    if (work.patch.cover?.op === 'set') {
+    if (work.patch.cover?.op === 'set' || work.patch.cover?.op === 'replaceAll') {
       const row = options.database.connection
         .prepare(
           'SELECT digest FROM metadata_cover_uploads WHERE id=? AND identity_key=? AND library_id=? AND actor_token_id IS ?',
@@ -67,6 +67,7 @@ export function createMetadataCoverVerifier(options: {
         .get(work.patch.cover.uploadId, work.identityKey, work.libraryId, work.actorTokenId);
       if (!row) throw new Error('reflection_unavailable');
       frames = frames.filter((frame) => frame.pictureType === 3 && frame.digest === row.digest);
+      if (work.patch.cover.op === 'replaceAll' && snapshot.coverFrames.length !== 1) return false;
     }
     const signal = AbortSignal.any([options.signal, AbortSignal.timeout(10000)]);
     const response = await fetch(client.mediaRequest('getCoverArt', song.coverArt, { signal }), {

@@ -135,17 +135,22 @@ export function createMetadataService(service: SessionService) {
       throw new ApiError(400, 'invalid_request');
     const libraryId = files[0]!.libraryId;
     const cover =
-      patch.cover?.op === 'set'
+      patch.cover?.op === 'set' || patch.cover?.op === 'replaceAll'
         ? getCovers().resolve(v, patch.cover.uploadId, libraryId)
         : undefined;
+    if (patch.cover?.op === 'replaceAll' && cover?.mimeType !== 'image/jpeg')
+      throw new ApiError(422, 'invalid_request');
+    const previews = [];
     for (const file of files)
-      await p.helper.preview({
-        key: file.relativeFileKey,
-        expectedDigest: file.inspection.digest,
-        patch,
-        ...(cover ? { cover } : {}),
-      });
-    return files;
+      previews.push(
+        await p.helper.preview({
+          key: file.relativeFileKey,
+          expectedDigest: file.inspection.digest,
+          patch,
+          ...(cover ? { cover } : {}),
+        }),
+      );
+    return { files, previews, cover };
   };
   const item = (
     v: Verified,
@@ -257,7 +262,9 @@ export function createMetadataService(service: SessionService) {
       };
     },
     async preview(v: Verified, body: Pick<MetadataJobRequest, 'targets' | 'patch'>) {
-      const files = await validate(v, body.targets, body.patch);
+      const validation = await validate(v, body.targets, body.patch);
+      const { files } = validation;
+      const coverOperation = body.patch.cover?.op;
       return {
         schemaVersion: 1 as const,
         libraryId: files[0]!.libraryId,
@@ -265,13 +272,27 @@ export function createMetadataService(service: SessionService) {
         changedFields: Object.keys(body.patch),
         targets: files.map((file) => ({ trackId: file.trackId, fileRevision: file.fileRevision })),
         writeGuaranteed: false as const,
+        ...(coverOperation === 'replaceAll' || coverOperation === 'clearAll'
+          ? {
+              coverNormalization: {
+                targets: files.map((file, index) => ({
+                  trackId: file.trackId,
+                  removedCoverCount:
+                    validation.previews[index]?.find((diff) => diff.field === 'cover')?.before
+                      .length ?? 0,
+                })),
+                addedJpegDigest:
+                  coverOperation === 'replaceAll' ? validation.cover!.expectedDigest : null,
+              },
+            }
+          : {}),
       };
     },
     async submit(v: Verified, body: MetadataJobRequest) {
       const key = requestKey(v, body.operationId, ['edit', body]);
       const existing = await replay(v, key);
       if (existing) return { schemaVersion: 1 as const, job: existing };
-      const files = await validate(v, body.targets, body.patch);
+      const { files } = await validate(v, body.targets, body.patch);
       await revalidateMetadataPrincipal(service, v);
       const request: ValidatedMetadataRequest = {
         ...key,
@@ -408,7 +429,7 @@ export function createMetadataService(service: SessionService) {
           .prepare('SELECT patch_json FROM metadata_items WHERE id=? AND job_id=?')
           .get(old.itemId, id)!;
         const patch = JSON.parse(String(row.patch_json)) as MetadataPatch;
-        const files = await validate(
+        const { files } = await validate(
           v,
           [{ trackId: old.currentTrackId, expectedRevision: entry.expectedRevision }],
           patch,

@@ -22,13 +22,17 @@ proof; this helper is never exposed as an arbitrary public file-writing interfac
 | artist / albumArtist / genre | TPE1 / TPE2 / TCON complete text-array set or clear                                 |
 | trackNumber                  | TRCK, positive n or n/total with total ≥ n                                          |
 | year                         | TYER for v2.3, TDRC for v2.4; preserve valid date/time suffix                       |
-| cover                        | Explicit type-3 description selector or unique new description; preserve other APIC |
+| cover set/clear              | Explicit type-3 description selector or unique new description; preserve other APIC |
+| cover replaceAll             | Require decoded JPEG, remove every APIC, add one type-3 `image/jpeg` frame          |
+| cover clearAll               | Remove every APIC while preserving all non-APIC frames                              |
 | lyrics                       | Explicit USLT language + description; preserve other USLT and SYLT                  |
 
 Omitted fields are unchanged. Explicit clear deletes only its target. Invalid leap-day changes
 fail before writing. v2.3 multivalue text uses Mutagen's `v23_sep=None` to retain values; this is
 an intentionally nonstandard ID3v2.3 representation, and other readers may expose only its first
 value. No implicit upgrade or normalization is performed.
+
+`replaceAll` and `clearAll` are explicit destructive variants; they never change the legacy selector semantics. Both retain the existing ID3 major version, ID3v1 tail, unknown frames and audio packet identity. `replaceAll` refuses a valid PNG upload even though legacy selector replacement accepts JPEG or PNG.
 
 JPEG/PNG uploads require their real signature, ffprobe dimensions (≤16,000,000 pixels) and
 successful FFmpeg decode. SVG/HTML and external image fetching are unsupported. Cover input is

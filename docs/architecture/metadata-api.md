@@ -9,7 +9,7 @@ behavior. Metadata and imports can be configured independently.
 | ----------------------------------------------- | ----------------------------------------------------------------- |
 | GET `/tracks/:id/metadata`                      | Actual tags, file revision, editable state, supported fields      |
 | GET `/tracks/:id/metadata/cover/:frameId`       | Account/track/current-revision-bound APIC bytes                   |
-| POST `/metadata-previews`                       | Validated target count and changed fields; no write guarantee     |
+| POST `/metadata-previews`                       | Validated target/field effects; no write guarantee                |
 | POST `/metadata-covers`                         | Validated private upload token                                    |
 | GET `/metadata-covers/:id`                      | Owner's validated uploaded image                                  |
 | POST `/metadata-jobs`                           | 202 durable job or identical operation replay                     |
@@ -54,6 +54,8 @@ a music file. Invalid track fractions, invalid date preservation, ambiguous APIC
 USLT byte limits fail before enqueue. Each job stays within one library. The configured limit
 is bounded by 100; the validated default is 64. Submission is not a promise that later disk I/O
 will succeed; those failures remain per-file worker receipts.
+
+Legacy cover `set` and `clear` keep their exact selector behavior. The explicit `replaceAll` variant requires a validated JPEG upload and the explicit `clearAll` variant requires no upload. Their preview adds a per-target APIC removal count and either the verified JPEG digest or `null`; no image bytes or paths enter the response. Worker authorization retains the operation kind so the organization scope gate can be added without redefining the patch.
 
 ## Images and changes
 

@@ -83,7 +83,13 @@ export function createMetadataCoverService(service: SessionService, p: MetadataP
     verifyRoot();
     const key = String(row.relative_key);
     if (!/^[a-f0-9-]{36}\.upload$/.test(key)) throw new Error('Storage unavailable');
-    return { root, rootIdentity, key, expectedDigest: String(row.digest) };
+    return {
+      root,
+      rootIdentity,
+      key,
+      expectedDigest: String(row.digest),
+      mimeType: String(row.mime_type),
+    };
   };
   const project = (row: Record<string, unknown>) => ({
     schemaVersion: 1 as const,

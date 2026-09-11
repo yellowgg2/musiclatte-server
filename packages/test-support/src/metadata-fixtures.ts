@@ -8,6 +8,7 @@ export async function createMetadataFixture(options: {
   ffmpeg: string;
   version: 0 | 3 | 4;
   durationSeconds?: number;
+  includeLegacyWebp?: boolean;
 }) {
   const duration = options.durationSeconds ?? 0.3;
   if (!Number.isFinite(duration) || duration <= 0 || duration > 180)
@@ -40,6 +41,7 @@ export async function createMetadataFixture(options: {
     ['old.png', 'red'],
     ['new.png', 'blue'],
     ['new.jpg', 'green'],
+    ['old.webp', 'yellow'],
   ])
     run([
       '-f',
@@ -75,6 +77,9 @@ with open(os.path.join(root,"old.png"),"rb") as image:
     data=image.read()
 tags.add(APIC(encoding=1,mime="image/png",type=3,desc="front",data=data))
 tags.add(APIC(encoding=1,mime="image/png",type=4,desc="back",data=data))
+if v.get("includeLegacyWebp"):
+    with open(os.path.join(root,"old.webp"),"rb") as image:
+        tags.add(APIC(encoding=1,mime="image/webp",type=0,desc="youtube",data=image.read()))
 tags.save(os.path.join(root,"source.mp3"),v2_version=v["version"],v23_sep=None,v1=2)
 path=os.path.join(root,"source.mp3")
 with open(path,"r+b") as audio:

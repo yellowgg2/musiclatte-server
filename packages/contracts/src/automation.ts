@@ -36,7 +36,7 @@ export const automationFailureReasons = [
 export type AutomationFailureReason = (typeof automationFailureReasons)[number];
 export interface AutomationDiff {
   field: MetadataField;
-  op: 'set' | 'clear';
+  op: 'set' | 'clear' | 'replaceAll' | 'clearAll';
   before: string[];
   after: string[];
   status: 'changed' | 'no_change';
@@ -132,7 +132,7 @@ export function decodeAutomationDiff(value: unknown): AutomationDiff {
   const v = curationRecord(value, ['field', 'op', 'before', 'after', 'status']);
   if (
     !metadataFields.includes(v.field as MetadataField) ||
-    !['set', 'clear'].includes(String(v.op)) ||
+    !['set', 'clear', 'replaceAll', 'clearAll'].includes(String(v.op)) ||
     !['changed', 'no_change'].includes(String(v.status)) ||
     ![v.before, v.after].every((a) => Array.isArray(a) && a.every((x) => typeof x === 'string'))
   )

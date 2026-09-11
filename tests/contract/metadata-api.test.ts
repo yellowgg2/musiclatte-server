@@ -97,6 +97,24 @@ describe('metadata API consumer-independent contract', () => {
       writeGuaranteed: false,
     };
     expect(decodeMetadataPreview(preview)).toEqual(preview);
+    const normalized = {
+      ...preview,
+      changedFields: ['cover'],
+      coverNormalization: {
+        targets: [{ trackId: preview.targets[0]!.trackId, removedCoverCount: 2 }],
+        addedJpegDigest: 'a'.repeat(64),
+      },
+    };
+    expect(decodeMetadataPreview(normalized)).toEqual(normalized);
+    expect(() =>
+      decodeMetadataPreview({
+        ...normalized,
+        coverNormalization: {
+          ...normalized.coverNormalization,
+          addedJpegDigest: 'not-a-digest',
+        },
+      }),
+    ).toThrow();
     expect(() => decodeMetadataPreview({ ...preview, writeGuaranteed: true })).toThrow();
     expect(() => decodeMetadataPreview({ ...preview, targetCount: 2 })).toThrow();
     const cover = {

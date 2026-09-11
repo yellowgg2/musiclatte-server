@@ -20,7 +20,7 @@ afterEach(() => {
   if (root) rmSync(root, { recursive: true, force: true });
   root = undefined;
 });
-async function makeSUT(version: 3 | 4 | 0 = 4) {
+async function makeSUT(version: 3 | 4 | 0 = 4, includeLegacyWebp = false) {
   const path = resolve('apps/api/src/metadata/helper-client.ts');
   expect(existsSync(path)).toBe(true);
   const { createMetadataHelper } = await import(path);
@@ -28,7 +28,7 @@ async function makeSUT(version: 3 | 4 | 0 = 4) {
     resolve('packages/test-support/src/metadata-fixtures.ts')
   );
   root = realpathSync(mkdtempSync(join(tmpdir(), 'musiclatte-metadata-helper-')));
-  await createMetadataFixture({ root, python, ffmpeg, version });
+  await createMetadataFixture({ root, python, ffmpeg, version, includeLegacyWebp });
   const helper = createMetadataHelper({
     python,
     ffmpeg,
@@ -177,6 +177,40 @@ describe('actual MP3 metadata helper', () => {
       ),
     ).toEqual(['kor']);
   });
+  /** Destructive cover operations replace every APIC with one JPEG or remove APIC only. */
+  it.each([3, 4] as const)(
+    'should normalize all artwork while preserving audio and ID3v2.%s',
+    async (version) => {
+      const s = await makeSUT(version, true);
+      const before = await s.helper.read({ key: 'source.mp3' });
+      expect(before.coverFrames).toContainEqual(
+        expect.objectContaining({ pictureType: 0, mimeType: 'image/webp' }),
+      );
+      copyFileSync(join(s.root, 'source.mp3'), join(s.root, 'normalize.metadata-pending'));
+      const normalized = await s.helper.prepare({
+        candidateKey: 'normalize.metadata-pending',
+        expectedDigest: before.fullDigest,
+        patch: { cover: { op: 'replaceAll', uploadId: 'official-jpeg' } },
+        cover: { key: 'new.jpg' },
+      });
+      expect(normalized.snapshot.id3Version).toBe(version);
+      expect(normalized.snapshot.coverFrames).toHaveLength(1);
+      expect(normalized.snapshot.coverFrames[0]).toMatchObject({
+        pictureType: 3,
+        mimeType: 'image/jpeg',
+      });
+      expect(normalized.snapshot.audio).toEqual(before.audio);
+      expect(normalized.snapshot.lyricsFrames).toEqual(before.lyricsFrames);
+      const cleared = await s.helper.prepare({
+        candidateKey: 'normalize.metadata-pending',
+        expectedDigest: normalized.snapshot.fullDigest,
+        patch: { cover: { op: 'clearAll' } },
+      });
+      expect(cleared.snapshot.coverFrames).toEqual([]);
+      expect(cleared.snapshot.audio).toEqual(before.audio);
+      expect(cleared.snapshot.lyricsFrames).toEqual(before.lyricsFrames);
+    },
+  );
   /** Untagged audio creates v2.4 while malformed fields, images and attempts to edit originals fail closed. */
   it('should create tags only in a candidate and reject invalid patch or media inputs', async () => {
     const s = await makeSUT(0);

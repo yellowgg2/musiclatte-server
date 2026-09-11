@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
+import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { createRecentContext, recentNow } from '../../../tests/support/recent-harness.js';
 import { browserHeaders, cookieOf, password } from '../../../tests/support/auth-harness.js';
@@ -524,6 +525,14 @@ describe('metadata API', () => {
     expect((await c.get(created.json().previewUrl)).rawPayload).toEqual(
       readFileSync(join(c.root, 'new.png')),
     );
+    expect(
+      (
+        await c.post('metadata-previews', {
+          targets: [{ trackId: 'track-1', expectedRevision: snapshot.fileRevision }],
+          patch: { cover: { op: 'replaceAll', uploadId: created.json().uploadId } },
+        })
+      ).statusCode,
+    ).toBe(422);
     const other = await c.login(browserHeaders, { ...password, username: 'other-user' });
     const foreign = {
       ...c.headers,
@@ -532,6 +541,33 @@ describe('metadata API', () => {
     };
     expect((await c.get(created.json().previewUrl, foreign)).statusCode).toBe(404);
     expect((await c.get(front.previewUrl, foreign)).statusCode).toBe(404);
+    const jpeg = readFileSync(join(c.root, 'new.jpg'));
+    const jpegUpload = await upload(jpeg, {
+      ...headers,
+      'content-type': 'image/jpeg',
+      'x-operation-id': operationId(10),
+    });
+    expect(jpegUpload.statusCode).toBe(201);
+    const normalization = await c.post('metadata-previews', {
+      targets: [{ trackId: 'track-1', expectedRevision: snapshot.fileRevision }],
+      patch: { cover: { op: 'replaceAll', uploadId: jpegUpload.json().uploadId } },
+    });
+    expect(normalization.statusCode).toBe(200);
+    expect(normalization.json().coverNormalization).toEqual({
+      targets: [{ trackId: 'track-1', removedCoverCount: snapshot.coverFrames.length }],
+      addedJpegDigest: createHash('sha256').update(jpeg).digest('hex'),
+    });
+    expect(
+      (
+        await c.post('metadata-previews', {
+          targets: [{ trackId: 'track-1', expectedRevision: snapshot.fileRevision }],
+          patch: { cover: { op: 'clearAll' } },
+        })
+      ).json().coverNormalization,
+    ).toEqual({
+      targets: [{ trackId: 'track-1', removedCoverCount: snapshot.coverFrames.length }],
+      addedJpegDigest: null,
+    });
     const body = {
       operationId: operationId(6),
       targets: [{ trackId: 'track-1', expectedRevision: snapshot.fileRevision }],

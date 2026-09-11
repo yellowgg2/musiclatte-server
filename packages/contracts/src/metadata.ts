@@ -31,7 +31,9 @@ export interface MetadataPatch {
   genre?: FieldPatch<string[]>;
   cover?:
     | { op: 'set'; selector: FrontCoverSelector | { kind: 'new' }; uploadId: string }
-    | { op: 'clear'; selector: FrontCoverSelector };
+    | { op: 'clear'; selector: FrontCoverSelector }
+    | { op: 'replaceAll'; uploadId: string }
+    | { op: 'clearAll' };
   lyrics?:
     | { op: 'set'; selector: LyricsSelector; text: string }
     | { op: 'clear'; selector: LyricsSelector };
@@ -54,6 +56,10 @@ export interface MetadataPreview {
   targetCount: number;
   changedFields: MetadataField[];
   targets: { trackId: string; fileRevision: string }[];
+  coverNormalization?: {
+    targets: { trackId: string; removedCoverCount: number }[];
+    addedJpegDigest: string | null;
+  };
   writeGuaranteed: false;
 }
 export interface MetadataCoverUpload {
@@ -235,6 +241,11 @@ export const metadataPatchSchema = {
           uploadId: id,
         }),
         object(['op', 'selector'], { op: { const: 'clear' }, selector: frontSelector }),
+        object(['op', 'uploadId'], {
+          op: { const: 'replaceAll' },
+          uploadId: id,
+        }),
+        object(['op'], { op: { const: 'clearAll' } }),
       ],
     },
     lyrics: {
@@ -397,6 +408,18 @@ export const metadataResponseSchemas = {
         maxItems: 100,
         items: object(['trackId', 'fileRevision'], { trackId, fileRevision: id }),
       },
+      coverNormalization: object(['targets', 'addedJpegDigest'], {
+        targets: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 100,
+          items: object(['trackId', 'removedCoverCount'], {
+            trackId,
+            removedCoverCount: { type: 'integer', minimum: 0, maximum: 128 },
+          }),
+        },
+        addedJpegDigest: nullable({ type: 'string', pattern: '^[a-f0-9]{64}$' }),
+      }),
       writeGuaranteed: { const: false },
     },
   ),
@@ -661,7 +684,12 @@ export function decodeMetadataSnapshot(value: unknown): MetadataSnapshot {
 }
 
 export function decodeMetadataPreview(value: unknown): MetadataPreview {
-  const v = record(value, metadataResponseSchemas.preview.required);
+  const hasNormalization =
+    !!value && typeof value === 'object' && Object.hasOwn(value, 'coverNormalization');
+  const v = record(value, [
+    ...metadataResponseSchemas.preview.required,
+    ...(hasNormalization ? ['coverNormalization'] : []),
+  ]);
   if (v.schemaVersion !== 1 || v.writeGuaranteed !== false)
     throw new Error('Invalid metadata response');
   const targets = list(
@@ -683,7 +711,7 @@ export function decodeMetadataPreview(value: unknown): MetadataPreview {
     throw new Error('Invalid metadata response');
   const changedFields = enumList(v.changedFields, metadataFields);
   if (!changedFields.length) throw new Error('Invalid metadata response');
-  return {
+  const result: MetadataPreview = {
     schemaVersion: 1,
     libraryId: identifier(v.libraryId),
     targetCount: targets.length,
@@ -691,6 +719,34 @@ export function decodeMetadataPreview(value: unknown): MetadataPreview {
     targets,
     writeGuaranteed: false,
   };
+  if (hasNormalization) {
+    const normalization = record(v.coverNormalization, ['targets', 'addedJpegDigest']);
+    const normalizedTargets = list(
+      normalization.targets,
+      (entry) => {
+        const target = record(entry, ['trackId', 'removedCoverCount']);
+        const removedCoverCount = timestamp(target.removedCoverCount);
+        if (removedCoverCount > 128) throw new Error('Invalid metadata response');
+        return { trackId: trackIdentifier(target.trackId), removedCoverCount };
+      },
+      100,
+    );
+    if (
+      normalizedTargets.length !== targets.length ||
+      normalizedTargets.some((target, index) => target.trackId !== targets[index]?.trackId) ||
+      !(
+        normalization.addedJpegDigest === null ||
+        (typeof normalization.addedJpegDigest === 'string' &&
+          /^[a-f0-9]{64}$/.test(normalization.addedJpegDigest))
+      )
+    )
+      throw new Error('Invalid metadata response');
+    result.coverNormalization = {
+      targets: normalizedTargets,
+      addedJpegDigest: normalization.addedJpegDigest as string | null,
+    };
+  }
+  return result;
 }
 export function decodeMetadataCoverUpload(value: unknown): MetadataCoverUpload {
   const v = record(value, metadataResponseSchemas.upload.required);
@@ -788,8 +844,18 @@ export function decodeMetadataIntent(value: unknown): MetadataPreviewRequest {
     const field = member(key, metadataFields);
     if (!raw || typeof raw !== 'object' || !('op' in raw))
       throw new Error('Invalid metadata response');
-    const op = member(raw.op, ['set', 'clear'] as const);
     if (field === 'cover') {
+      const op = member(raw.op, ['set', 'clear', 'replaceAll', 'clearAll'] as const);
+      if (op === 'replaceAll') {
+        const change = record(raw, ['op', 'uploadId']);
+        patch.cover = { op, uploadId: identifier(change.uploadId) };
+        continue;
+      }
+      if (op === 'clearAll') {
+        record(raw, ['op']);
+        patch.cover = { op };
+        continue;
+      }
       const change = record(
         raw,
         op === 'set' ? ['op', 'selector', 'uploadId'] : ['op', 'selector'],
@@ -817,6 +883,7 @@ export function decodeMetadataIntent(value: unknown): MetadataPreviewRequest {
             : { op, selector: target };
       }
     } else if (field === 'lyrics') {
+      const op = member(raw.op, ['set', 'clear'] as const);
       const change = record(raw, op === 'set' ? ['op', 'selector', 'text'] : ['op', 'selector']);
       const frame = record(change.selector, ['language', 'description']);
       if (typeof frame.language !== 'string' || !/^[a-z]{3}$/.test(frame.language))
@@ -828,6 +895,7 @@ export function decodeMetadataIntent(value: unknown): MetadataPreviewRequest {
       patch.lyrics =
         op === 'set' ? { op, selector, text: boundedText(change.text, 100000) } : { op, selector };
     } else {
+      const op = member(raw.op, ['set', 'clear'] as const);
       const change = record(raw, op === 'set' ? ['op', 'value'] : ['op']);
       if (op === 'clear') {
         Object.assign(patch, { [field]: { op } });

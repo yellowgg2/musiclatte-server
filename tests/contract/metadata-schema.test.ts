@@ -112,6 +112,8 @@ describe('metadata wire contract', () => {
         { artist: { op: 'set', value: ['Synthetic artist'] }, album: { op: 'clear' } },
         { lyrics: { op: 'clear', selector: { language: 'eng', description: '' } } },
         { cover: { op: 'set', selector: { kind: 'new' }, uploadId: 'upload-1' } },
+        { cover: { op: 'replaceAll', uploadId: 'official-jpeg' } },
+        { cover: { op: 'clearAll' } },
       ]) {
         expect(
           (await app.inject({ method: 'POST', url: '/', payload: { ...request, patch } }))
@@ -129,6 +131,8 @@ describe('metadata wire contract', () => {
         { artist: { op: 'set', value: 'artist' } },
         { artist: { op: 'set', value: [] } },
         { cover: { op: 'clear' } },
+        { cover: { op: 'replaceAll' } },
+        { cover: { op: 'clearAll', selector: { kind: 'front', description: '' } } },
         { lyrics: { op: 'clear' } },
         { lyrics: { op: 'set', selector: { language: 'ko', description: '' }, text: 'Synthetic' } },
       ]) {
