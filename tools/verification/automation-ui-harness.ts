@@ -176,7 +176,7 @@ export async function startAutomationUIHarness({
         schemaVersion: 1,
         now: Date.now(),
         maxTokenAgeMs: 30 * 86400000,
-        libraryIds: ['music', 'archive'],
+        libraryIds: ['music', 'studio-archive-with-a-long-synthetic-library-name'],
         scopes: [
           'metadata:read',
           'metadata:write',

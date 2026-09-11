@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -78,6 +80,11 @@ function fixture() {
           },
         },
       });
+    if (path.endsWith('/access-tokens/options') && state.availability !== 'available')
+      return Response.json(
+        { schemaVersion: 1, error: { code: 'upstream_unavailable' } },
+        { status: 503 },
+      );
     if (path.endsWith('/access-tokens/options'))
       return Response.json({
         schemaVersion: 1,
@@ -136,6 +143,46 @@ afterEach(() => {
   sessionStorage.clear();
   vi.restoreAllMocks();
 });
+
+/** The desktop guide keeps its secondary preset action at the normal control height. */
+it('keeps the Codex preset action compact beside multi-line guidance', () => {
+  const css = readFileSync(
+    resolve('apps/web/src/pages/settings/AccessTokensPanel.module.css'),
+    'utf8',
+  );
+
+  expect(css).toMatch(/\.guide\s*\{[^}]*align-items:\s*start/);
+});
+
+/** One-time token focus reveals the whole card above fixed mobile controls. */
+it('scrolls the one-time token card into view after focusing the raw value', async () => {
+  const original = HTMLElement.prototype.scrollIntoView;
+  const reveal = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+    configurable: true,
+    value: reveal,
+  });
+  try {
+    const c = setup();
+    await c.user.type(await screen.findByRole('textbox', { name: 'Token name' }), 'Visible token');
+    await c.user.click(screen.getByRole('checkbox', { name: 'music' }));
+    await c.user.click(screen.getByRole('button', { name: 'Create token' }));
+
+    const raw = await screen.findByLabelText('One-time token');
+    expect(document.activeElement).toBe(raw);
+    expect(reveal).toHaveBeenCalledWith({ block: 'nearest' });
+  } finally {
+    if (original) {
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: original,
+      });
+    } else {
+      Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+    }
+  }
+});
+
 it('issues once, hides the secret, reloads the list and revokes from the settings route', async () => {
   const c = setup();
   await screen.findByRole('heading', { name: 'Access tokens' });
@@ -210,6 +257,18 @@ it('does not fetch token data for a denied owner', async () => {
   setup(c);
   await screen.findByText('You do not have permission to manage automation tokens.');
   expect(c.calls.filter((call) => call.path.includes('access-tokens'))).toHaveLength(0);
+});
+
+it('shows one actionable reason when token management is unavailable', async () => {
+  const c = fixture();
+  c.state.availability = 'temporarily_unavailable';
+  setup(c);
+  await screen.findByText('Token management is temporarily unavailable');
+  const refresh = screen.getByRole('button', { name: 'Refresh tokens' }) as HTMLButtonElement;
+  await waitFor(() => expect(refresh.disabled).toBe(false));
+
+  expect(screen.getAllByRole('alert')).toHaveLength(1);
+  expect(screen.queryByText('Cannot reach the server. Please try again shortly.')).toBeNull();
 });
 
 it('builds the Codex ID3 scope preset without issuing and preserves explicit dependency control', async () => {

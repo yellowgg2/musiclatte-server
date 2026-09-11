@@ -66,6 +66,7 @@ export function AccessTokensPanel({
   const life = useRef<AbortController | null>(null);
   const locked = useRef(false);
   const focusName = () => document.getElementById('token-name')?.focus();
+  const secretPanel = useRef<HTMLDivElement>(null);
   const rawField = useRef<HTMLTextAreaElement>(null);
   const secretRef = useRef<string | null>(null);
   const receivedAt = useRef(Date.now());
@@ -125,7 +126,10 @@ export function AccessTokensPanel({
     };
   }, [client]);
   useEffect(() => {
-    if (secret) rawField.current?.focus();
+    if (secret) {
+      rawField.current?.focus({ preventScroll: true });
+      secretPanel.current?.scrollIntoView?.({ block: 'nearest' });
+    }
   }, [secret]);
   useEffect(() => {
     if (confirm) document.getElementById('token-confirm-' + confirm)?.focus();
@@ -414,7 +418,7 @@ export function AccessTokensPanel({
         </form>
       )}
       {secret && (
-        <div className={styles.secret}>
+        <div ref={secretPanel} className={styles.secret}>
           <p role="status">{copy['tokens.created']}</p>
           <p>{copy['tokens.once']}</p>
           <label htmlFor="issued-token">{copy['tokens.raw']}</label>
@@ -476,7 +480,7 @@ export function AccessTokensPanel({
           }
         />
       )}
-      {error && (
+      {error && !unavailable && (
         <StatusSurface
           state="error"
           title={copy['status.error']}
