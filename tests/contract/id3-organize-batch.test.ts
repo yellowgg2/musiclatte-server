@@ -8,7 +8,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runId3OrganizeCommand } from '../../tools/id3-organize-client.js';
@@ -561,4 +561,107 @@ describe('private ID3 organization batch journal', () => {
       stopCode: code,
     });
   });
+
+  it('continues after one ambiguous duplicate item and resumes accepted work without replaying success', async () => {
+    const module = await batchModule();
+    expect(module).toHaveProperty('checkpointId3OrganizationBatch');
+    if (!('checkpointId3OrganizationBatch' in module)) return;
+    const { stateFile } = paths();
+    module.createId3OrganizationBatchJournal({
+      path: stateFile,
+      api: 'https://music.example/api/v1',
+      token: 'mlpat_' + 'r'.repeat(48),
+      selection,
+    });
+
+    expect(module.nextId3OrganizationBatchItem(stateFile)).toMatchObject({
+      trackId: 'A',
+      occurrenceCount: 2,
+    });
+    module.skipId3OrganizationBatchItem(stateFile, 'A', 'ambiguous_release');
+    const exact = module.nextId3OrganizationBatchItem(stateFile);
+    expect(exact).toMatchObject({ trackId: 'B', state: 'researching', occurrenceCount: 1 });
+    const stableOperations = module.readId3OrganizationBatchJournal(stateFile).items[1]!.operations;
+    module.checkpointId3OrganizationBatch(stateFile, 'B', {
+      kind: 'metadata',
+      jobId: 'metadata-job-B',
+      resultRevision: 'revision-B',
+      serverStage: 'succeeded',
+    });
+
+    const resumed = module.nextId3OrganizationBatchItem(stateFile);
+    expect(resumed).toMatchObject({
+      trackId: 'B',
+      state: 'metadata_accepted',
+      checkpoint: { metadataJobId: 'metadata-job-B', resultRevision: 'revision-B' },
+    });
+    expect(module.readId3OrganizationBatchJournal(stateFile).items[1]!.operations).toEqual(
+      stableOperations,
+    );
+    module.checkpointId3OrganizationBatch(stateFile, 'B', {
+      kind: 'organization',
+      jobId: 'organization-job-B',
+      newTrackId: 'B2',
+      serverStage: 'succeeded',
+    });
+
+    expect(module.nextId3OrganizationBatchItem(stateFile)).toBeNull();
+    expect(module.id3OrganizationBatchStatus(stateFile)).toMatchObject({
+      total: 2,
+      succeeded: 1,
+      skipped: 1,
+      blocked: 0,
+      pending: 0,
+      stopped: false,
+      current: null,
+    });
+  });
 });
+
+const installedSkillRoot = join(homedir(), '.codex', 'skills', 'musiclatte-id3-organize');
+
+it.runIf(existsSync(join(installedSkillRoot, 'SKILL.md')))(
+  'binds the installed skill to collection routing and recovery invariants',
+  () => {
+    const skill = readFileSync(join(installedSkillRoot, 'SKILL.md'), 'utf8');
+    const description = /^description:\s*(.+)$/m.exec(skill)?.[1] ?? '';
+    expect(description).toMatch(/one user-selected Musiclatte .* or .*current-account collection/i);
+    expect(skill).toContain('(references/batch-operation.md)');
+
+    const batch = readFileSync(
+      join(installedSkillRoot, 'references', 'batch-operation.md'),
+      'utf8',
+    );
+    const routing = new Map(
+      batch.split('\n').flatMap((line) => {
+        const row = /^\|\s*`([^`]+)`\s*\|\s*`(item|batch)`\s*\|/.exec(line);
+        return row ? [[row[1]!, row[2]!] as const] : [];
+      }),
+    );
+    for (const code of [
+      'ambiguous_release',
+      'official_evidence_missing',
+      'unsupported_format',
+      'metadata_incomplete',
+      'destination_conflict',
+    ])
+      expect(routing.get(code)).toBe('item');
+    for (const code of [
+      'unauthenticated',
+      'forbidden',
+      'upstream_unavailable',
+      'policy_changed',
+      'scope_changed',
+      'journal_invalid',
+      'journal_locked',
+      'contract_decode',
+    ])
+      expect(routing.get(code)).toBe('batch');
+
+    for (const command of ['batch-start', 'batch-next', 'batch-skip', 'batch-status'])
+      expect(batch).toMatch(new RegExp('`' + command + '(?:`|\\s)'));
+    expect(batch).toMatch(/accepted[\s\S]*immediately[\s\S]*journal/i);
+    expect(batch).toMatch(/succeeded[\s\S]*never[\s\S]*(research|mutat)/i);
+    expect(batch).toMatch(/lyrics[\s\S]*(never|do not)/i);
+  },
+);

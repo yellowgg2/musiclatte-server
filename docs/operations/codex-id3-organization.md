@@ -104,6 +104,24 @@ source and display metadata, occurrence indexes, stable operation IDs, opaque se
 state/error codes. It never contains the PAT, manifest or evidence body, JPEG/lyrics bytes, or a
 private media path. `batch-next` and `batch-status` likewise emit only safe display/checkpoint data.
 
+Collection orchestration is strictly sequential. Before research, report only the source kind and
+frozen occurrence, unique-item, duplicate-occurrence, empty, or oversized result; derive any count
+not printed by the client from the private journal without exposing its path or source/account
+metadata. An empty or rejected selection causes zero mutation.
+
+Apply the one-song evidence, cover, metadata, organization, and final verification standard to each
+unique item returned by `batch-next`. Ambiguous release, missing official evidence, unsupported
+format, incomplete move metadata, and a pre-submit destination collision are item-local outcomes;
+record the allowed short reason before any accepted mutation and continue. Authentication/scope or
+policy changes, exhausted upstream availability, invalid/locked journal state, strict response
+decode failures, and failures after mutation acceptance stop all later items.
+
+For a new-session resume, reuse the same API, token file, and state file, then call `batch-next`.
+Resume the returned accepted job/revision checkpoint exactly; never research or mutate a succeeded
+item again. Final output contains total/succeeded/skipped/blocked counts and only public song display
+names plus short reasons for unsuccessful items. Do not print stable operation IDs, opaque account
+identifiers, source responses, evidence bodies, or private paths.
+
 ## Deployment and recovery
 
 Apply `compose.imports.yaml`, `compose.metadata.yaml`, then `compose.automation.yaml`. Organization

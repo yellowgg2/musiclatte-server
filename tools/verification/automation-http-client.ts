@@ -222,18 +222,20 @@ export async function createAutomationHTTPClient(config: AutomationProbeConfig) 
     if (typeof value.claimId === 'string') ownedClaims.add(value.claimId);
     return value;
   }
-  async function issue() {
+  async function issue(
+    scopes = [
+      'metadata:read',
+      'metadata:write',
+      'lyrics:write',
+      'curation:write',
+      'media:organize',
+    ],
+  ) {
     const r = await json(
       '/access-tokens',
       {
         name: 'Isolated automation verification',
-        scopes: [
-          'metadata:read',
-          'metadata:write',
-          'lyrics:write',
-          'curation:write',
-          'media:organize',
-        ],
+        scopes,
         libraryIds: [config.libraryId],
         expiresAt: Date.now() + 3600000,
       },
