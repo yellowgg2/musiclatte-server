@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -189,6 +191,28 @@ afterEach(() => {
 });
 
 describe('playlist read UI', () => {
+  /** Narrow tiles reserve separate rows for playback and occurrence controls. */
+  it('should keep playlist tile controls in a bounded two-column mobile grid', () => {
+    const rowCss = readFileSync(
+      resolve('apps/web/src/music/components/MusicRow.module.css'),
+      'utf8',
+    );
+    const occurrenceCss = readFileSync(
+      resolve('apps/web/src/playlists/components/PlaylistOccurrenceActions.module.css'),
+      'utf8',
+    );
+
+    expect(rowCss).toMatch(
+      /\.rowMain\[data-layout='tile'\][^{]*\{[^}]*grid-template-areas:\s*'details'\s*'play'\s*'actions'/,
+    );
+    expect(rowCss).toMatch(
+      /@media \(max-width: 30rem\)[\s\S]*\.rowMain\[data-layout='tile'\] \.rowActions[^{]*\{[^}]*grid-template-columns:\s*repeat\(2, var\(--control-size\)\)/,
+    );
+    expect(occurrenceCss).toMatch(
+      /\.actions\[data-layout='tile'\][^{]*\{[^}]*grid-template-columns:\s*repeat\(3, var\(--control-size\)\)/,
+    );
+  });
+
   /** Playlist tracks restore the same artwork-tile preference used by library collections. */
   it('should restore the shared tile view in a playlist', async () => {
     localStorage.setItem('musiclatte.songView', 'tiles');

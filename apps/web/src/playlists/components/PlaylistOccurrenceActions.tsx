@@ -16,6 +16,7 @@ export function PlaylistOccurrenceActions({
   count,
   locale,
   pending,
+  layout = 'list',
   groupRef,
   onMove,
   onRemove,
@@ -24,6 +25,7 @@ export function PlaylistOccurrenceActions({
   count: number;
   locale: Locale;
   pending: boolean;
+  layout?: 'list' | 'tile';
   groupRef?: Ref<HTMLDivElement>;
   onMove: (direction: 'up' | 'down') => void;
   onRemove: () => void;
@@ -42,6 +44,7 @@ export function PlaylistOccurrenceActions({
       ref={groupRef}
       tabIndex={-1}
       data-confirming={confirming ? 'true' : undefined}
+      data-layout={layout}
     >
       <IconAction
         label={label(first ? copy['playlists.moveUpFirst'] : copy['playlists.moveUp'], entry)}

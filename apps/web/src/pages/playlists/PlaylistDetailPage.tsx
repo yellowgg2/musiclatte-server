@@ -453,6 +453,7 @@ export function PlaylistDetailPage({
                             count={playlist.entries.length}
                             locale={locale}
                             pending={Boolean(mutation || editError)}
+                            layout={songLayout(songView)}
                             groupRef={(node) => {
                               if (node) occurrenceRefs.current.set(entry.position, node);
                               else occurrenceRefs.current.delete(entry.position);

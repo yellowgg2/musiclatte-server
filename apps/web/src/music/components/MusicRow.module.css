@@ -21,19 +21,21 @@
 }
 .rowMain[data-layout='tile'] {
   height: 100%;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    'details details'
-    'play actions';
+    'details'
+    'play'
+    'actions';
   align-content: start;
   gap: var(--space-2);
   padding: var(--space-2);
 }
 .rowMain[data-layout='tile'][data-selectable='true'] {
-  grid-template-columns: var(--control-size) minmax(0, 1fr) auto;
+  grid-template-columns: var(--control-size) minmax(0, 1fr);
   grid-template-areas:
-    'selection details details'
-    '. play actions';
+    'selection details'
+    '. play'
+    'actions actions';
 }
 .rowMain[data-layout='tile'] details {
   grid-area: details;
@@ -47,7 +49,11 @@
 }
 .rowMain[data-layout='tile'] .rowActions {
   grid-area: actions;
-  justify-self: end;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, var(--control-size));
+  justify-content: end;
+  gap: var(--space-2);
 }
 .selection {
   display: grid;
@@ -245,6 +251,7 @@
   }
   .rowMain[data-layout='tile'] .rowActions {
     grid-column: auto;
+    grid-template-columns: repeat(2, var(--control-size));
     padding: 0;
   }
   .summary {
