@@ -17,3 +17,13 @@ Optional attempts require current scope, purpose, generation and fresh supported
 - Typecheck/build/format:check passed under the pinned toolchain. Temporary files, app listeners and shared-fence child processes are cleaned by test fixtures.
 
 Actual gonic reflection/deployment runtime remains S10-owned; the file-write test deliberately asserts file_saved, and the own-job baseline test labels synthetic index reflection explicitly. Completion endpoint remains S09-owned. DOC_SYNC/ACCEPTANCE_SYNC complete. Rulebook postflight `skipped(no_new_lesson)`; no central changes. Gitignore adds no new exclusions.
+
+## Follow-up — ID3 claim cleanup (2026-09-11)
+
+`tools/id3-organize-client.ts` now releases its one-song claim in a `finally` block after metadata
+submission. The release accepts an empty 204 response and retries once when the response is lost.
+Contract coverage fixes the success and rejected-submission call order; the API worker regression
+proves that an already admitted job still writes safely after immediate claim release.
+
+Focused verification: curation/automation unit suites 11 tests and claim/automation/ID3 contract
+suites 8 tests passed under Node 24.20.0 and npm 11.19.0. Typecheck and production build passed.

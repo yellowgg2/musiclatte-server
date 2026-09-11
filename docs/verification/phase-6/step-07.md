@@ -15,3 +15,13 @@ Legacy metadata preview exposes `claimed_by_other` with matching KO/EN messages,
 - Pinned Node/npm typecheck, build and format:check passed. Test listeners, helper fences and temporary fixture stores are cleaned.
 
 DOC_SYNC/ACCEPTANCE_SYNC complete. No new UI layout or Gallery surface. Rulebook postflight `skipped(no_new_lesson)`. Gitignore inspection adds no exclusions; vault stays outside repo commits.
+
+## Follow-up — prompt single-shot release (2026-09-11)
+
+The ID3 organizer now treats a claim as an admission-only reservation and calls the existing
+owner-idempotent DELETE route after metadata submission succeeds or fails. The server regression
+keeps an admitted worker grant executable after that immediate release. Generic clients that need
+the same required-review claim for `curation/complete` retain the original lifecycle.
+
+Focused verification: curation/automation unit suites 11 tests and claim/automation/ID3 contract
+suites 8 tests passed under Node 24.20.0 and npm 11.19.0. Typecheck and production build passed.

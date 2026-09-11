@@ -139,7 +139,8 @@ it('admits automation while a file-verified album projection waits for organizat
   }
 });
 
-it('writes original lyrics through the P4 worker after token revocation and lease expiry', async () => {
+/** An admitted grant remains executable after the client promptly releases its curation claim. */
+it('writes original lyrics through the P4 worker after immediate claim release', async () => {
   const c = await createCurationMutationContext();
   try {
     const headers = await c.token();
@@ -174,10 +175,19 @@ it('writes original lyrics through the P4 worker after token revocation and leas
     };
     const accepted = await c.post('metadata-jobs', body, headers);
     expect(accepted.statusCode).toBe(202);
+    expect(
+      (
+        await c.app.inject({
+          method: 'DELETE',
+          url: '/api/v1/curation-claims/' + claim.claimId,
+          headers: { authorization: headers.authorization },
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(c.repository.activeClaim(c.trackRef)).toBeUndefined();
     c.storage.db.connection
       .prepare('UPDATE access_tokens SET revoked_at=?,encrypted_proof=NULL')
       .run(c.clock());
-    c.setNow(c.clock() + 1000);
     const { createAutomationTestWorker } =
       await import('../../../tests/support/automation-worker-harness.js');
     const w = createAutomationTestWorker(c);

@@ -248,6 +248,7 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       }
     }
     if (!expected.includes(response.status)) fail(`http_${response.status}`);
+    if (response.status === 204) return undefined;
     try {
       return await response.json();
     } catch {
@@ -345,27 +346,37 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       ),
     );
     if (!claim.claimId || claim.results[0]?.status !== 'granted') fail('claim');
-    const body = {
-      operationId: options.operationId ?? randomUUID(),
-      targets: [target()],
-      patch,
-      automation: {
-        claimId: claim.claimId,
-        claimGeneration: claim.generation!,
-        purpose,
-        sourceNotes: 'Verified source manifest',
-      },
-      dryRun: false,
-      ...(options.manifest.sourceEvidence[0]
-        ? { sourceReference: options.manifest.sourceEvidence[0].url }
-        : {}),
-      ...(options.manifest.cover ? { usageBasis: options.manifest.cover.usageBasis } : {}),
-    };
-    const accepted = decodeAutomationJobResponse(
-      await jsonPost('/metadata-jobs', body, [202], true),
-    );
-    if (!accepted.job || accepted.admissionResults[0]?.status !== 'accepted') fail('admission');
-    return accepted;
+    const claimId = claim.claimId;
+    try {
+      const body = {
+        operationId: options.operationId ?? randomUUID(),
+        targets: [target()],
+        patch,
+        automation: {
+          claimId,
+          claimGeneration: claim.generation!,
+          purpose,
+          sourceNotes: 'Verified source manifest',
+        },
+        dryRun: false,
+        ...(options.manifest.sourceEvidence[0]
+          ? { sourceReference: options.manifest.sourceEvidence[0].url }
+          : {}),
+        ...(options.manifest.cover ? { usageBasis: options.manifest.cover.usageBasis } : {}),
+      };
+      const accepted = decodeAutomationJobResponse(
+        await jsonPost('/metadata-jobs', body, [202], true),
+      );
+      if (!accepted.job || accepted.admissionResults[0]?.status !== 'accepted') fail('admission');
+      return accepted;
+    } finally {
+      await call(
+        '/curation-claims/' + encodeURIComponent(claimId),
+        { method: 'DELETE' },
+        [204],
+        true,
+      );
+    }
   }
   if (options.command === 'organization-submit') {
     const evidence = decodeEvidence(options.sourceEvidence ?? options.manifest?.sourceEvidence);

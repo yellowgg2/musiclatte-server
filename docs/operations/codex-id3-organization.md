@@ -56,6 +56,9 @@ npm run id3:organize -- organization-submit --api https://service.example/api/v1
 Title/artist claims and optional-field claims are separate server contracts. If a manifest mixes
 them, split the change into sequential manifests. Keep the last successful metadata job ID and its
 result revision for organization submission. Reuse the same operation ID after a lost response.
+`metadata-submit` is a single-shot flow: after the server accepts the job, or if submission fails
+after a claim was granted, the client idempotently releases that claim. The accepted job continues
+under its durable grant and file fence, so the next claim need not wait for the lease to expire.
 
 Stop when candidate search is not exact, evidence is incomplete, metadata preview rejects a field,
 or organization preview reports a collision. `status` performs a read; `retry` is valid only for a

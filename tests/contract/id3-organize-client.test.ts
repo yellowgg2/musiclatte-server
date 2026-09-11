@@ -224,3 +224,133 @@ it('replays lost submits and bounds server-owned recovery retries', async () => 
   expect(retries).toBe(1);
   expect(status).toBe(3);
 });
+
+/** Releases the short-lived curation reservation as soon as the metadata job is accepted. */
+it('releases an accepted metadata claim before returning to the organizer', async () => {
+  const tokenFile = privateFile('token', 'mlpat_' + 'd'.repeat(48));
+  const calls: { method: string; url: string }[] = [];
+  let releaseAttempts = 0;
+  const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    calls.push({ method, url });
+    if (url.endsWith('/curation-claims'))
+      return Response.json({
+        schemaVersion: 1,
+        claimId: 'claim-1',
+        leaseUntil: Date.now() + 600_000,
+        generation: 1,
+        results: [{ trackId: 'track-1', status: 'granted' }],
+      });
+    if (url.endsWith('/metadata-jobs'))
+      return Response.json(
+        {
+          schemaVersion: 1,
+          job: {
+            id: 'job-1',
+            libraryId: 'music',
+            createdAt: Date.now(),
+            status: 'queued',
+            kind: 'edit',
+            parentJobId: null,
+            items: [
+              {
+                itemId: 'item-1',
+                originalTrackId: 'track-1',
+                currentTrackId: 'track-1',
+                stage: 'queued',
+                fileSavedAt: null,
+                reflectedAt: null,
+                previousRevision: 'revision-1',
+                resultRevision: null,
+                changedFields: ['title'],
+                errorCode: null,
+                recoveryActions: [],
+                restoreAvailable: false,
+              },
+            ],
+          },
+          admissionResults: [{ trackId: 'track-1', status: 'accepted', jobItemId: 'item-1' }],
+        },
+        { status: 202 },
+      );
+    if (url.endsWith('/curation-claims/claim-1') && method === 'DELETE') {
+      releaseAttempts++;
+      if (releaseAttempts === 1) throw new TypeError('lost release response');
+      return new Response(null, { status: 204 });
+    }
+    throw new Error('unexpected request');
+  });
+
+  const result = await runId3OrganizeCommand({
+    api: 'https://music.example/api/v1',
+    tokenFile,
+    fetch: fetcher,
+    command: 'metadata-submit',
+    trackId: 'track-1',
+    revision: 'revision-1',
+    manifest: {
+      schemaVersion: 1,
+      metadata: { title: 'Verified title' },
+      sourceEvidence: [
+        { url: 'https://artist.example/release', kind: 'official_artist', fields: ['title'] },
+      ],
+    },
+    operationId: 'operation_metadata_000001',
+  });
+
+  expect(result.job?.id).toBe('job-1');
+  expect(calls.map(({ method, url }) => `${method} ${new URL(url).pathname}`)).toEqual([
+    'POST /api/v1/curation-claims',
+    'POST /api/v1/metadata-jobs',
+    'DELETE /api/v1/curation-claims/claim-1',
+    'DELETE /api/v1/curation-claims/claim-1',
+  ]);
+});
+
+/** Releases the reservation even when metadata admission fails after the claim was granted. */
+it('releases a metadata claim when submission fails', async () => {
+  const tokenFile = privateFile('token', 'mlpat_' + 'e'.repeat(48));
+  const methods: string[] = [];
+  const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    methods.push(`${method} ${new URL(url).pathname}`);
+    if (url.endsWith('/curation-claims'))
+      return Response.json({
+        schemaVersion: 1,
+        claimId: 'claim-2',
+        leaseUntil: Date.now() + 600_000,
+        generation: 1,
+        results: [{ trackId: 'track-1', status: 'granted' }],
+      });
+    if (url.endsWith('/metadata-jobs')) return Response.json({ code: 'conflict' }, { status: 409 });
+    if (url.endsWith('/curation-claims/claim-2') && method === 'DELETE')
+      return new Response(null, { status: 204 });
+    throw new Error('unexpected request');
+  });
+
+  await expect(
+    runId3OrganizeCommand({
+      api: 'https://music.example/api/v1',
+      tokenFile,
+      fetch: fetcher,
+      command: 'metadata-submit',
+      trackId: 'track-1',
+      revision: 'revision-1',
+      manifest: {
+        schemaVersion: 1,
+        metadata: { title: 'Verified title' },
+        sourceEvidence: [
+          { url: 'https://artist.example/release', kind: 'official_artist', fields: ['title'] },
+        ],
+      },
+      operationId: 'operation_metadata_000002',
+    }),
+  ).rejects.toThrow('client_failed:http_409');
+  expect(methods).toEqual([
+    'POST /api/v1/curation-claims',
+    'POST /api/v1/metadata-jobs',
+    'DELETE /api/v1/curation-claims/claim-2',
+  ]);
+});
