@@ -4,6 +4,7 @@ import { registerMixRoutes } from './routes/mixes.js';
 import { registerCurationRoutes } from './routes/curation.js';
 import { registerEngineRoutes } from './routes/engine.js';
 import { registerMetadataRoutes } from './routes/metadata.js';
+import { registerMetadataOrganizationRoutes } from './routes/metadata-organization.js';
 import { registerRecentDownloadsRoute } from './routes/recent-downloads.js';
 import { registerImportRoutes } from './routes/imports.js';
 import { registerFoldersRoutes } from './routes/music/folders.js';
@@ -121,6 +122,7 @@ export function createApp(options?: AuthOptions) {
     registerRecentDownloadsRoute(app, service);
     registerEngineRoutes(app, service);
     registerMetadataRoutes(app, service);
+    registerMetadataOrganizationRoutes(app, service);
     registerCurationRoutes(app, service);
   }
   app.get<{ Reply: HealthResponse }>('/health/live', async () => ({ status: 'ok' }));

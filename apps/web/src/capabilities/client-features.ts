@@ -14,6 +14,7 @@ export const clientFeatures = {
   'metadata.write': true,
   'metadata.lyrics.write': true,
   'metadata.curation': true,
+  'metadata.organization': false,
   'automation.tokens': true,
   'mixes.saved': true,
   'listening.history': true,

@@ -119,3 +119,18 @@ Final verification enumerates the target account's playlists containing the new 
 playlist ID set, metadata, full ordered occurrence lists, and star state with the captured baseline.
 Only that exact result advances to `succeeded` and clears the accepted grant. Reference migration
 does not call recent, scrobble, bookmark, listening-history, import, tag, or filesystem APIs.
+
+## Public admission and status
+
+The public boundary is a dedicated PAT-only candidate, preview, submit, status, and retry API.
+Organization never accepts arbitrary paths: the request contains one opaque track ID, its current
+revision, a succeeded same-token metadata job, `id3-managed-v1`, a stable operation ID, and bounded
+HTTPS evidence descriptors. The server resolves the current MediaLink, rereads the actual MP3,
+computes the destination, validates evidence against changed/present fields, then revalidates the
+PAT immediately before sealing the immutable accepted-work grant.
+
+Replay is bound to token identity plus the canonical body. The same operation/body returns the
+original job; a changed body is a conflict. Status is limited to the exact submitting token and its
+current library intersection, and exposes no current/target path, evidence URL, proof, file digest,
+or raw row. Retry can only nudge an unleased `recovery_required` item toward its already recorded
+filesystem, gonic, references, or verification owner. Successful work cannot be retried.

@@ -12,6 +12,10 @@ export interface AutomationOptions {
     limits: import('../curation/policy.js').CurationLimits;
     fence?: ReturnType<typeof import('../metadata/media-fence.js').createMediaFence>;
   };
+  organization?: {
+    policy: OrganizationRuntimePolicy;
+    ready?: () => boolean;
+  };
   database: ManagementDatabase;
   vault: CredentialVault;
   policy: MetadataPolicy;

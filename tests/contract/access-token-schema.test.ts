@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { decodeAccessToken } from '../../packages/contracts/src/access-tokens.js';
+import {
+  decodeAccessToken,
+  validateTokenScopes,
+} from '../../packages/contracts/src/access-tokens.js';
 
 describe('access token public metadata', () => {
   /** Public decoders reject credentials, unsupported scopes and invalid lifetimes. */
@@ -22,6 +25,7 @@ describe('access token public metadata', () => {
       { tokenHash: 'private' },
       { ownerUsername: 'private' },
       { scopes: ['lyrics:write'] },
+      { scopes: ['metadata:read', 'media:organize'] },
       { scopes: ['metadata:read', 'metadata:read'] },
       { scopes: ['admin'] },
       { libraryIds: [] },
@@ -31,5 +35,10 @@ describe('access token public metadata', () => {
     ]) {
       expect(() => decodeAccessToken({ ...token, ...change })).toThrow();
     }
+    expect(validateTokenScopes(['metadata:read', 'metadata:write', 'media:organize'])).toEqual([
+      'media:organize',
+      'metadata:read',
+      'metadata:write',
+    ]);
   });
 });

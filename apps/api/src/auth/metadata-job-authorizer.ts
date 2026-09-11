@@ -30,7 +30,7 @@ export interface OrganizationGrantIntent {
   policyVersion: 'id3-managed-v1';
   metadataJobId: string;
   metadataRevision: string;
-  sourceEvidence: readonly { url: string; fields: readonly string[] }[];
+  sourceEvidence: readonly { url: string; kind: string; fields: readonly string[] }[];
   mediaLinkId: string;
   sourceKey: string;
   targetKey: string;
@@ -238,6 +238,7 @@ export function createMetadataJobAuthorizer(options: {
         intent.actorTokenId !== current.accessToken.id ||
         !current.accessToken.scopes.includes('metadata:read') ||
         !current.accessToken.scopes.includes('metadata:write') ||
+        !current.accessToken.scopes.includes('media:organize') ||
         !principal.allowedLibraries.includes(intent.libraryId) ||
         !current.accessToken.libraryIds.includes(intent.libraryId) ||
         current.policyRevision !== intent.policyRevision

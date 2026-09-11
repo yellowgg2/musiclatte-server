@@ -12,6 +12,7 @@ import { createSubsonicClient } from '../subsonic/client.js';
 import { isAbsolute } from 'node:path';
 import { readApiImportConfig } from '../imports/config.js';
 import { readApiMetadataOptions } from '../metadata/api-config.js';
+import { metadataReady } from '../metadata/provider.js';
 import { registerReadiness } from '../health/readiness.js';
 import { createApp } from '../app.js';
 import { openDatabase } from '../storage/database.js';
@@ -110,6 +111,14 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
                           metadata.policy.libraries.map((l) => l.id),
                           Date.now,
                         ),
+                    },
+                  }
+                : {}),
+              ...(automation.organization
+                ? {
+                    organization: {
+                      policy: automation.organization,
+                      ready: () => metadataReady(metadata),
                     },
                   }
                 : {}),

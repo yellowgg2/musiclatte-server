@@ -3,6 +3,7 @@ export const accessTokenScopes = [
   'metadata:write',
   'lyrics:write',
   'curation:write',
+  'media:organize',
 ] as const;
 export type AccessTokenScope = (typeof accessTokenScopes)[number];
 export interface AccessTokenRequest {
@@ -20,7 +21,7 @@ export const accessTokenRequestSchema = {
     scopes: {
       type: 'array',
       minItems: 1,
-      maxItems: 4,
+      maxItems: 5,
       uniqueItems: true,
       items: { enum: accessTokenScopes },
     },
@@ -51,7 +52,9 @@ export function validateTokenScopes(value: unknown): AccessTokenScope[] {
     new Set(value).size !== value.length ||
     !value.every((scope): scope is AccessTokenScope => accessTokenScopes.includes(scope)) ||
     !value.includes('metadata:read') ||
-    (value.includes('lyrics:write') && !value.includes('metadata:write'))
+    (value.includes('lyrics:write') && !value.includes('metadata:write')) ||
+    (value.includes('media:organize') &&
+      (!value.includes('metadata:read') || !value.includes('metadata:write')))
   ) {
     throw new Error('Invalid token scopes');
   }

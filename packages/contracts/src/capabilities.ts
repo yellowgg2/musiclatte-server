@@ -12,6 +12,7 @@ export const featureKeys = [
   'metadata.write',
   'metadata.lyrics.write',
   'metadata.curation',
+  'metadata.organization',
   'automation.tokens',
   'mixes.saved',
   'listening.history',

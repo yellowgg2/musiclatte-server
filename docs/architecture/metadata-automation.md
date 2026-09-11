@@ -18,7 +18,11 @@ The configuration file and credentials stay outside Git and Docker build context
 - `GET /api/v1/access-tokens?limit=25&cursor=...`: current owner only; returns metadata, total and authenticated next cursor. Limit is 1–100. Revoked/expired entries remain visible for audit. Tampered or cross-owner cursors return 400.
 - `DELETE /api/v1/access-tokens/:id`: owner only; returns 204, including repeated revocation. Other owners receive 404. Browser mutations require exact Origin, web client intent, JSON and session-bound CSRF. Native bearer DELETE may omit its body.
 
-Name is trimmed and restricted to 1–120 code points without controls. Scopes are `metadata:read`, `metadata:write`, `lyrics:write`, `curation:write`; every write requires read, and lyrics also requires metadata write. Scope/library arrays must be nonempty and unique. Requests never silently gain scopes. Expiry is greater than server time and within configured max age.
+Name is trimmed and restricted to 1–120 code points without controls. Scopes are `metadata:read`,
+`metadata:write`, `lyrics:write`, `curation:write`, and `media:organize`; every write requires read,
+lyrics also requires metadata write, and organization requires both metadata read and write. Scope
+and library arrays must be nonempty and unique. Requests never silently gain scopes. Expiry is
+greater than server time and within configured max age.
 
 Issuance intersects the current canonical upstream account, configured metadata editor allowlist and actually accessible upstream music folders. An upstream folder list or admin label alone does not grant edit permissions. A PAT can only narrow these libraries/scopes further.
 
@@ -33,6 +37,36 @@ S01 exposes token management only. P4 metadata routes still reject PATs until S0
 Web logout does not revoke independently issued PATs. Global authorization-policy invalidation revokes both session and PAT credentials. Offline restore follows the user's 2026-09-09 decision: retain the existing session restoration behavior, revoke restored PATs and rotate a separate automation credential epoch. S02 connects job-grant invalidation to that same restore boundary. Old automation cursors cannot be reused; audit metadata is retained.
 
 `automation.tokens` is advertised only for the actual configured producer and current account permissions. `metadata.curation` and web client support remain disabled until their owner steps implement them. The curation capability field list is generated from the canonical metadata writer contract; it is not a separate token-writer allowlist.
+
+## ID3-managed organization API (Phase 9)
+
+Organization is a PAT-only producer. All endpoints require bearer authentication with
+`metadata:read`, `metadata:write`, and `media:organize`; lyrics evidence additionally requires
+`lyrics:write`. Cookie sessions, legacy bearer sessions, query-string tokens, mixed credentials,
+and ordinary playlist/favorite routes do not inherit this permission.
+
+- `GET /api/v1/metadata-organization/candidates?title=...&libraryId=...&limit=...` performs a
+  bounded title lookup in the token's current library intersection. It returns only track,
+  library, title/artist/album, current revision, and optional import source ID; multiple matches
+  remain caller-visible for explicit selection.
+- `POST /api/v1/metadata-organization/previews` takes one track/revision and
+  `id3-managed-v1`. It reads current tags and returns the server-derived current/target keys plus
+  ready, no-op, or a typed path error. It does not create an organization job or move a file.
+- `POST /api/v1/metadata-organization-jobs` requires one succeeded metadata job from the same PAT,
+  one stable operation ID, and 1–8 HTTPS evidence entries. Evidence contains only source kind,
+  URL, and supported field names; claimed fields must agree with the changed or present result.
+- `GET /api/v1/metadata-organization-jobs/:id` returns only the submitting token's library-scoped
+  stage, old/new opaque IDs, error code, and recovery owner. It omits paths, evidence, file/audio
+  digests, upstream proof, and raw database rows.
+- `POST /api/v1/metadata-organization-jobs/:id/retries` records an idempotent request only while
+  the job is `recovery_required` with a durable next owner. It does not repeat succeeded work.
+
+Submit replay checks the token-bound operation and exact request hash before current-path
+inspection, so a response-loss retry returns the original job even after the worker has moved the
+file. Revocation or expiry blocks new calls, while the already sealed immutable grant continues
+only the previously accepted forward-recovery state machine. `metadata.organization` is supported
+only when the account mapping is configured and is available only when the validated metadata
+worker and organization runtime are ready.
 
 ## P4 principal adapter (S02)
 

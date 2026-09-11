@@ -106,6 +106,19 @@ export function registrationFixture(operation: string, url: URL, state: Registra
       .find((child) => child.id === url.searchParams.get('id') && !child.isDir);
     if (!song) return subsonicErrorFixture(70);
     payload = { song };
+  } else if (operation === 'search3') {
+    const query = (url.searchParams.get('query') ?? '').toLocaleLowerCase();
+    const limit = Number(url.searchParams.get('songCount') ?? 20);
+    const song = Object.values(state.directories)
+      .flat()
+      .filter(
+        (child) =>
+          !child.isDir &&
+          typeof child.title === 'string' &&
+          child.title.toLocaleLowerCase().includes(query),
+      )
+      .slice(0, limit);
+    payload = { searchResult3: { song } };
   } else return subsonicFixture(operation);
   return { 'subsonic-response': { status: 'ok', version: '1.15.0', ...payload } };
 }

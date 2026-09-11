@@ -32,7 +32,13 @@ describe('personal access token API', () => {
       expect(response.json()).toMatchObject({
         schemaVersion: 1,
         libraryIds: ['library-1'],
-        scopes: ['metadata:read', 'metadata:write', 'lyrics:write', 'curation:write'],
+        scopes: [
+          'metadata:read',
+          'metadata:write',
+          'lyrics:write',
+          'curation:write',
+          'media:organize',
+        ],
       });
       expect(response.json().maxTokenAgeMs).toBeGreaterThan(0);
       const issued = await c.app.inject({
@@ -261,6 +267,7 @@ describe('personal access token API', () => {
     try {
       for (const change of [
         { scopes: ['lyrics:write'] },
+        { scopes: ['metadata:read', 'media:organize'] },
         { libraryIds: ['outside'] },
         { adminRole: true },
         { expiresAt: 3000 },

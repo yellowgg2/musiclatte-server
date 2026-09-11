@@ -58,7 +58,9 @@ async function setup() {
     policyVersion: 'id3-managed-v1' as const,
     metadataJobId: 'metadata-job',
     metadataRevision: 'revision-1',
-    sourceEvidence: [{ url: 'https://example.invalid/source', fields: ['title'] }],
+    sourceEvidence: [
+      { url: 'https://example.invalid/source', kind: 'official_artist', fields: ['title'] },
+    ],
     mediaLinkId: 'media-1',
     sourceKey: 'jojo-music/account/Legacy/source.mp3',
     targetKey: 'jojo-music/account/ID3-managed/Artist/Album/01 - Title.mp3',

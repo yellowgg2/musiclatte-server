@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cookieOf, createTestContext, password } from '../support/auth-harness.js';
 import { metadataFields } from '@musiclatte/contracts';
 import { createCurationMutationContext } from '../support/curation-mutation-harness.js';
+import { createApp } from '../../apps/api/src/app.js';
 
 interface Decoder {
   decodeDiscovery: (value: unknown) => unknown;
@@ -243,6 +244,37 @@ it('should advertise every canonical metadata field for curation', async () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().features['metadata.curation'].fields).toEqual(metadataFields);
   } finally {
+    await ctx.cleanup();
+  }
+});
+
+it('should advertise organization only when its complete account runtime is ready', async () => {
+  const ctx = await createCurationMutationContext();
+  const app = createApp({
+    ...ctx.options,
+    automation: {
+      ...ctx.automation,
+      organization: {
+        policy: {
+          policyVersion: 'id3-managed-v1',
+          accounts: [{ username: password.username, accountDirectory: 'account' }],
+        },
+        ready: () => true,
+      },
+    },
+  });
+  try {
+    const response = await app.inject({ url: '/api/v1/capabilities', headers: ctx.headers });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().features['metadata.organization']).toEqual({
+      supported: true,
+      permission: 'allowed',
+      availability: 'available',
+      formats: ['mp3'],
+      fields: metadataFields,
+    });
+  } finally {
+    await app.close();
     await ctx.cleanup();
   }
 });

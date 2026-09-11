@@ -35,7 +35,7 @@ export interface OrganizationIntent {
   policyVersion: 'id3-managed-v1';
   metadataJobId: string;
   metadataRevision: string;
-  sourceEvidence: readonly { url: string; fields: readonly string[] }[];
+  sourceEvidence: readonly { url: string; kind: string; fields: readonly string[] }[];
   mediaLinkId: string;
   sourceKey: string;
   targetKey: string;
@@ -275,6 +275,50 @@ export function createOrganizationRepository(options: {
       });
     },
     getJob: readJob,
+    requestRetry(input: {
+      itemId: string;
+      identityKey: string;
+      operationIdHash: string;
+      requestHash: string;
+    }) {
+      return atomic(() => {
+        if (!hex(input.identityKey) || !hex(input.operationIdHash) || !hex(input.requestHash))
+          throw new Error('conflict');
+        const row = db
+          .prepare(
+            'SELECT i.*,j.identity_key FROM organization_items i JOIN organization_jobs j ON j.id=i.job_id WHERE i.id=?',
+          )
+          .get(input.itemId) as Row | undefined;
+        if (!row || row.identity_key !== input.identityKey) throw new Error('not_found');
+        const prior = db
+          .prepare(
+            "SELECT payload_json FROM organization_events WHERE item_id=? AND kind='retry_requested' ORDER BY sequence",
+          )
+          .all(input.itemId)
+          .map((event) => JSON.parse(String(event.payload_json)) as Record<string, unknown>)
+          .find((payload) => payload.operationIdHash === input.operationIdHash);
+        if (prior) {
+          if (prior.requestHash !== input.requestHash) throw new Error('conflict');
+          return readJob(text(row.job_id), input.identityKey)!;
+        }
+        if (
+          row.stage !== 'recovery_required' ||
+          row.lease_owner !== null ||
+          !['filesystem', 'gonic', 'references', 'verification'].includes(String(row.next_owner))
+        )
+          throw new Error('conflict');
+        event(input.itemId, 'retry_requested', {
+          operationIdHash: input.operationIdHash,
+          requestHash: input.requestHash,
+          nextOwner: row.next_owner,
+        });
+        db.prepare('UPDATE organization_items SET stage_changed_at=? WHERE id=?').run(
+          now(),
+          input.itemId,
+        );
+        return readJob(text(row.job_id), input.identityKey)!;
+      });
+    },
     claimNext(input: {
       workerId: string;
       leaseDurationMs: number;

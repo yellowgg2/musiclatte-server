@@ -578,6 +578,7 @@
   "tokens.scope.metadata:write": "메타데이터 수정",
   "tokens.scope.lyrics:write": "가사 수정",
   "tokens.scope.curation:write": "검토 및 정리 완료",
+  "tokens.scope.media:organize": "미디어 파일 정리",
   "tokens.scopeHelp": "읽기 권한은 필수입니다. 가사를 수정하려면 메타데이터 수정 권한을 먼저 선택하세요.",
   "tokens.selectionError": "라이브러리를 하나 이상 선택하고 권한 조합을 확인하세요.",
   "tokens.expiry": "유효 기간",

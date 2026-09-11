@@ -578,6 +578,7 @@
   "tokens.scope.metadata:write": "Edit metadata",
   "tokens.scope.lyrics:write": "Edit lyrics",
   "tokens.scope.curation:write": "Review and complete curation",
+  "tokens.scope.media:organize": "Organize media files",
   "tokens.scopeHelp": "Reading is required. Enable metadata editing before lyrics editing.",
   "tokens.selectionError": "Select at least one library and a valid permission combination.",
   "tokens.expiry": "Expires after",

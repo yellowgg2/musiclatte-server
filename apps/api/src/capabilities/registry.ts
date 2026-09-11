@@ -116,6 +116,30 @@ export async function capabilities(
       formats: ['mp3'],
     };
   }
+  const organization = service.options.automation?.organization;
+  if (organization && service.options.metadata?.policy.enabled) {
+    const mapped = organization.policy.accounts.some(
+      (account) => account.username === currentIdentity.username,
+    );
+    let ready = false;
+    try {
+      ready = metadataReady(service.options.metadata) && organization.ready?.() === true;
+      service.options
+        .automation!.database.connection.prepare(
+          'SELECT credential_epoch FROM automation_state WHERE singleton=1',
+        )
+        .get();
+    } catch {
+      ready = false;
+    }
+    features['metadata.organization'] = {
+      supported: true,
+      permission: mapped ? features['metadata.write']!.permission : 'denied',
+      availability: ready && !metadataScopeUnknown ? 'available' : 'temporarily_unavailable',
+      formats: ['mp3'],
+      fields: [...curationFields],
+    };
+  }
   service.find(session.token, session.scheme);
   if (service.options.automation) {
     try {
