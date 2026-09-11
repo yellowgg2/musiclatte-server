@@ -233,6 +233,21 @@ export function createWorkerLedger(
         ? { id: String(row.id), fileKey: validateRelativeKey(String(row.relative_file_key)) }
         : null;
     },
+    findManagedSource(libraryId: string, sourceId: string) {
+      const row = db
+        .prepare(
+          "SELECT m.id,l.managed_key FROM organization_source_locations l JOIN media_links m ON m.id=l.media_link_id JOIN organization_items o ON o.id=l.organization_item_id WHERE l.source_id=? AND m.library_id=? AND o.stage IN ('rebound','migrating_references','verifying','succeeded','recovery_required') LIMIT 1",
+        )
+        .get(sourceId, libraryId);
+      return row
+        ? { id: String(row.id), fileKey: validateRelativeKey(String(row.managed_key)) }
+        : null;
+    },
+    markManagedUnavailable(mediaLinkId: string) {
+      db.prepare(
+        "UPDATE media_links SET availability='unavailable',revision=revision+1,validated_at=? WHERE id=? AND availability<>'unavailable'",
+      ).run(now(), mediaLinkId);
+    },
     cleaned(stagingKey: string) {
       db.prepare(
         'UPDATE import_attempts SET cleaned_at=? WHERE staging_key=? AND cleaned_at IS NULL',

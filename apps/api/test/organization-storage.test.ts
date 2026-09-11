@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createTestContext, proof } from '../../../tests/support/session-storage-harness.js';
 import { organizationGrantContext } from '../src/auth/metadata-job-authorizer.js';
 import { createAccessTokenRepository } from '../src/storage/access-token-repository.js';
+import { createCurationRepository } from '../src/storage/curation-repository.js';
 import { createOrganizationRepository } from '../src/storage/organization-repository.js';
+import { createWorkerLedger } from '../src/imports/worker-state.js';
+import { createMetadataRepository } from '../src/storage/metadata-repository.js';
 
 let context: Awaited<ReturnType<typeof createTestContext>> | undefined;
 afterEach(() => context?.cleanup());
@@ -131,16 +134,18 @@ describe('organization storage', () => {
     expect(downstream).toMatchObject({ stage: 'moved', generation: 2 });
     s.repository.transition({ ...downstream, stage: 'scanning' });
     s.repository.transition({ ...downstream, stage: 'rebound', newTrackId: 'song-2' });
-    s.repository.transition({ ...downstream, stage: 'migrating_references' });
+    const references = s.repository.claimNext({ workerId: 'worker-a', leaseDurationMs: 100 })!;
+    expect(references).toMatchObject({ stage: 'rebound', generation: 3 });
+    s.repository.transition({ ...references, stage: 'migrating_references' });
     s.repository.putReferenceCheckpoint({
-      ...downstream,
+      ...references,
       kind: 'playlist',
       referenceId: 'playlist',
       baseline: ['song-1', 'b'],
       desired: ['song-2', 'b'],
     });
     s.repository.completeReferenceCheckpoint({
-      ...downstream,
+      ...references,
       kind: 'playlist',
       referenceId: 'playlist',
     });
@@ -220,5 +225,107 @@ describe('organization storage', () => {
     expect(
       s.c.db.connection.prepare('SELECT error_code,next_owner FROM organization_items').get(),
     ).toEqual({ error_code: 'worker_interrupted', next_owner: 'filesystem' });
+  });
+
+  it('atomically rebinds the stable media link and every current projection', async () => {
+    const s = await setup();
+    s.repository.createOrReplay(s.input);
+    s.c.imports.createJob({
+      id: 'source-job',
+      identityKey: '8'.repeat(64),
+      libraryId: 'library-1',
+      operationIdHash: '7'.repeat(64),
+      requestHash: '6'.repeat(64),
+      items: [{ id: 'source-item', sourceId: 'youtube-source' }],
+    });
+    s.c.db.connection
+      .prepare(
+        "UPDATE import_items SET stage='ready',media_link_id='media-1',ready_at=1000 WHERE id='source-item'",
+      )
+      .run();
+    const curation = createCurationRepository({
+      database: s.c.db,
+      clock: () => 1_000,
+      cursorKey: new Uint8Array(32),
+      limits: {
+        claimLeaseMs: 100,
+        maxTargets: 10,
+        snapshotMaxAgeMs: 100,
+        snapshotMaxItems: 10,
+        snapshotMaxCount: 10,
+      },
+    });
+    const trackRef = curation.discover({
+      libraryId: 'library-1',
+      trackId: 'song-1',
+      format: 'mp3',
+      mediaLinkId: 'media-1',
+      fileIdentity: s.input.fileIdentity,
+      bindingRevision: 1,
+    });
+    const move = s.repository.claimNext({ workerId: 'filesystem', leaseDurationMs: 100 })!;
+    s.repository.recordReferences({ ...move, baseline: { starred: false, playlists: [] } });
+    s.repository.recordMovePreimage({ ...move, preimage: s.preimage });
+    s.repository.transition({ ...move, stage: 'moving' });
+    s.repository.transition({ ...move, stage: 'moved' });
+    const registration = s.repository.claimNext({
+      workerId: 'gonic',
+      leaseDurationMs: 100,
+      registrationOnly: true,
+    })!;
+    s.repository.transition({ ...registration, stage: 'scanning' });
+    expect(
+      s.repository.rebindCurrent({
+        ...registration,
+        newTrackId: 'song-2',
+        targetFileIdentity: '5'.repeat(64),
+      }),
+    ).toEqual({ trackRef });
+    expect(s.c.mediaLinks.get('media-1')).toMatchObject({
+      id: 'media-1',
+      relativeFileKey: s.input.targetKey,
+      gonicSongId: 'song-2',
+      revision: 2,
+      availability: 'available',
+    });
+    expect(
+      s.c.db.connection
+        .prepare(
+          "SELECT original_track_id,current_track_id FROM metadata_items WHERE id='metadata-item'",
+        )
+        .get(),
+    ).toEqual({ original_track_id: 'song-1', current_track_id: 'song-2' });
+    expect(curation.rowFor(trackRef)).toMatchObject({
+      track_id: 'song-2',
+      media_link_id: 'media-1',
+      file_identity: '5'.repeat(64),
+      binding_revision: 2,
+    });
+    s.repository.completeRegistration({ ...registration, newTrackId: 'song-2' });
+    expect(s.repository.sourceLocation('youtube-source')).toMatchObject({
+      mediaLinkId: 'media-1',
+      managedKey: s.input.targetKey,
+    });
+    const imports = createWorkerLedger(s.c.db, () => 1_000, 'import-worker', 100);
+    expect(imports.findManagedSource('library-1', 'youtube-source')).toEqual({
+      id: 'media-1',
+      fileKey: s.input.targetKey,
+    });
+    const metadata = createMetadataRepository({ database: s.c.db, clock: () => 1_000 });
+    const metadataClaim = metadata.claimNext({
+      workerId: 'metadata-worker',
+      leaseDurationMs: 100,
+    })!;
+    expect(metadata.readWork(metadataClaim)).toMatchObject({
+      mediaLinkId: 'media-1',
+      key: s.input.targetKey,
+      trackId: 'song-2',
+      originalTrackId: 'song-1',
+      currentBindingRevision: 2,
+    });
+    expect(s.repository.getJob(s.input.id)!.item).toMatchObject({
+      stage: 'rebound',
+      newTrackId: 'song-2',
+    });
   });
 });

@@ -33,6 +33,10 @@ import { createOrganizationRepository } from './storage/organization-repository.
 import { createOrganizationFileStore } from './metadata/organization-file-store.js';
 import { createOrganizationWorker } from './metadata/organization-worker.js';
 import { captureMetadataReferences } from './metadata/reference-check.js';
+import { createMetadataFileAccess } from './metadata/file-access.js';
+import { createOrganizationRegistration } from './metadata/organization-registration.js';
+import { createCurationRepository } from './storage/curation-repository.js';
+import { curationSnapshot, reconcileVerifiedSnapshot } from './curation/reconciliation.js';
 
 export { readMetadataWorkerConfig } from './metadata/runtime-config.js';
 
@@ -202,6 +206,13 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
     const revisions = createMetadataRevision(key);
     const grants = createMetadataJobAuthorizer({ database, vault: createCredentialVault(key) });
     const publications = createMediaPublicationLedger(database, Date.now);
+    const fileAccess = createMetadataFileAccess({
+      musicRoot: config.musicRoot,
+      python: config.python,
+      helperPath: join(dirname(config.helperPath), 'file_access.py'),
+      timeoutMs: config.policy.limits.timeoutMs,
+      maxFileBytes: config.policy.limits.maxFileBytes,
+    });
     const account = async (work: MetadataWork) => {
       const credential = () =>
         work.actorTokenId
@@ -346,7 +357,7 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
               fileIdentity: (libraryId, relativeFileKey) =>
                 revisions.fileIdentity({ libraryId, relativeFileKey }),
               inspectAudio: async (relativeFileKey) =>
-                (await helper.read({ key: relativeFileKey, signal })).audio.packetHash,
+                curationSnapshot(await helper.read({ key: relativeFileKey, signal })).audioIdentity,
               assertAvailable: (fileIdentity) => publications.assertAvailable(fileIdentity),
             }),
             fileIdentity: (libraryId, relativeFileKey) =>
@@ -391,6 +402,53 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
               ),
           })
         : undefined;
+    const organizationCurationRepository =
+      organizationPolicy && automation.enabled && automation.curation
+        ? createCurationRepository({
+            database,
+            clock: Date.now,
+            cursorKey: key,
+            limits: automation.curation.limits,
+          })
+        : undefined;
+    const organizationRegistration =
+      organizationPolicy && organizationCurationRepository
+        ? createOrganizationRegistration({
+            database,
+            clock: Date.now,
+            timeoutMs: config.policy.limits.timeoutMs,
+            pollMs: 1000,
+            retryMs: 30000,
+            wait: (ms, abort) => delay(ms, undefined, { signal: abort }),
+            scanClient,
+            libraries: config.policy.libraries,
+            repository: organizationRepository,
+            inspect: async (relativeFileKey) => {
+              const snapshot = await helper.read({ key: relativeFileKey, signal });
+              return { snapshot, audioIdentity: curationSnapshot(snapshot).audioIdentity };
+            },
+            sourceAbsent: async (relativeFileKey) => {
+              try {
+                await fileAccess.inspect(relativeFileKey, signal);
+                return false;
+              } catch (error) {
+                return error instanceof Error && error.message === 'file_unavailable';
+              }
+            },
+            fileIdentity: (libraryId, relativeFileKey) =>
+              revisions.fileIdentity({ libraryId, relativeFileKey }),
+            revision: (libraryId, relativeFileKey, digest) =>
+              revisions.fileRevision({ libraryId, relativeFileKey, digest }),
+            reconcile: (trackRef, snapshot, revision) =>
+              reconcileVerifiedSnapshot(
+                organizationCurationRepository,
+                trackRef,
+                snapshot,
+                revision,
+                [],
+              ),
+          })
+        : undefined;
     const scheduler = createMetadataScheduler({
       ...(curation ? { inventory: (abort: AbortSignal) => curation.cycle(abort) } : {}),
       ...(organizationWorker
@@ -402,7 +460,16 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
                 recoveryOnly: true,
               });
               if (recovery) {
-                await organizationWorker.recover(recovery);
+                await organizationWorker.recover(recovery).catch(() => {});
+                return true;
+              }
+              const registration = organizationRepository.claimNext({
+                workerId,
+                leaseDurationMs: 30000,
+                registrationOnly: true,
+              });
+              if (registration && organizationRegistration) {
+                await organizationRegistration.process(registration, signal).catch(() => {});
                 return true;
               }
               const claim = organizationRepository.claimNext({
@@ -411,7 +478,7 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
                 fileOnly: true,
               });
               if (!claim) return false;
-              await organizationWorker.process(claim);
+              await organizationWorker.process(claim).catch(() => {});
               return true;
             },
           }

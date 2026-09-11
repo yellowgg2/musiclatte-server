@@ -85,3 +85,16 @@ Injected crashes before rename classify as source-only; crashes immediately afte
 after fsync classify as target-only. An expired hard-crash lease left in `moving` is promoted to
 filesystem-owned recovery. Both paths present, neither path present, a replaced target parent, or
 an identity mismatch never trigger an automatic reverse or overwrite.
+
+## gonic and provenance continuity
+
+After `moved`, the worker uses the shared scan lease and exact target-path lookup. It accepts both a
+retained old opaque ID and a newly issued ID, but only after source absence, one exact candidate,
+matching audio identity, and matching standard gonic/ID3 projection are proven. The stable
+MediaLink ID is updated in place; historical metadata rows keep `original_track_id` while their
+`current_track_id` follows the rebound song and restore reads the MediaLink's current target key.
+
+The rebound transaction also moves the current curation track/file binding without mutating its
+append-only receipt or event history. A fresh trusted snapshot reconciliation updates standard
+field state. The import item that originally established the MediaLink supplies the YouTube source
+ID for `organization_source_locations`; no raw source or media payload is copied into this mapping.

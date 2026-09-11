@@ -279,6 +279,7 @@ export function createOrganizationRepository(options: {
       leaseDurationMs: number;
       recoveryOnly?: boolean;
       fileOnly?: boolean;
+      registrationOnly?: boolean;
     }) {
       return atomic(() => {
         if (
@@ -288,12 +289,15 @@ export function createOrganizationRepository(options: {
         )
           throw new Error('invalid_claim');
         const timestamp = now();
-        if (input.recoveryOnly && input.fileOnly) throw new Error('invalid_claim');
+        if ([input.recoveryOnly, input.fileOnly, input.registrationOnly].filter(Boolean).length > 1)
+          throw new Error('invalid_claim');
         const stages = input.recoveryOnly
           ? "(stage='moving' OR (stage='recovery_required' AND next_owner='filesystem'))"
           : input.fileOnly
             ? "stage IN ('queued','validating','references_captured')"
-            : "stage NOT IN ('succeeded','failed','conflict','recovery_required')";
+            : input.registrationOnly
+              ? "(stage IN ('moved','scanning') OR (stage='recovery_required' AND next_owner='gonic'))"
+              : "stage NOT IN ('succeeded','failed','conflict','recovery_required')";
         const row = db
           .prepare(
             `SELECT * FROM organization_items WHERE ${stages} AND (lease_owner IS NULL OR lease_expires_at<=?) ORDER BY stage_changed_at,id LIMIT 1`,
@@ -305,7 +309,9 @@ export function createOrganizationRepository(options: {
             ? 'validating'
             : input.recoveryOnly && row.stage === 'moving'
               ? 'recovery_required'
-              : String(row.stage);
+              : input.registrationOnly && row.stage === 'scanning'
+                ? 'recovery_required'
+                : String(row.stage);
         const generation = integer(row.generation) + 1;
         const leaseExpiresAt = timestamp + input.leaseDurationMs;
         db.prepare(
@@ -316,10 +322,16 @@ export function createOrganizationRepository(options: {
           input.workerId,
           leaseExpiresAt,
           timestamp,
-          input.recoveryOnly && row.stage === 'moving' ? 1 : 0,
+          (input.recoveryOnly && row.stage === 'moving') ||
+            (input.registrationOnly && row.stage === 'scanning')
+            ? 1
+            : 0,
           'worker_interrupted',
-          input.recoveryOnly && row.stage === 'moving' ? 1 : 0,
-          'filesystem',
+          (input.recoveryOnly && row.stage === 'moving') ||
+            (input.registrationOnly && row.stage === 'scanning')
+            ? 1
+            : 0,
+          input.registrationOnly ? 'gonic' : 'filesystem',
           text(row.id),
         );
         db.prepare(
@@ -426,7 +438,7 @@ export function createOrganizationRepository(options: {
               : advanceOrganizationState(current, input.stage);
         if (state.stage !== input.stage) throw new Error('invalid_transition');
         const terminal = ['succeeded', 'failed', 'conflict'].includes(state.stage);
-        const relinquish = terminal || state.stage === 'moved';
+        const relinquish = terminal || state.stage === 'moved' || state.stage === 'rebound';
         db.prepare(
           'UPDATE organization_items SET stage=$stage,new_track_id=COALESCE($new_track_id,new_track_id),error_code=$error_code,next_owner=$next_owner,stage_changed_at=$changed_at,lease_owner=$lease_owner,lease_expires_at=$lease_expires_at,encrypted_job_grant=CASE WHEN $terminal THEN NULL ELSE encrypted_job_grant END,grant_epoch=CASE WHEN $terminal THEN NULL ELSE grant_epoch END WHERE id=$id',
         ).run({
@@ -531,14 +543,136 @@ export function createOrganizationRepository(options: {
           }
         : null;
     },
-    resumeRecovery(
+    rebindCurrent(
       input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
-        stage: 'moving' | 'moved';
+        newTrackId: string;
+        targetFileIdentity: string;
       },
     ) {
       return atomic(() => {
         const row = owned(input);
-        if (row.stage !== 'recovery_required' || row.next_owner !== 'filesystem')
+        if (row.stage !== 'scanning' || !input.newTrackId || !hex(input.targetFileIdentity))
+          throw new Error('conflict');
+        const job = db
+          .prepare('SELECT library_id FROM organization_jobs WHERE id=?')
+          .get(text(row.job_id))!;
+        const libraryId = text(job.library_id);
+        const mediaLinkId = text(row.media_link_id);
+        const sourceKey = text(row.source_key);
+        const targetKey = text(row.target_key);
+        const oldTrackId = text(row.old_track_id);
+        const link = db.prepare('SELECT * FROM media_links WHERE id=?').get(mediaLinkId) as
+          Row | undefined;
+        if (
+          !link ||
+          link.library_id !== libraryId ||
+          !(
+            (link.relative_file_key === sourceKey && link.gonic_song_id === oldTrackId) ||
+            (link.relative_file_key === targetKey && link.gonic_song_id === input.newTrackId)
+          ) ||
+          db
+            .prepare(
+              'SELECT 1 FROM media_links WHERE library_id=? AND id<>? AND (relative_file_key=? OR gonic_song_id=?) LIMIT 1',
+            )
+            .get(libraryId, mediaLinkId, targetKey, input.newTrackId)
+        )
+          throw new Error('conflict');
+        if (
+          link.relative_file_key !== targetKey ||
+          link.gonic_song_id !== input.newTrackId ||
+          link.availability !== 'available'
+        )
+          db.prepare(
+            "UPDATE media_links SET relative_file_key=?,gonic_song_id=?,availability='available',revision=revision+1,validated_at=? WHERE id=? AND revision=?",
+          ).run(targetKey, input.newTrackId, now(), mediaLinkId, integer(link.revision));
+        const rebound = db.prepare('SELECT revision FROM media_links WHERE id=?').get(mediaLinkId)!;
+        db.prepare('UPDATE metadata_items SET current_track_id=? WHERE media_link_id=?').run(
+          input.newTrackId,
+          mediaLinkId,
+        );
+        const curation = db
+          .prepare('SELECT id FROM curation_tracks WHERE media_link_id=?')
+          .all(mediaLinkId);
+        if (curation.length > 1) throw new Error('conflict');
+        const trackRef = curation.length ? text(curation[0]!.id) : null;
+        if (trackRef) {
+          const conflict = db
+            .prepare(
+              'SELECT 1 FROM curation_tracks WHERE library_id=? AND track_id=? AND id<>? LIMIT 1',
+            )
+            .get(libraryId, input.newTrackId, trackRef);
+          if (conflict) throw new Error('conflict');
+          db.prepare(
+            "UPDATE curation_tracks SET track_id=?,file_identity=?,binding_revision=?,format='mp3',tombstoned=0 WHERE id=?",
+          ).run(input.newTrackId, input.targetFileIdentity, integer(rebound.revision), trackRef);
+        }
+        db.prepare(
+          "INSERT OR IGNORE INTO curation_source_events(library_id,media_link_id,track_id,kind,source_key,created_at) VALUES(?,?,?,'organization_rebound',?,?)",
+        ).run(
+          libraryId,
+          mediaLinkId,
+          input.newTrackId,
+          `organization:${input.itemId}:rebound`,
+          now(),
+        );
+        return { trackRef };
+      });
+    },
+    completeRegistration(
+      input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
+        newTrackId: string;
+      },
+    ) {
+      return atomic(() => {
+        const row = owned(input);
+        const mediaLinkId = text(row.media_link_id);
+        const targetKey = text(row.target_key);
+        const link = db.prepare('SELECT * FROM media_links WHERE id=?').get(mediaLinkId) as
+          Row | undefined;
+        if (
+          row.stage !== 'scanning' ||
+          !input.newTrackId ||
+          !link ||
+          link.relative_file_key !== targetKey ||
+          link.gonic_song_id !== input.newTrackId ||
+          link.availability !== 'available'
+        )
+          throw new Error('conflict');
+        const provenance = db
+          .prepare(
+            "SELECT source_id FROM import_items WHERE media_link_id=? AND stage IN ('registering','ready','duplicate') ORDER BY id LIMIT 1",
+          )
+          .get(mediaLinkId);
+        if (provenance)
+          db.prepare(
+            'INSERT INTO organization_source_locations(media_link_id,source_id,managed_key,organization_item_id,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(media_link_id) DO UPDATE SET source_id=excluded.source_id,managed_key=excluded.managed_key,organization_item_id=excluded.organization_item_id,updated_at=excluded.updated_at',
+          ).run(mediaLinkId, text(provenance.source_id), targetKey, input.itemId, now());
+        db.prepare(
+          "UPDATE organization_items SET stage='rebound',new_track_id=?,error_code=NULL,next_owner=NULL,stage_changed_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=?",
+        ).run(input.newTrackId, now(), input.itemId);
+        db.prepare(
+          'UPDATE organization_attempts SET finished_at=?,error_code=NULL WHERE item_id=? AND generation=?',
+        ).run(now(), input.itemId, input.generation);
+        event(input.itemId, 'stage_changed', {
+          stage: 'rebound',
+          newTrackId: input.newTrackId,
+        });
+        return decodeItem(rowFor(input.itemId)!);
+      });
+    },
+    resumeRecovery(
+      input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
+        stage: 'moving' | 'moved' | 'scanning';
+      },
+    ) {
+      return atomic(() => {
+        const row = owned(input);
+        if (
+          row.stage !== 'recovery_required' ||
+          (input.stage === 'scanning'
+            ? row.next_owner !== 'gonic'
+            : row.next_owner !== 'filesystem')
+        )
           throw new Error('conflict');
         db.prepare(
           'UPDATE organization_items SET stage=$stage,error_code=NULL,next_owner=NULL,stage_changed_at=$changed_at,lease_owner=$lease_owner,lease_expires_at=$lease_expires_at WHERE id=$id',

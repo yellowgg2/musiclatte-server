@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRecentContext, recentNow } from '../../../tests/support/recent-harness.js';
 import { cookieOf, password, native } from '../../../tests/support/auth-harness.js';
 import { createApp } from '../src/app.js';
@@ -45,6 +45,32 @@ describe('recent downloads API', () => {
     expect(response.body).not.toMatch(
       /relativeFileKey|sourceId|synthetic audio|"path"|musiclatte-storage/,
     );
+  });
+
+  it('resolves historical download events through the rebound current media link', async () => {
+    const c = await makeSUT();
+    const seeded = c.seed();
+    const managedKey = 'imports/account/ID3-managed/Artist/Album/01 - Rebound.mp3';
+    const managedFile = `${c.musicRoot}/${managedKey}`;
+    mkdirSync(managedFile.slice(0, managedFile.lastIndexOf('/')), { recursive: true });
+    renameSync(seeded.file, managedFile);
+    c.storage.db.connection
+      .prepare(
+        "UPDATE media_links SET relative_file_key=?,gonic_song_id='rebound-song',revision=revision+1 WHERE id='media-1'",
+      )
+      .run(managedKey);
+    Object.assign(seeded.song, {
+      id: 'rebound-song',
+      title: 'Rebound',
+      path: managedKey,
+    });
+    const response = await c.get();
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items[0]).toMatchObject({
+      state: 'ready',
+      song: { id: 'rebound-song', title: 'Rebound' },
+    });
+    expect(response.body).not.toContain(seeded.fileKey);
   });
 
   /** Date picker timezone conversion still obeys start-inclusive/end-exclusive instants. */

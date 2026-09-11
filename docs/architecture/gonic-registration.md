@@ -95,3 +95,24 @@ reopen, stale ownership, rollback, backup/restore, private-path projection and p
 `import-worker.test.ts` also verifies runtime registration after a real synthetic publication without
 another engine acquisition or file/event. Detailed commands and counts are in
 `docs/verification/phase-3/step-04.md`.
+
+## Organization re-registration
+
+Phase 9 reuses the same singleton scan coordinator and exact-path traversal after a guarded file
+move. Organization registration claims only `moved`, interrupted `scanning`, or gonic-owned
+recovery work. It joins an active scan or starts one when idle, waits within the configured bound,
+and requires exactly one leaf at the immutable target key. A zero/multiple candidate, timeout,
+lost scan lease, old-path presence, or audio mismatch remains gonic-owned recovery; a worker never
+releases another owner's scan lease.
+
+The exact candidate is then checked against the target file's trusted ID3 snapshot. gonic's
+title, artist, album, track, year, and genre projection must agree, and the album directory must
+equal the sanitized ID3 album. Album artist and lyrics remain file-only evidence because gonic's
+standard song projection does not carry those fields.
+
+Rebinding updates the existing MediaLink row instead of creating a replacement. Relative key,
+opaque gonic ID (whether retained or newly issued), availability, revision, metadata items'
+current track IDs, and the active curation binding move forward together under the organization
+lease. Original metadata track IDs and append-only curation/download events are preserved. The
+verified snapshot is reconciled before `rebound` is checkpointed, so a crash repeats the same
+idempotent current-binding operation.

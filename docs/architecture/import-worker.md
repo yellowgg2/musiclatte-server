@@ -120,3 +120,16 @@ Optional `WorkerOptions.registration` injects a fixed worker scan client and lib
 When no download claim remains, the worker runs one durable registration batch; restart can complete
 previously published files without acquiring an engine. Schema v5 adds registration scheduling to
 v4, preserving publication tables and receipts. See [gonic registration](gonic-registration.md).
+
+## Managed-source continuity
+
+Phase 9 adds a server-owned source-to-managed-location ledger after a verified organization
+rebind. Before acquiring an engine or deriving a legacy channel path, the worker checks this
+mapping for every job, including account replacement jobs. A mapped file must still pass the
+existing embedded source-ID/audio validation. A valid file becomes a duplicate receipt using the
+stable MediaLink and is never overwritten or downloaded again.
+
+If the managed file is absent or no longer matches its source, the worker marks that MediaLink
+unavailable and fails the item explicitly. It does not fall back to the historical path planner,
+recreate a legacy copy, or replace curated ID3/APIC bytes. The mapping lookup is limited to rebound
+or later organization states (including explicit recovery) and does not expose source IDs publicly.

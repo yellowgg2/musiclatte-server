@@ -469,7 +469,7 @@ it('should migrate existing v3 links without changing their gonic mapping', asyn
   });
   expect(c.importsFor(migrated).getJob('legacy-job')!.items[0]!.mediaLinkId).toBe('legacy');
   expect(migrated.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 21 });
+  expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 24 });
 });
 
 /** Backup restores pending publication receipts and rejects unsafe recovery paths before activation. */

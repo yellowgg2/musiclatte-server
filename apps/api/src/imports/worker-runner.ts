@@ -197,12 +197,24 @@ export function createWorkerRunner(options: WorkerOptions) {
       }
       let intent = ledger.intent(item.id);
       if (!intent) {
+        const managed = ledger.findManagedSource(job.libraryId, item.sourceId);
         const existing =
-          job.accountDirectory === undefined
+          managed ??
+          (job.accountDirectory === undefined
             ? ledger.findSource(job.libraryId, item.sourceId)
-            : null;
+            : null);
         if (existing) {
-          await downloader.validateFile(options.musicRoot, existing.fileKey, item.sourceId, signal);
+          try {
+            await downloader.validateFile(
+              options.musicRoot,
+              existing.fileKey,
+              item.sourceId,
+              signal,
+            );
+          } catch (error) {
+            if (managed) ledger.markManagedUnavailable(managed.id);
+            throw error;
+          }
           ledger.assertOwned(item.id);
           intent = ledger.newIntent(existing.fileKey, `${randomUUID()}/audio.mp3`, true);
           ledger.saveIntent(item.id, intent);
