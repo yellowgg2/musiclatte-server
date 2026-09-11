@@ -155,9 +155,11 @@ export async function createMetadataBackup(options: {
         .prepare('SELECT relative_key FROM metadata_cover_uploads ORDER BY relative_key')
         .all()
         .map((row) => String(row.relative_key));
+      if (snapshot.prepare("SELECT 1 FROM organization_items WHERE stage='moving' LIMIT 1").get())
+        throw new Error();
       keys = snapshot
         .prepare(
-          'SELECT DISTINCT l.relative_file_key FROM media_links l JOIN metadata_items i ON i.media_link_id=l.id ORDER BY l.relative_file_key',
+          "SELECT relative_file_key FROM (SELECT DISTINCT l.relative_file_key FROM media_links l JOIN metadata_items i ON i.media_link_id=l.id UNION SELECT DISTINCT CASE WHEN o.stage IN ('moved','scanning','rebound','migrating_references','verifying','succeeded','recovery_required') THEN o.target_key ELSE o.source_key END AS relative_file_key FROM organization_items o) ORDER BY relative_file_key",
         )
         .all()
         .map((row) => String(row.relative_file_key));

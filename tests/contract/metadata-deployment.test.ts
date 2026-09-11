@@ -18,4 +18,22 @@ describe('metadata deployment boundary', () => {
     expect(overlay).not.toContain('IMPORT_CREDENTIAL');
     expect(readFileSync('apps/api/package.json', 'utf8')).toContain('start:metadata-worker');
   });
+  it('declares the v23 organization recovery ledger without public route exposure', () => {
+    const migration = readFileSync(
+      'apps/api/src/storage/migrations/023-metadata-organization.sql',
+      'utf8',
+    );
+    for (const table of [
+      'organization_jobs',
+      'organization_items',
+      'organization_attempts',
+      'organization_reference_checkpoints',
+      'organization_source_locations',
+    ])
+      expect(migration).toContain(`CREATE TABLE ${table}`);
+    expect(migration).toContain('PRAGMA user_version=23');
+    expect(readFileSync('apps/api/src/app.ts', 'utf8')).not.toContain(
+      'routes/metadata-organization',
+    );
+  });
 });

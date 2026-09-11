@@ -24,7 +24,11 @@ import { validateEngineState } from './engine-repository.js';
 import { validateWorkerState } from './worker-state-repository.js';
 import { validateCurationStorage } from './curation-repository.js';
 import { validateAccessTokens } from './access-token-repository.js';
-import { validateMetadataJobGrants } from '../auth/metadata-job-authorizer.js';
+import {
+  validateMetadataJobGrants,
+  validateOrganizationJobGrants,
+} from '../auth/metadata-job-authorizer.js';
+import { validateOrganizationStorage } from './organization-repository.js';
 
 /** Read-only verification: never initialize a missing instance or migrate a recovery artifact. */
 function verifySnapshot(path: string, key: Uint8Array): void {
@@ -34,6 +38,7 @@ function verifySnapshot(path: string, key: Uint8Array): void {
     validateMixStorage(db);
     validateListeningStorage(db);
     validateMetadataStorage(db);
+    validateOrganizationStorage(db);
     validateCurationStorage(db);
     validatePlaylistOperationReceipts(db);
     validateImportStorage(db);
@@ -48,6 +53,7 @@ function verifySnapshot(path: string, key: Uint8Array): void {
     const vault = createCredentialVault(key);
     validateAccessTokens(db, vault);
     validateMetadataJobGrants(db, vault);
+    validateOrganizationJobGrants(db, vault);
     const instance = db
       .prepare('SELECT id,policy_revision,key_id FROM instance WHERE singleton=1')
       .get();
@@ -162,6 +168,9 @@ export async function restoreBackup(source: string, destination: string): Promis
       );
       restored.exec(
         'UPDATE metadata_items SET encrypted_job_grant=NULL WHERE actor_token_id IS NOT NULL',
+      );
+      restored.exec(
+        "UPDATE organization_attempts SET finished_at=started_at,error_code='offline_restore' WHERE finished_at IS NULL; UPDATE organization_items SET encrypted_job_grant=NULL,grant_epoch=NULL,lease_owner=NULL,lease_expires_at=NULL,generation=generation+1,stage=CASE WHEN stage IN ('validating','references_captured') THEN 'queued' WHEN stage IN ('moving','moved','scanning','rebound','migrating_references','verifying') THEN 'recovery_required' ELSE stage END,error_code=CASE WHEN stage IN ('moving','moved','scanning','rebound','migrating_references','verifying') THEN 'offline_restore' ELSE error_code END,next_owner=CASE WHEN stage IN ('moving','moved') THEN 'filesystem' WHEN stage='scanning' THEN 'gonic' WHEN stage IN ('rebound','migrating_references') THEN 'references' WHEN stage='verifying' THEN 'verification' ELSE next_owner END",
       );
       restored
         .prepare('UPDATE automation_state SET credential_epoch=? WHERE singleton=1')
