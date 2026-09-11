@@ -191,8 +191,8 @@ afterEach(() => {
 });
 
 describe('playlist read UI', () => {
-  /** Narrow tiles reserve separate rows for playback and occurrence controls. */
-  it('should keep playlist tile controls in a bounded two-column mobile grid', () => {
+  /** Playlist tiles align playback and editing controls as an exact three-by-two grid. */
+  it('should keep playlist tile controls in a three-column two-row grid', () => {
     const rowCss = readFileSync(
       resolve('apps/web/src/music/components/MusicRow.module.css'),
       'utf8',
@@ -203,13 +203,16 @@ describe('playlist read UI', () => {
     );
 
     expect(rowCss).toMatch(
-      /\.rowMain\[data-layout='tile'\][^{]*\{[^}]*grid-template-areas:\s*'details'\s*'play'\s*'actions'/,
+      /\.rowMain\[data-layout='tile'\][^{]*\{[^}]*grid-template-areas:\s*'details'\s*'controls'/,
     );
     expect(rowCss).toMatch(
-      /@media \(max-width: 30rem\)[\s\S]*\.rowMain\[data-layout='tile'\] \.rowActions[^{]*\{[^}]*grid-template-columns:\s*repeat\(2, var\(--control-size\)\)/,
+      /\.rowMain\[data-layout='tile'\] \.controls[^{]*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/,
     );
     expect(occurrenceCss).toMatch(
-      /\.actions\[data-layout='tile'\][^{]*\{[^}]*grid-template-columns:\s*repeat\(3, var\(--control-size\)\)/,
+      /\.actions\[data-layout='tile'\][^{]*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/,
+    );
+    expect(occurrenceCss).not.toMatch(
+      /@media \(max-width: 30rem\)[\s\S]*grid-template-columns:\s*repeat\(2, var\(--control-size\)\)/,
     );
   });
 

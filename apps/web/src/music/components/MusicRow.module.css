@@ -24,18 +24,17 @@
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
     'details'
-    'play'
-    'actions';
+    'controls';
   align-content: start;
   gap: var(--space-2);
   padding: var(--space-2);
 }
 .rowMain[data-layout='tile'][data-selectable='true'] {
-  grid-template-columns: var(--control-size) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    'selection details'
-    '. play'
-    'actions actions';
+    'selection'
+    'details'
+    'controls';
 }
 .rowMain[data-layout='tile'] details {
   grid-area: details;
@@ -43,17 +42,30 @@
 .rowMain[data-layout='tile'] .selection {
   grid-area: selection;
 }
-.rowMain[data-layout='tile'] .play {
-  grid-area: play;
-  justify-self: start;
+.controls {
+  display: contents;
 }
-.rowMain[data-layout='tile'] .rowActions {
-  grid-area: actions;
+.rowMain[data-layout='tile'] .controls {
+  grid-area: controls;
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(3, var(--control-size));
-  justify-content: end;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
+}
+.rowMain[data-layout='tile'] .controls > .play,
+.rowMain[data-layout='tile'] .rowActions > :not([data-layout='tile']) {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+}
+.rowMain[data-layout='tile'] .controls > .play,
+.rowMain[data-layout='tile'] .rowActions > :not([data-layout='tile']) > button {
+  width: 100%;
+  max-width: var(--control-size);
+}
+.rowMain[data-layout='tile'] .rowActions {
+  display: contents;
 }
 .selection {
   display: grid;
@@ -248,11 +260,6 @@
     flex-wrap: wrap;
     gap: var(--space-2);
     padding: 0 0 var(--space-3) var(--space-3);
-  }
-  .rowMain[data-layout='tile'] .rowActions {
-    grid-column: auto;
-    grid-template-columns: repeat(2, var(--control-size));
-    padding: 0;
   }
   .summary {
     padding: var(--space-3);

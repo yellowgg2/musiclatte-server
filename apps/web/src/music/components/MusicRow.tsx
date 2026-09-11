@@ -172,26 +172,30 @@ export function MusicRow({
             </div>
           )}
         </details>
-        {onActivate && (
-          <IconAction
-            className={styles.play}
-            label={playLabel(locale, song.title, current ? playbackStatus : 'paused')}
-            onClick={() => {
-              if (current && playbackStatus === 'playing') onPause?.();
-              else if (current && playbackStatus !== 'ended' && playbackStatus !== 'error')
-                onResume?.();
-              else
-                onActivate({
-                  song,
-                  songs,
-                  source: window.location.pathname + window.location.search,
-                });
-            }}
-          >
-            {current && playbackStatus === 'playing' ? 'Ⅱ' : '▶'}
-          </IconAction>
+        {(onActivate || actions) && (
+          <div className={styles.controls}>
+            {onActivate && (
+              <IconAction
+                className={styles.play}
+                label={playLabel(locale, song.title, current ? playbackStatus : 'paused')}
+                onClick={() => {
+                  if (current && playbackStatus === 'playing') onPause?.();
+                  else if (current && playbackStatus !== 'ended' && playbackStatus !== 'error')
+                    onResume?.();
+                  else
+                    onActivate({
+                      song,
+                      songs,
+                      source: window.location.pathname + window.location.search,
+                    });
+                }}
+              >
+                {current && playbackStatus === 'playing' ? 'Ⅱ' : '▶'}
+              </IconAction>
+            )}
+            {actions && <div className={styles.rowActions}>{actions}</div>}
+          </div>
         )}
-        {actions && <div className={styles.rowActions}>{actions}</div>}
       </div>
     </li>
   );

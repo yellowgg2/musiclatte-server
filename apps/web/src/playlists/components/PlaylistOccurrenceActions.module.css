@@ -8,10 +8,14 @@
 .actions[data-layout='tile'] {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(3, var(--control-size));
-  justify-content: end;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
   padding: 0;
+}
+.actions[data-layout='tile'] > button {
+  width: 100%;
+  max-width: var(--control-size);
+  justify-self: center;
 }
 
 .remove {
@@ -42,11 +46,5 @@
 
   .confirmation > * {
     width: 100%;
-  }
-}
-
-@media (max-width: 30rem) {
-  .actions[data-layout='tile'] {
-    grid-template-columns: repeat(2, var(--control-size));
   }
 }

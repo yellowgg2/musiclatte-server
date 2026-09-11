@@ -150,7 +150,7 @@ describe('design foundation', () => {
   /** Multiple feature action groups stay aligned as one rail beside a music row. */
   it('should align music row action groups on one horizontal rail', () => {
     const css = readFileSync(resolve('apps/web/src/music/components/MusicRow.module.css'), 'utf8');
-    const actionRail = css.match(/\.rowActions\s*\{([^}]*)\}/)?.[1];
+    const actionRail = css.match(/^\.rowActions\s*\{([^}]*)\}/m)?.[1];
 
     expect(actionRail).toContain('display: flex');
     expect(actionRail).toContain('align-items: center');
