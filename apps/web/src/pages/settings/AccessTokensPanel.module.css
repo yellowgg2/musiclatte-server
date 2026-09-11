@@ -64,6 +64,19 @@
   margin-block-start: 0.25em;
   accent-color: var(--color-accent);
 }
+.choiceCopy {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+.choiceHelp,
+.sectionHelp {
+  font-size: var(--text-small);
+  line-height: 1.5;
+}
+.sectionHelp {
+  margin: 0 0 var(--space-2);
+}
 .expiry {
   display: grid;
   gap: var(--space-2);

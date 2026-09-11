@@ -300,11 +300,10 @@ export function AccessTokensPanel({
             }}
           />
           {options.scopes.includes('media:organize') && (
-            <section className={styles.guide} aria-labelledby="codex-id3-heading">
+            <section className={styles.guide} aria-labelledby="media-organization-heading">
               <div>
-                <h3 id="codex-id3-heading">{copy['tokens.codexTitle']}</h3>
+                <h3 id="media-organization-heading">{copy['tokens.organizationTitle']}</h3>
                 <p>{copy[organizationState]}</p>
-                <p className={shell.secondary}>{copy['tokens.lyricsOptional']}</p>
               </div>
               <Action
                 type="button"
@@ -315,9 +314,9 @@ export function AccessTokensPanel({
                   setSelectionError(false);
                 }}
               >
-                {copy['tokens.codexPreset']}
+                {copy['tokens.recommendedPreset']}
               </Action>
-              <p className={styles.presetHelp}>{copy['tokens.codexPresetHelp']}</p>
+              <p className={styles.presetHelp}>{copy['tokens.recommendedPresetHelp']}</p>
               {writableFields.length > 0 && (
                 <div className={styles.capability}>
                   <h4>{copy['tokens.supportedFields']}</h4>
@@ -331,46 +330,63 @@ export function AccessTokensPanel({
             </section>
           )}
           <div className={styles.columns}>
-            <fieldset
-              disabled={!!busy || unavailable}
-              className={styles.choices}
-              aria-describedby="token-scope-help"
-            >
+            <fieldset disabled={!!busy || unavailable} className={styles.choices}>
               <legend>{copy['tokens.scopes']}</legend>
               {accessTokenScopes
                 .filter((scope) => options.scopes.includes(scope))
-                .map((scope) => (
-                  <label key={scope} className={styles.choice}>
-                    <input
-                      type="checkbox"
-                      checked={scopes.includes(scope)}
-                      disabled={
-                        scope === 'metadata:read' ||
-                        (scope === 'metadata:write' &&
-                          (scopes.includes('lyrics:write') || scopes.includes('media:organize'))) ||
-                        (scope === 'lyrics:write' && !scopes.includes('metadata:write')) ||
-                        (scope === 'media:organize' && !organizationAllowed)
-                      }
-                      onChange={(event) => selectScope(scope, event.target.checked)}
-                    />
-                    {copy[`tokens.scope.${scope}`]}
-                  </label>
-                ))}
-              <p id="token-scope-help" className={shell.secondary}>
-                {copy['tokens.scopeHelp']}
-              </p>
+                .map((scope) => {
+                  const id = scope.replace(':', '-');
+                  const labelId = `token-scope-${id}-label`;
+                  const descriptionId = `token-scope-${id}-description`;
+                  return (
+                    <label key={scope} className={styles.choice}>
+                      <input
+                        type="checkbox"
+                        checked={scopes.includes(scope)}
+                        aria-labelledby={labelId}
+                        aria-describedby={descriptionId}
+                        disabled={
+                          scope === 'metadata:read' ||
+                          (scope === 'metadata:write' &&
+                            (scopes.includes('lyrics:write') ||
+                              scopes.includes('media:organize'))) ||
+                          (scope === 'lyrics:write' && !scopes.includes('metadata:write')) ||
+                          (scope === 'media:organize' && !organizationAllowed)
+                        }
+                        onChange={(event) => selectScope(scope, event.target.checked)}
+                      />
+                      <span className={styles.choiceCopy}>
+                        <span id={labelId}>{copy[`tokens.scope.${scope}`]}</span>
+                        <span
+                          id={descriptionId}
+                          className={`${styles.choiceHelp} ${shell.secondary}`}
+                        >
+                          {copy[`tokens.scopeDescription.${scope}`]}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
             </fieldset>
             <fieldset
               disabled={!!busy || unavailable}
               className={styles.choices}
-              aria-describedby={selectionError ? 'token-selection-error' : undefined}
+              aria-describedby={
+                selectionError
+                  ? 'token-libraries-help token-selection-error'
+                  : 'token-libraries-help'
+              }
             >
               <legend>{copy['tokens.libraries']}</legend>
+              <p id="token-libraries-help" className={`${styles.sectionHelp} ${shell.secondary}`}>
+                {copy['tokens.librariesHelp']}
+              </p>
               {options.libraryIds.map((id) => (
                 <label key={id} className={styles.choice}>
                   <input
                     type="checkbox"
                     checked={libraries.includes(id)}
+                    aria-describedby="token-libraries-help"
                     onChange={(event) =>
                       setLibraries((previous) =>
                         event.target.checked ? [...previous, id] : previous.filter((v) => v !== id),

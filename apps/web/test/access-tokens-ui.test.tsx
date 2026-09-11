@@ -145,7 +145,7 @@ afterEach(() => {
 });
 
 /** The desktop guide keeps its secondary preset action at the normal control height. */
-it('keeps the Codex preset action compact beside multi-line guidance', () => {
+it('keeps the recommended preset action compact beside multi-line guidance', () => {
   const css = readFileSync(
     resolve('apps/web/src/pages/settings/AccessTokensPanel.module.css'),
     'utf8',
@@ -271,7 +271,42 @@ it('shows one actionable reason when token management is unavailable', async () 
   expect(screen.queryByText('Cannot reach the server. Please try again shortly.')).toBeNull();
 });
 
-it('builds the Codex ID3 scope preset without issuing and preserves explicit dependency control', async () => {
+/** Permission choices explain their effect and the selected library boundary without product-specific wording. */
+it('describes every permission and the library boundary without Codex wording', async () => {
+  setup();
+  await screen.findByRole('heading', { name: 'Access tokens' });
+
+  expect(
+    screen.getByText(
+      'View the current ID3 metadata for songs in selected libraries. This permission is always required.',
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByText('Change supported ID3 metadata such as title, artist, album, and cover.'),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(
+      'Add or change lyrics. This optional permission is not needed to organize files.',
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByText('Record whether optional information was checked, missing, or unavailable.'),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(
+      'Move songs into folders based on their ID3 metadata. Read and edit are required.',
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(
+      '"music" is the name of a Musiclatte music library. Choose which libraries the token can access; the permissions above apply only to songs in selected libraries.',
+    ),
+  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Use recommended settings' })).toBeTruthy();
+  expect(document.body.textContent).not.toMatch(/Codex/i);
+});
+
+it('builds the recommended scope preset without issuing and preserves explicit dependency control', async () => {
   const c = setup();
   await screen.findByRole('heading', { name: 'Access tokens' });
   const read = screen.getByRole('checkbox', { name: 'Read metadata' }) as HTMLInputElement;
@@ -285,7 +320,7 @@ it('builds the Codex ID3 scope preset without issuing and preserves explicit dep
   expect(write.checked).toBe(false);
   expect(lyrics.checked).toBe(false);
   expect(organize.checked).toBe(false);
-  await c.user.click(screen.getByRole('button', { name: 'Use Codex ID3 preset' }));
+  await c.user.click(screen.getByRole('button', { name: 'Use recommended settings' }));
   expect(write.checked).toBe(true);
   expect(write.disabled).toBe(true);
   expect(organize.checked).toBe(true);
@@ -302,7 +337,7 @@ it('builds the Codex ID3 scope preset without issuing and preserves explicit dep
   expect(write.checked).toBe(true);
   expect(organize.checked).toBe(true);
 
-  await c.user.type(screen.getByRole('textbox', { name: 'Token name' }), 'Codex organizer');
+  await c.user.type(screen.getByRole('textbox', { name: 'Token name' }), 'Media organizer');
   await c.user.click(screen.getByRole('checkbox', { name: 'music' }));
   await c.user.click(screen.getByRole('button', { name: 'Create token' }));
   const request = c.calls.find((call) => call.method === 'POST');
@@ -312,14 +347,14 @@ it('builds the Codex ID3 scope preset without issuing and preserves explicit dep
 });
 
 it('explains optional lyrics, advertised fields and distinct organization readiness failures', async () => {
-  const available = setup();
+  setup();
   await screen.findByText(
-    'Lyrics permission is optional. Tag, cover, and file organization work without it.',
+    'Add or change lyrics. This optional permission is not needed to organize files.',
   );
   expect(screen.getByText(/Title · Artist · Album · Album artist/)).toBeTruthy();
   expect(
     screen.getByText(
-      'Supported fields describe what Musiclatte can write. Codex must still research and verify every value.',
+      'Supported fields describe what Musiclatte can write. Values are not researched or verified automatically.',
     ),
   ).toBeTruthy();
   cleanup();
@@ -337,7 +372,7 @@ it('explains optional lyrics, advertised fields and distinct organization readin
   setup(denied);
   await screen.findByText('This account is not allowed to organize media files.');
   expect(
-    screen.getByRole('button', { name: 'Use Codex ID3 preset' }) as HTMLButtonElement,
+    screen.getByRole('button', { name: 'Use recommended settings' }) as HTMLButtonElement,
   ).toHaveProperty('disabled', true);
   expect(
     screen.getByRole('checkbox', { name: 'Organize media files' }) as HTMLInputElement,
