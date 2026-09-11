@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "maxTokenAgeMs": 86400000,
+  "curation": {
+    "policyVersion": "required-v1",
+    "limits": {
+      "claimLeaseMs": 60000,
+      "maxTargets": 10,
+      "snapshotMaxAgeMs": 60000,
+      "snapshotMaxItems": 1000,
+      "snapshotMaxCount": 100
+    },
+    "inventory": {
+      "batchSize": 10,
+      "batchTimeMs": 1000,
+      "sweepIntervalMs": 60000,
+      "maxQueueItems": 1000
+    }
+  },
+  "organization": {
+    "policyVersion": "id3-managed-v1",
+    "accounts": [
+      {
+        "username": "example-user",
+        "accountDirectory": "example-account"
+      }
+    ]
+  }
+}

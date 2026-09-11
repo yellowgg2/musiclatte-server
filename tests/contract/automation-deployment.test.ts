@@ -20,6 +20,18 @@ it('keeps automation opt-in and shares only the fence with all writers', () => {
     metadata.slice(metadata.indexOf('  api:'), metadata.indexOf('\n  metadata-volume-init:')),
   ).toContain('read_only: true');
 });
+it('ships a credential-free explicit account organization mapping example', () => {
+  const raw = readFileSync('deploy/automation-config.example.json', 'utf8');
+  const value = JSON.parse(raw) as Record<string, unknown>;
+  expect(value).toMatchObject({
+    schemaVersion: 1,
+    organization: {
+      policyVersion: 'id3-managed-v1',
+      accounts: [{ username: 'example-user', accountDirectory: 'example-account' }],
+    },
+  });
+  expect(raw).not.toMatch(/password|credential|accessToken|secret|\/home\/|\/Users\//i);
+});
 it('runs the source-only HTTP consumer against real routes and MP3 writes', async () => {
   const c = await createCurationMutationContext();
   const now = vi.spyOn(Date, 'now').mockImplementation(c.clock);

@@ -2,6 +2,7 @@ import { curationRecord } from '@musiclatte/contracts';
 import { createCurationPolicy, type CurationLimits } from '../curation/policy.js';
 import { lstatSync, readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
+import { validateRelativeKey } from '../imports/policy.js';
 import type { MetadataPolicy } from '../metadata/policy.js';
 import type { ManagementDatabase } from '../storage/database.js';
 import type { CredentialVault } from '../security/credential-vault.js';
@@ -27,9 +28,18 @@ export interface CurationRuntimePolicy {
     maxQueueItems: number;
   };
 }
-export function readAutomationConfig(
-  env: Record<string, string | undefined>,
-): { enabled: false } | { enabled: true; maxTokenAgeMs: number; curation?: CurationRuntimePolicy } {
+export interface OrganizationRuntimePolicy {
+  policyVersion: 'id3-managed-v1';
+  accounts: readonly { username: string; accountDirectory: string }[];
+}
+export function readAutomationConfig(env: Record<string, string | undefined>):
+  | { enabled: false }
+  | {
+      enabled: true;
+      maxTokenAgeMs: number;
+      curation?: CurationRuntimePolicy;
+      organization?: OrganizationRuntimePolicy;
+    } {
   try {
     const enabled = env.AUTOMATION_ENABLED ?? 'false';
     if (!['true', 'false'].includes(enabled)) throw new Error();
@@ -51,7 +61,9 @@ export function readAutomationConfig(
       !config ||
       typeof config !== 'object' ||
       Array.isArray(config) ||
-      Object.keys(config).length !== (env.AUTOMATION_POLICY_PATH ? 3 : 2) ||
+      (env.AUTOMATION_POLICY_PATH
+        ? ![3, 4].includes(Object.keys(config).length)
+        : Object.keys(config).length !== 2) ||
       !('schemaVersion' in config) ||
       config.schemaVersion !== 1 ||
       !('maxTokenAgeMs' in config) ||
@@ -63,7 +75,9 @@ export function readAutomationConfig(
     curationRecord(
       config,
       env.AUTOMATION_POLICY_PATH
-        ? ['schemaVersion', 'maxTokenAgeMs', 'curation']
+        ? Object.hasOwn(config, 'organization')
+          ? ['schemaVersion', 'maxTokenAgeMs', 'curation', 'organization']
+          : ['schemaVersion', 'maxTokenAgeMs', 'curation']
         : ['schemaVersion', 'maxTokenAgeMs'],
     );
     if (config.maxTokenAgeMs > 366 * 86400000) throw new Error();
@@ -103,6 +117,48 @@ export function readAutomationConfig(
       )
         throw new Error();
     if (Number(inventory.sweepIntervalMs) < Number(inventory.batchTimeMs)) throw new Error();
+    let organization: OrganizationRuntimePolicy | undefined;
+    if (Object.hasOwn(config, 'organization')) {
+      const value = curationRecord((config as Record<string, unknown>).organization, [
+        'policyVersion',
+        'accounts',
+      ]);
+      if (value.policyVersion !== 'id3-managed-v1' || !Array.isArray(value.accounts))
+        throw new Error();
+      const accounts = value.accounts.map((item) => {
+        const account = curationRecord(item, ['username', 'accountDirectory']);
+        if (
+          typeof account.username !== 'string' ||
+          !account.username ||
+          account.username !== account.username.trim() ||
+          account.username.length > 256 ||
+          /[\u0000-\u001f\u007f]/.test(account.username) ||
+          typeof account.accountDirectory !== 'string' ||
+          isAbsolute(account.accountDirectory) ||
+          account.accountDirectory.includes('/') ||
+          account.accountDirectory.includes('\\') ||
+          validateRelativeKey(account.accountDirectory).includes('/')
+        )
+          throw new Error();
+        return Object.freeze({
+          username: account.username,
+          accountDirectory: account.accountDirectory.normalize('NFC'),
+        });
+      });
+      const usernames = accounts.map((item) => item.username.normalize('NFC').toLowerCase());
+      const directories = accounts.map((item) =>
+        item.accountDirectory.normalize('NFC').toLowerCase(),
+      );
+      if (
+        new Set(usernames).size !== usernames.length ||
+        new Set(directories).size !== directories.length
+      )
+        throw new Error();
+      organization = Object.freeze({
+        policyVersion: 'id3-managed-v1',
+        accounts: Object.freeze(accounts),
+      });
+    }
     return {
       enabled: true,
       maxTokenAgeMs: config.maxTokenAgeMs,
@@ -111,6 +167,7 @@ export function readAutomationConfig(
         limits,
         inventory: inventory as CurationRuntimePolicy['inventory'],
       },
+      ...(organization ? { organization } : {}),
     };
   } catch {
     throw new Error('Invalid automation configuration');
