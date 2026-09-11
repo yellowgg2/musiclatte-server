@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
-import type { CurationPolicy } from '@musiclatte/contracts';
+import {
+  curationFields,
+  optionalCurationFields,
+  requiredCurationFields,
+  type CurationPolicy,
+} from '@musiclatte/contracts';
 export interface CurationLimits {
   claimLeaseMs: number;
   maxTargets: number;
@@ -15,14 +20,18 @@ export function createCurationPolicy(limits: CurationLimits): CurationPolicy {
   }
   return {
     policyVersion: 'required-v1',
-    requiredFields: ['title', 'artist'],
-    optionalFields: ['album', 'cover', 'lyrics'],
+    requiredFields: [...requiredCurationFields],
+    optionalFields: [...optionalCurationFields],
     supportedFieldsByFormat: {
-      mp3: ['title', 'artist', 'album', 'cover', 'lyrics'],
+      mp3: [...curationFields],
       unsupported: [],
     },
     allowedAttemptStatusesByField: {
       album: ['unavailable', 'not_applicable'],
+      albumArtist: ['unavailable', 'not_applicable'],
+      trackNumber: ['unavailable', 'not_applicable'],
+      year: ['unavailable', 'not_applicable'],
+      genre: ['unavailable', 'not_applicable'],
       cover: ['unavailable', 'not_applicable'],
       lyrics: ['unavailable', 'not_applicable'],
     },

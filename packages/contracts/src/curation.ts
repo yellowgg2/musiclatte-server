@@ -1,7 +1,25 @@
-import { metadataRequestSchemas } from './metadata.js';
-export const curationFields = ['title', 'artist', 'album', 'cover', 'lyrics'] as const;
-export type CurationField = (typeof curationFields)[number];
-export type OptionalCurationField = 'album' | 'cover' | 'lyrics';
+import { metadataFields, metadataRequestSchemas, type MetadataField } from './metadata.js';
+export const curationFields = metadataFields;
+export type CurationField = MetadataField;
+export const requiredCurationFields = [
+  'title',
+  'artist',
+] as const satisfies readonly CurationField[];
+export type OptionalCurationField = Exclude<CurationField, (typeof requiredCurationFields)[number]>;
+export const optionalCurationFields = metadataFields.filter(
+  (field): field is OptionalCurationField =>
+    !requiredCurationFields.includes(field as (typeof requiredCurationFields)[number]),
+);
+const legacyCurationFields = ['title', 'artist', 'album', 'cover', 'lyrics'] as const;
+const unknownFieldState = (): FieldState => ({
+  status: 'unknown',
+  evidenceRevision: null,
+  lastAttemptAt: null,
+  lastUpdatedAt: null,
+  reason: null,
+  sourceNotes: null,
+  actorRef: null,
+});
 export type CurationStatus = 'unreviewed' | 'in_progress' | 'needs_review' | 'completed';
 export type ClaimPurpose = 'required_review' | 'optional_enrichment';
 export type FieldStatus = 'unknown' | 'missing' | 'present' | 'unavailable' | 'not_applicable';
@@ -146,8 +164,25 @@ export function decodeCurationTrack(value: unknown): CurationTrack {
     'lastVerifiedAt',
     'receipt',
   ]);
-  const fields = curationRecord(row.fieldStates, curationFields);
-  curationFields.forEach((field) => decodeFieldState(fields[field]));
+  const rawFields = row.fieldStates;
+  const rawKeys =
+    rawFields && typeof rawFields === 'object' && !Array.isArray(rawFields)
+      ? Object.keys(rawFields)
+      : [];
+  const acceptedFields =
+    rawKeys.length === legacyCurationFields.length &&
+    legacyCurationFields.every((field) => rawKeys.includes(field))
+      ? legacyCurationFields
+      : curationFields;
+  const decodedFields = curationRecord(rawFields, acceptedFields);
+  const fields = Object.fromEntries(
+    curationFields.map((field) => [
+      field,
+      Object.hasOwn(decodedFields, field)
+        ? decodeFieldState(decodedFields[field])
+        : unknownFieldState(),
+    ]),
+  ) as Record<CurationField, FieldState>;
   if (
     !text(row.trackId) ||
     !text(row.libraryId) ||
@@ -167,7 +202,7 @@ export function decodeCurationTrack(value: unknown): CurationTrack {
   if (row.receipt !== null) decodeCompletionReceipt(row.receipt);
   if (row.curationStatus === 'completed' && row.receipt === null)
     throw new Error('Invalid curation track');
-  return row as unknown as CurationTrack;
+  return { ...row, fieldStates: fields } as unknown as CurationTrack;
 }
 export function decodeCurationPolicy(value: unknown): CurationPolicy {
   const row = curationRecord(value, [
@@ -181,12 +216,12 @@ export function decodeCurationPolicy(value: unknown): CurationPolicy {
     'snapshotMaxAgeMs',
   ]);
   const supported = curationRecord(row.supportedFieldsByFormat, ['mp3', 'unsupported']);
-  const attempts = curationRecord(row.allowedAttemptStatusesByField, ['album', 'cover', 'lyrics']);
+  const attempts = curationRecord(row.allowedAttemptStatusesByField, optionalCurationFields);
   const same = (a: unknown, b: readonly string[]) => JSON.stringify(a) === JSON.stringify(b);
   if (
     row.policyVersion !== 'required-v1' ||
-    !same(row.requiredFields, ['title', 'artist']) ||
-    !same(row.optionalFields, ['album', 'cover', 'lyrics']) ||
+    !same(row.requiredFields, requiredCurationFields) ||
+    !same(row.optionalFields, optionalCurationFields) ||
     !same(supported.mp3, curationFields) ||
     !same(supported.unsupported, []) ||
     Object.values(attempts).some((v) => !same(v, ['unavailable', 'not_applicable'])) ||

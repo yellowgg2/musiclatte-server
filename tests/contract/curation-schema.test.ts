@@ -1,5 +1,11 @@
 import { expect, it } from 'vitest';
-import { decodeCurationPolicy, decodeCurationTrack, decodeFieldState } from '@musiclatte/contracts';
+import {
+  curationFields,
+  decodeCurationPolicy,
+  decodeCurationTrack,
+  decodeFieldState,
+  metadataFields,
+} from '@musiclatte/contracts';
 import { createCurationPolicy } from '../../apps/api/src/curation/policy.js';
 import { createCurationRepository } from '../../apps/api/src/storage/curation-repository.js';
 import { createTestContext } from '../support/session-storage-harness.js';
@@ -39,6 +45,15 @@ it('decodes actual stored projections and rejects invented completion, secrets a
     });
     const track = repo.get(id)!;
     expect(decodeCurationTrack(JSON.parse(JSON.stringify(track)))).toEqual(track);
+    const legacyFields = Object.fromEntries(
+      Object.entries(track.fieldStates).filter(([field]) =>
+        ['title', 'artist', 'album', 'cover', 'lyrics'].includes(field),
+      ),
+    );
+    expect(
+      decodeCurationTrack({ ...JSON.parse(JSON.stringify(track)), fieldStates: legacyFields })
+        .fieldStates.albumArtist.status,
+    ).toBe('unknown');
     expect(JSON.stringify(track)).not.toContain('/private');
     expect(() => decodeCurationTrack({ ...track, curationStatus: 'completed' })).toThrow();
     expect(() => decodeCurationTrack({ ...track, digest: 'secret' })).toThrow();
@@ -54,4 +69,28 @@ it('decodes actual stored projections and rejects invented completion, secrets a
   } finally {
     c.cleanup();
   }
+});
+
+/** The curation contract advertises every field the canonical metadata writer accepts. */
+it('should keep curation policy fields aligned with the metadata writer', () => {
+  const policy = createCurationPolicy({
+    claimLeaseMs: 1000,
+    maxTargets: 10,
+    snapshotMaxAgeMs: 1000,
+    snapshotMaxItems: 100,
+    snapshotMaxCount: 10,
+  });
+  expect(curationFields).toEqual(metadataFields);
+  expect(policy.supportedFieldsByFormat.mp3).toEqual(metadataFields);
+  expect(policy.requiredFields).toEqual(['title', 'artist']);
+  expect(policy.optionalFields).toEqual([
+    'album',
+    'albumArtist',
+    'trackNumber',
+    'year',
+    'genre',
+    'cover',
+    'lyrics',
+  ]);
+  expect(Object.keys(policy.allowedAttemptStatusesByField)).toEqual(policy.optionalFields);
 });

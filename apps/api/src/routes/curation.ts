@@ -12,7 +12,7 @@ import { requiredCredentials } from '../auth/guards.js';
 import { cookieMutation, requireJSON } from '../auth/csrf.js';
 import { metadataRequestSchemas, type CurationClaimRequest } from '@musiclatte/contracts';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { curationFields } from '@musiclatte/contracts';
+import { curationFields, optionalCurationFields } from '@musiclatte/contracts';
 import { ApiError, type SessionService } from '../auth/session-service.js';
 import { verifyMetadataPrincipal } from '../auth/metadata-principal.js';
 import { createCurationQueryService } from '../curation/query-service.js';
@@ -117,7 +117,7 @@ export function registerCurationRoutes(app: FastifyInstance, service: SessionSer
             fields: {
               type: 'array',
               minItems: 1,
-              maxItems: 5,
+              maxItems: curationFields.length,
               uniqueItems: true,
               items: { enum: curationFields },
             },
@@ -200,7 +200,7 @@ export function registerCurationRoutes(app: FastifyInstance, service: SessionSer
             ...curationPagingSchema.properties,
             curationStatus: { enum: ['unreviewed', 'needs_review', 'in_progress', 'completed'] },
             missingField: { enum: curationFields },
-            field: { enum: ['album', 'cover', 'lyrics'] },
+            field: { enum: optionalCurationFields },
             fieldStatus: {
               enum: ['unknown', 'missing', 'present', 'unavailable', 'not_applicable'],
             },

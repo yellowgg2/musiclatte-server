@@ -2,6 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   decodeCurationClaimResult,
   decodeCurationClaimRenewed,
+  optionalCurationFields,
+  requiredCurationFields,
   type CurationClaimRequest,
   type CurationClaimResult,
   type ClaimPurpose,
@@ -53,11 +55,11 @@ export function createCurationClaimService(service: SessionService) {
     purpose: ClaimPurpose,
     fields: readonly CurationField[],
   ) {
-    const supported =
+    const supported: readonly CurationField[] =
       purpose === 'required_review'
-        ? ['title', 'artist']
+        ? requiredCurationFields
         : purpose === 'optional_enrichment'
-          ? ['album', 'cover', 'lyrics']
+          ? optionalCurationFields
           : [];
     if (
       !fields.length ||

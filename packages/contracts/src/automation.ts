@@ -9,6 +9,7 @@ import {
 import {
   curationRecord,
   decodeFieldState,
+  optionalCurationFields,
   type ClaimPurpose,
   type OptionalCurationField,
   type FieldState,
@@ -113,7 +114,7 @@ export const metadataAttemptRequestSchema = {
     ...claimProperties,
     operationId: base.properties.operationId,
     expectedRevision: base.properties.targets.items.properties.expectedRevision,
-    field: { enum: ['album', 'cover', 'lyrics'] },
+    field: { enum: optionalCurationFields },
     status: { enum: ['unavailable', 'not_applicable'] },
     reason: { type: 'string', minLength: 1, maxLength: 4096, pattern: '\\S' },
     sourceNotes: notes,
@@ -222,7 +223,7 @@ export function decodeMetadataAttemptResponse(value: unknown): {
   if (
     v.schemaVersion !== 1 ||
     !text(v.trackId) ||
-    !['album', 'cover', 'lyrics'].includes(String(v.field))
+    !optionalCurationFields.includes(v.field as OptionalCurationField)
   )
     throw new Error('Invalid metadata attempt');
   if (!['unavailable', 'not_applicable'].includes(decodeFieldState(v.fieldState).status))

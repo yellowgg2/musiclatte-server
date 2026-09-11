@@ -32,7 +32,7 @@ S01 exposes token management only. P4 metadata routes still reject PATs until S0
 
 Web logout does not revoke independently issued PATs. Global authorization-policy invalidation revokes both session and PAT credentials. Offline restore follows the user's 2026-09-09 decision: retain the existing session restoration behavior, revoke restored PATs and rotate a separate automation credential epoch. S02 connects job-grant invalidation to that same restore boundary. Old automation cursors cannot be reused; audit metadata is retained.
 
-`automation.tokens` is advertised only for the actual configured producer and current account permissions. `metadata.curation` and web client support remain disabled until their owner steps implement them.
+`automation.tokens` is advertised only for the actual configured producer and current account permissions. `metadata.curation` and web client support remain disabled until their owner steps implement them. The curation capability field list is generated from the canonical metadata writer contract; it is not a separate token-writer allowlist.
 
 ## P4 principal adapter (S02)
 
@@ -46,7 +46,7 @@ Definitive terminal jobs discard grant envelopes. Offline restore and global aut
 
 ## Curation storage (S03)
 
-Schema 017 stores review state separately from optional field evidence and immutable completion receipts. Snapshot selection is frozen and credential-bound with explicit TTL/capacity errors. Offline restore preserves receipt history and ordinary sessions while rotating claim authority and marking file verification stale. These primitives are not HTTP mutation authorization; subsequent services must hold the common publication fence and verify current permissions/revision.
+Schema 017 stores review state separately from optional field evidence and immutable completion receipts. Schema 022 expands that state from the original five advertised fields to the writer's complete ordered field set: title, artist, album, albumArtist, trackNumber, year, genre, cover and lyrics. Existing state, receipt and event identities are copied unchanged; the four newly advertised optional fields start at `unknown`. Snapshot selection is frozen and credential-bound with explicit TTL/capacity errors. Offline restore preserves receipt history and ordinary sessions while rotating claim authority and marking file verification stale. These primitives are not HTTP mutation authorization; subsequent services must hold the common publication fence and verify current permissions/revision.
 
 ## Curation read API (S06)
 
@@ -54,7 +54,7 @@ Configured curation reads use `/api/v1/metadata-policy`, `/api/v1/tracks` and `/
 
 ## Automation admission (S07–S08)
 
-Curation claims are expiring reservations, independent of file fences and worker journals. Required review affects effective progress; optional enrichment preserves existing completion. New automation writes use the existing metadata-jobs endpoint with a required claim/generation/purpose envelope and explicit dryRun. Dry-run is advisory; submit revalidates under shared file fences. Durable curation operation receipts associate claims, P4 jobs and partial admission outcomes. Only succeeded associated jobs advance an unchanged claim binding/revision baseline; all other file changes require fresh review. Metadata attempts can record only verified missing optional fields and never alter file tags or mark review complete.
+Curation claims are expiring reservations, independent of file fences and worker journals. Required review remains title and artist; album, albumArtist, trackNumber, year, genre, cover and lyrics are optional enrichment. Only lyrics retains the additional `lyrics:write` requirement. New automation writes use the existing metadata-jobs endpoint with a required claim/generation/purpose envelope and explicit dryRun. Dry-run is advisory; submit revalidates under shared file fences. Durable curation operation receipts associate claims, P4 jobs and partial admission outcomes. Only succeeded associated jobs advance an unchanged claim binding/revision baseline; all other file changes require fresh review. Metadata attempts can record only verified missing optional fields and never alter file tags or mark review complete.
 
 ## Explicit completion (S09)
 

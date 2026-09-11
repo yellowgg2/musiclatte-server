@@ -17,10 +17,62 @@ import { createCurationRepository } from '../src/storage/curation-repository.js'
 import { createMetadataHelper } from '../src/metadata/helper-client.js';
 import { createMetadataFileAccess } from '../src/metadata/file-access.js';
 import { createMediaFence } from '../src/metadata/media-fence.js';
+import { curationSnapshot } from '../src/curation/reconciliation.js';
 const cache = join(homedir(), '.cache/musiclatte-toolchain');
 const python = process.env.METADATA_TEST_PYTHON ?? join(cache, 'metadata-python/bin/python');
 const ffmpeg = process.env.METADATA_TEST_FFMPEG ?? join(cache, 'ffmpeg-9.0.1/ffmpeg');
 const ffprobe = process.env.METADATA_TEST_FFPROBE ?? join(cache, 'ffmpeg-9.0.1/ffprobe');
+
+/** Scalar and array metadata fields receive independent presence and fingerprint projections. */
+it('should project every metadata field into curation state', () => {
+  const projected = curationSnapshot({
+    id3Version: 4,
+    editable: true,
+    reason: null,
+    values: {
+      title: ' Synthetic ',
+      artist: [' Artist '],
+      album: ' Album ',
+      albumArtist: [' Album Artist '],
+      trackNumber: '10/15',
+      year: '2026',
+      genre: [' Electronic ', ''],
+    },
+    coverFrames: [],
+    lyricsFrames: [],
+    fullDigest: 'full',
+    audio: {
+      codec: 'mp3',
+      sampleRate: '44100',
+      channels: 2,
+      duration: '1',
+      packetHash: 'packets',
+      packetCount: 1,
+    },
+  });
+  expect(projected.fields).toEqual({
+    title: true,
+    artist: true,
+    album: true,
+    albumArtist: true,
+    trackNumber: true,
+    year: true,
+    genre: true,
+    cover: false,
+    lyrics: false,
+  });
+  expect(Object.keys(projected.fingerprints)).toEqual([
+    'title',
+    'artist',
+    'album',
+    'albumArtist',
+    'trackNumber',
+    'year',
+    'genre',
+    'cover',
+    'lyrics',
+  ]);
+});
 
 it('reconciles real MP3 bytes, preserves optional-only receipts and detects changes with unchanged size/mtime', async () => {
   const { createCurationReconciler } = await import('../src/curation/reconciliation.js');

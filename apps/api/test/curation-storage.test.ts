@@ -19,8 +19,28 @@ const observation = {
   trusted: true,
   title: 'Synthetic',
   artist: ['Artist'],
-  fields: { title: true, artist: true, album: false, cover: false, lyrics: false },
-  changedFields: ['title', 'artist', 'album', 'cover', 'lyrics'] as const,
+  fields: {
+    title: true,
+    artist: true,
+    album: false,
+    albumArtist: false,
+    trackNumber: false,
+    year: false,
+    genre: false,
+    cover: false,
+    lyrics: false,
+  },
+  changedFields: [
+    'title',
+    'artist',
+    'album',
+    'albumArtist',
+    'trackNumber',
+    'year',
+    'genre',
+    'cover',
+    'lyrics',
+  ] as const,
 };
 describe('durable curation storage', () => {
   it('preserves append-only receipts, evidence and frozen selection across live changes', async () => {
@@ -49,6 +69,21 @@ describe('durable curation storage', () => {
         { username: 'synthetic', credentialKind: 'session', tokenId: null, clientLabel: null },
         null,
       );
+      for (const field of ['albumArtist', 'trackNumber', 'year', 'genre'] as const)
+        repo.attempt(a, field, 'unavailable', `No ${field} source`, null, 'actor');
+      expect(
+        Object.fromEntries(
+          ['albumArtist', 'trackNumber', 'year', 'genre'].map((field) => [
+            field,
+            repo.get(a)?.fieldStates[field].status,
+          ]),
+        ),
+      ).toEqual({
+        albumArtist: 'unavailable',
+        trackNumber: 'unavailable',
+        year: 'unavailable',
+        genre: 'unavailable',
+      });
       repo.attempt(a, 'lyrics', 'unavailable', 'No usable source', null, 'actor');
       repo.observe(a, {
         ...observation,
@@ -186,11 +221,97 @@ describe('durable curation storage', () => {
             failed.close();
           } else {
             const upgraded = c.open(dir);
-            expect(upgraded.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(19);
+            expect(upgraded.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(22);
             expect(upgraded.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
           }
         }
       }
+    } finally {
+      c.cleanup();
+    }
+  });
+
+  /** Version 21 curation rows, receipts and events survive the expanded field CHECK migration. */
+  it('should migrate version 21 curation evidence without rewriting existing identities', async () => {
+    const c = await createTestContext();
+    try {
+      const dir = join(c.root, 'old-21');
+      mkdirSync(dir);
+      const db = new DatabaseSync(join(dir, 'management.sqlite'));
+      const migrations = resolve('apps/api/src/storage/migrations');
+      for (const name of readdirSync(migrations)
+        .filter((name) => Number(name.slice(0, 3)) <= 21)
+        .sort())
+        db.exec(readFileSync(join(migrations, name), 'utf8'));
+      db.exec(`
+        INSERT INTO curation_tracks(
+          id,library_id,track_id,file_identity,format,title,artist_json,base_status,revision,
+          required_fingerprint,audio_identity,policy_version,validation
+        ) VALUES(
+          'curation-1','library','song-1','file-1','mp3','Title','["Artist"]','unreviewed',
+          'revision-1','required-1','audio-1','required-v1','verified'
+        );
+        INSERT INTO curation_field_states(
+          track_ref,field,status,evidence_revision,last_attempt_at,reason,actor_ref
+        )
+        VALUES
+          ('curation-1','title','present','revision-1',NULL,NULL,NULL),
+          ('curation-1','artist','present','revision-1',NULL,NULL,NULL),
+          ('curation-1','album','missing','revision-1',NULL,NULL,NULL),
+          ('curation-1','cover','missing','revision-1',NULL,NULL,NULL),
+          ('curation-1','lyrics','unavailable','revision-1',1000,'No source','actor');
+        INSERT INTO curation_events(sequence,track_ref,event_key,kind,payload_json,created_at)
+        VALUES(41,'curation-1','event-key','observed','{"revision":"revision-1"}',1000);
+        UPDATE curation_field_states SET value_fingerprint='album-fingerprint'
+        WHERE track_ref='curation-1' AND field='album';
+        INSERT INTO curation_receipts(
+          id,track_ref,file_identity,actor_json,completed_at,verified_revision,
+          required_fingerprint,audio_identity,policy_version,source_notes
+        ) VALUES(
+          'receipt-1','curation-1','file-1',
+          '{"username":"fixture","credentialKind":"session","tokenId":null,"clientLabel":null}',
+          1000,'revision-1','required-1','audio-1','required-v1','kept'
+        );
+        UPDATE curation_tracks SET base_status='completed',receipt_id='receipt-1'
+        WHERE id='curation-1';
+      `);
+      db.close();
+
+      const upgraded = c.open(dir);
+      expect(upgraded.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(22);
+      expect(
+        upgraded.connection
+          .prepare(
+            'SELECT field,status,evidence_revision FROM curation_field_states WHERE track_ref=? ORDER BY field',
+          )
+          .all('curation-1'),
+      ).toEqual([
+        { field: 'album', status: 'missing', evidence_revision: 'revision-1' },
+        { field: 'albumArtist', status: 'unknown', evidence_revision: null },
+        { field: 'artist', status: 'present', evidence_revision: 'revision-1' },
+        { field: 'cover', status: 'missing', evidence_revision: 'revision-1' },
+        { field: 'genre', status: 'unknown', evidence_revision: null },
+        { field: 'lyrics', status: 'unavailable', evidence_revision: 'revision-1' },
+        { field: 'title', status: 'present', evidence_revision: 'revision-1' },
+        { field: 'trackNumber', status: 'unknown', evidence_revision: null },
+        { field: 'year', status: 'unknown', evidence_revision: null },
+      ]);
+      expect(
+        upgraded.connection.prepare('SELECT sequence,event_key FROM curation_events').all(),
+      ).toEqual([{ sequence: 41, event_key: 'event-key' }]);
+      expect(
+        upgraded.connection
+          .prepare(
+            "SELECT value_fingerprint FROM curation_field_states WHERE track_ref='curation-1' AND field='album'",
+          )
+          .get()?.value_fingerprint,
+      ).toBe('album-fingerprint');
+      expect(
+        upgraded.connection
+          .prepare('SELECT id,verified_revision,source_notes FROM curation_receipts')
+          .all(),
+      ).toEqual([{ id: 'receipt-1', verified_revision: 'revision-1', source_notes: 'kept' }]);
+      expect(upgraded.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     } finally {
       c.cleanup();
     }

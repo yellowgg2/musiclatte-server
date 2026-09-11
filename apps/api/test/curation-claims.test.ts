@@ -147,6 +147,38 @@ it('enforces purpose scopes, renew generation and clock rollback while optional 
   }
 });
 
+/** Optional scalar and array fields can be claimed without the lyrics-only scope. */
+it('should claim all non-lyrics optional metadata fields with metadata write authority', async () => {
+  const c = await createCurationMutationContext();
+  try {
+    c.repository.complete(
+      c.trackRef,
+      { username: 'fixture', credentialKind: 'session', tokenId: null, clientLabel: null },
+      null,
+    );
+    const response = await c.post(
+      'curation-claims',
+      {
+        operationId: randomUUID(),
+        purpose: 'optional_enrichment',
+        fields: ['albumArtist', 'trackNumber', 'year', 'genre'],
+        targets: [
+          {
+            trackId: 'track-1',
+            expectedRevision: c.repository.get(c.trackRef)!.fileRevision!,
+          },
+        ],
+      },
+      await c.token(['metadata:read', 'metadata:write']),
+    );
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results).toEqual([{ trackId: 'track-1', status: 'granted' }]);
+    expect(c.repository.get(c.trackRef)?.curationStatus).toBe('completed');
+  } finally {
+    await c.cleanup();
+  }
+});
+
 it('distinguishes stale revision and active file fences without creating permanent reservations', async () => {
   const c = await createCurationMutationContext();
   try {

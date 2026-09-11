@@ -12,14 +12,19 @@ import { createMediaLinkRepository } from '../storage/media-link-repository.js';
 import { validateRelativeKey } from '../imports/policy.js';
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export function curationSnapshot(snapshot: MetadataTagSnapshot) {
-  const title = snapshot.values.title?.normalize('NFC').trim() || null;
-  const artist = snapshot.values.artist
-    .map((value) => value.normalize('NFC').trim())
-    .filter(Boolean);
+  const scalar = (value: string | null) => value?.normalize('NFC').trim() || null;
+  const list = (values: string[]) =>
+    values.map((value) => value.normalize('NFC').trim()).filter(Boolean);
+  const title = scalar(snapshot.values.title);
+  const artist = list(snapshot.values.artist);
   const values = {
     title,
     artist,
-    album: snapshot.values.album?.trim() || null,
+    album: scalar(snapshot.values.album),
+    albumArtist: list(snapshot.values.albumArtist),
+    trackNumber: scalar(snapshot.values.trackNumber),
+    year: scalar(snapshot.values.year),
+    genre: list(snapshot.values.genre),
     cover: snapshot.coverFrames.map((frame) => frame.digest),
     lyrics: snapshot.lyricsFrames.filter((frame) => frame.text.trim()),
   };
@@ -27,6 +32,10 @@ export function curationSnapshot(snapshot: MetadataTagSnapshot) {
     title: title !== null,
     artist: artist.length > 0,
     album: values.album !== null,
+    albumArtist: values.albumArtist.length > 0,
+    trackNumber: values.trackNumber !== null,
+    year: values.year !== null,
+    genre: values.genre.length > 0,
     cover: values.cover.length > 0,
     lyrics: values.lyrics.length > 0,
   };

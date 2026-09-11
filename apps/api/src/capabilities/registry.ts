@@ -4,6 +4,7 @@ import { recentCapability } from '../imports/recent-service.js';
 import { importCapability } from '../imports/import-service.js';
 import {
   featureKeys,
+  curationFields,
   type CapabilitiesResponse,
   type FeatureCapability,
 } from '@musiclatte/contracts';
@@ -111,7 +112,7 @@ export async function capabilities(
       permission: features['metadata.write']!.permission,
       supported: true,
       availability: ready && !metadataScopeUnknown ? 'available' : 'temporarily_unavailable',
-      fields: ['title', 'artist', 'album', 'cover', 'lyrics'],
+      fields: [...curationFields],
       formats: ['mp3'],
     };
   }

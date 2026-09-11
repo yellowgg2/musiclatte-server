@@ -2,6 +2,8 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cookieOf, createTestContext, password } from '../support/auth-harness.js';
+import { metadataFields } from '@musiclatte/contracts';
+import { createCurationMutationContext } from '../support/curation-mutation-harness.js';
 
 interface Decoder {
   decodeDiscovery: (value: unknown) => unknown;
@@ -231,4 +233,16 @@ describe('private capability contract', () => {
       ).json().features['library.randomSongs'].supported,
     ).toBeNull();
   });
+});
+
+/** Curation capability fields are generated from the canonical metadata field list. */
+it('should advertise every canonical metadata field for curation', async () => {
+  const ctx = await createCurationMutationContext();
+  try {
+    const response = await ctx.app.inject({ url: '/api/v1/capabilities', headers: ctx.headers });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().features['metadata.curation'].fields).toEqual(metadataFields);
+  } finally {
+    await ctx.cleanup();
+  }
 });

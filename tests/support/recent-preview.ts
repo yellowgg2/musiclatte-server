@@ -1,7 +1,11 @@
 /** MUSICLATTE_RECENT_PREVIEW: synthetic ledger with real login, playlist and player BFFs. */
 import Fastify from 'fastify';
 import { readFileSync } from 'node:fs';
-import type { RecentDownloadItem, RecentDownloadResponse } from '@musiclatte/contracts';
+import {
+  metadataFields,
+  type RecentDownloadItem,
+  type RecentDownloadResponse,
+} from '@musiclatte/contracts';
 import { createTestContext } from './auth-harness.js';
 import { createTestContext as createStorage } from './session-storage-harness.js';
 const storage = await createStorage();
@@ -72,7 +76,7 @@ app.get('/api/v1/capabilities', async (request, reply) => {
   value.features['mixes.saved'] = available;
   value.features['metadata.curation'] = {
     ...available,
-    fields: ['title', 'artist', 'album', 'cover', 'lyrics'],
+    fields: [...metadataFields],
     formats: ['mp3'],
   };
   value.features['library.recentDownloads'] = {

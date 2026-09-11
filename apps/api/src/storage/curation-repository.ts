@@ -2,6 +2,8 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
 import {
   curationFields,
+  optionalCurationFields,
+  requiredCurationFields,
   decodeCurationTrack,
   decodeCompletionReceipt,
   decodeFieldState,
@@ -122,7 +124,7 @@ export function normalizeCurationFilter(filter: CurationFilter): CurationFilter 
         filter.curationStatus,
       )) ||
     (filter.missingField && !curationFields.includes(filter.missingField)) ||
-    (filter.field && !['album', 'cover', 'lyrics'].includes(filter.field)) ||
+    (filter.field && !optionalCurationFields.includes(filter.field)) ||
     (filter.fieldStatus &&
       !['unknown', 'missing', 'present', 'unavailable', 'not_applicable'].includes(
         filter.fieldStatus,
@@ -420,7 +422,7 @@ export function createCurationRepository(options: {
     ) {
       return atomic(() => {
         if (
-          !['album', 'cover', 'lyrics'].includes(field) ||
+          !optionalCurationFields.includes(field) ||
           !['unavailable', 'not_applicable'].includes(status) ||
           !reason.trim() ||
           reason.length > 4096 ||
@@ -596,9 +598,9 @@ export function validateCurationStorage(db: DatabaseSync): void {
   if (
     db
       .prepare(
-        'SELECT t.id FROM curation_tracks t LEFT JOIN curation_field_states f ON f.track_ref=t.id GROUP BY t.id HAVING count(f.field)!=5',
+        'SELECT t.id FROM curation_tracks t LEFT JOIN curation_field_states f ON f.track_ref=t.id GROUP BY t.id HAVING count(f.field)!=?',
       )
-      .all().length
+      .all(curationFields.length).length
   )
     throw new Error('Invalid curation fields');
   if (
@@ -626,8 +628,8 @@ export function validateCurationStorage(db: DatabaseSync): void {
   }
   for (const row of db.prepare('SELECT * FROM curation_claims').iterate()) {
     const fields = parse(row.fields_json);
-    const allowed =
-      row.purpose === 'required_review' ? ['title', 'artist'] : ['album', 'cover', 'lyrics'];
+    const allowed: readonly CurationField[] =
+      row.purpose === 'required_review' ? requiredCurationFields : optionalCurationFields;
     if (
       !Array.isArray(fields) ||
       !fields.length ||
