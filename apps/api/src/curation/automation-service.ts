@@ -122,7 +122,9 @@ export function createAutomationService(service: SessionService) {
           const held = await fence.acquire(String(baseline.file_identity), 'verify');
           locks.push(held);
           if (!body.dryRun) generations.push(publications.begin(held.fileIdentity, held.nonce));
-          publications.assertAvailable(held.fileIdentity, scope.actorKey);
+          publications.assertAvailable(held.fileIdentity, scope.actorKey, {
+            allowOrganizationAlbumProjection: true,
+          });
           const file = await p.resolver.resolve(principal, target.trackId, 'edit');
           if (
             file.fileIdentity !== held.fileIdentity ||
@@ -132,7 +134,7 @@ export function createAutomationService(service: SessionService) {
             throw new Error('revision_conflict');
           if (!file.editable) throw new ApiError(422, 'invalid_request');
           const cover =
-            body.patch.cover?.op === 'set'
+            body.patch.cover?.op === 'set' || body.patch.cover?.op === 'replaceAll'
               ? metadata.covers.resolve(principal, body.patch.cover.uploadId, file.libraryId)
               : undefined;
           const diff = await p.helper.preview({
@@ -211,7 +213,9 @@ export function createAutomationService(service: SessionService) {
             body.automation.purpose,
             fields,
           );
-          publications.assertAvailable(a.item.fileIdentity, scope.actorKey);
+          publications.assertAvailable(a.item.fileIdentity, scope.actorKey, {
+            allowOrganizationAlbumProjection: true,
+          });
           if (isTokenPrincipal(principal))
             Object.assign(
               a.item,

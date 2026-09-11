@@ -85,26 +85,35 @@ export function createOrganizationWorker(options: {
       }
     },
     async recover(claim: OrganizationClaim) {
-      if (!claim.preimage) throw new Error('move_uncertain');
-      const preimage: OrganizationMovePreimage = {
-        libraryId: claim.libraryId,
-        sourceKey: claim.sourceKey,
-        targetKey: claim.targetKey,
-        sourceFenceIdentity: options.fileIdentity(claim.libraryId, claim.sourceKey),
-        targetFenceIdentity: options.fileIdentity(claim.libraryId, claim.targetKey),
-        ...claim.preimage,
-        size: 0,
-      };
-      if (preimage.sourceFenceIdentity !== claim.fileIdentity) throw new Error('move_uncertain');
-      const state = await options.fileStore.classify(preimage);
-      if (state === 'ambiguous') throw new Error('move_uncertain');
-      options.repository.resumeRecovery({
-        ...fence(claim),
-        stage: state === 'target_only' ? 'moved' : 'moving',
-      });
-      if (state === 'source_only') {
-        await options.fileStore.move(preimage);
-        options.repository.transition({ ...fence(claim), stage: 'moved' });
+      try {
+        if (!claim.preimage) throw new Error('move_uncertain');
+        const preimage: OrganizationMovePreimage = {
+          libraryId: claim.libraryId,
+          sourceKey: claim.sourceKey,
+          targetKey: claim.targetKey,
+          sourceFenceIdentity: options.fileIdentity(claim.libraryId, claim.sourceKey),
+          targetFenceIdentity: options.fileIdentity(claim.libraryId, claim.targetKey),
+          ...claim.preimage,
+          size: 0,
+        };
+        if (preimage.sourceFenceIdentity !== claim.fileIdentity) throw new Error('move_uncertain');
+        const state = await options.fileStore.classify(preimage);
+        if (state === 'ambiguous') throw new Error('move_uncertain');
+        options.repository.resumeRecovery({
+          ...fence(claim),
+          stage: state === 'target_only' ? 'moved' : 'moving',
+        });
+        if (state === 'source_only') {
+          await options.fileStore.move(preimage);
+          options.repository.transition({ ...fence(claim), stage: 'moved' });
+        }
+      } catch (cause) {
+        options.repository.transition({
+          ...fence(claim),
+          stage: 'recovery_required',
+          errorCode: cause instanceof Error ? cause.message : 'move_uncertain',
+        });
+        throw cause;
       }
     },
   };

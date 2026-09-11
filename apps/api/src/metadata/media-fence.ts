@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { lstatSync, realpathSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import type { ManagementDatabase } from '../storage/database.js';
+import { isOrganizationAlbumProjectionPending } from './organization-album-projection.js';
 
 export interface MediaFenceOptions {
   root: string;
@@ -278,7 +279,11 @@ export function createMediaPublicationLedger(database: ManagementDatabase, clock
         );
       });
     },
-    assertAvailable(fileIdentity: string, actorKey?: string) {
+    assertAvailable(
+      fileIdentity: string,
+      actorKey?: string,
+      options: { allowOrganizationAlbumProjection?: boolean } = {},
+    ) {
       // Curation must wait for an interrupted P3 publication to classify its journal.
       // The P3 owner itself (no curation actor) must still be able to recover it.
       if (
@@ -290,12 +295,15 @@ export function createMediaPublicationLedger(database: ManagementDatabase, clock
           .get(fileIdentity)
       )
         throw new Error('file_busy');
+      const activeMetadata = db
+        .prepare(
+          "SELECT i.stage,i.error_code,i.changed_fields_json,e.reflection_json FROM metadata_items i LEFT JOIN metadata_item_evidence e ON e.item_id=i.id WHERE i.file_identity=? AND i.stage IN ('queued','preparing','backed_up','prepared','file_saved','reflecting','recovery_required')",
+        )
+        .all(fileIdentity);
       if (
-        db
-          .prepare(
-            "SELECT 1 FROM metadata_items WHERE file_identity=? AND stage IN ('queued','preparing','backed_up','prepared','file_saved','reflecting','recovery_required') LIMIT 1",
-          )
-          .get(fileIdentity)
+        activeMetadata.length > 0 &&
+        (!options.allowOrganizationAlbumProjection ||
+          activeMetadata.some((item) => !isOrganizationAlbumProjectionPending(item)))
       )
         throw new Error('file_busy');
       const claim = db

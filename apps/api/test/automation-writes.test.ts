@@ -64,6 +64,81 @@ it('previews without durable effects and admits only valid targets with replayab
   }
 });
 
+it('admits automation while a file-verified album projection waits for organization', async () => {
+  const c = await createCurationMutationContext();
+  try {
+    const headers = await c.token(['metadata:read', 'metadata:write', 'curation:write']);
+    const track = c.repository.rowFor(c.trackRef)!;
+    const token = c.storage.db.connection
+      .prepare('SELECT id FROM access_tokens ORDER BY created_at DESC,id DESC LIMIT 1')
+      .get()!;
+    const snapshot = await c.helper.read({ key: 'imports/source.mp3' });
+    c.storage.db.connection
+      .prepare(
+        "INSERT INTO metadata_jobs(id,identity_key,library_id,operation_id_hash,request_hash,kind,created_at) VALUES('album-pending-job',?,'music',?,?,'edit',?)",
+      )
+      .run('c'.repeat(64), 'a'.repeat(64), 'b'.repeat(64), c.clock());
+    c.storage.db.connection
+      .prepare(
+        'INSERT INTO metadata_items(id,job_id,item_order,media_link_id,file_identity,binding_revision,original_track_id,current_track_id,expected_revision,expected_digest,patch_json,actor_token_id,policy_revision,stage,generation,stage_changed_at,file_saved_at,result_revision,result_digest,changed_fields_json,next_reflection_at,error_code) VALUES(\'album-pending-item\',\'album-pending-job\',0,?,?,?,?,?,?,?,\'{"album":{"op":"set","value":"Synthetic album"}}\',?,1,\'reflecting\',1,?,?,?,?,\'["album"]\',0,\'reflection_mismatch\')',
+      )
+      .run(
+        String(track.media_link_id),
+        String(track.file_identity),
+        Number(track.binding_revision),
+        'track-1',
+        'track-1',
+        String(track.revision),
+        snapshot.fullDigest,
+        String(token.id),
+        c.clock(),
+        c.clock(),
+        String(track.revision),
+        snapshot.fullDigest,
+      );
+    c.storage.db.connection
+      .prepare(
+        'INSERT INTO metadata_item_evidence(item_id,references_json,reflection_json,updated_at) VALUES(?,?,?,?)',
+      )
+      .run(
+        'album-pending-item',
+        JSON.stringify({ trackId: 'track-1', starred: false, playlists: [] }),
+        JSON.stringify({ fileVerifiedFields: ['album'], mismatched: ['album'] }),
+        c.clock(),
+      );
+    const targets = [{ trackId: 'track-1', expectedRevision: String(track.revision) }];
+    const claim = (
+      await c.post(
+        'curation-claims',
+        { operationId: randomUUID(), purpose: 'required_review', fields: ['title'], targets },
+        headers,
+      )
+    ).json();
+    const response = await c.post(
+      'metadata-jobs',
+      {
+        operationId: randomUUID(),
+        targets,
+        patch: { title: { op: 'set', value: 'Synthetic successor title' } },
+        automation: {
+          claimId: claim.claimId,
+          claimGeneration: claim.generation,
+          purpose: 'required_review',
+          sourceNotes: null,
+        },
+        dryRun: false,
+      },
+      headers,
+    );
+    expect(response.statusCode).toBe(202);
+    expect(response.json().admissionResults).toEqual([
+      { trackId: 'track-1', status: 'accepted', jobItemId: expect.any(String) },
+    ]);
+  } finally {
+    await c.cleanup();
+  }
+});
+
 it('writes original lyrics through the P4 worker after token revocation and lease expiry', async () => {
   const c = await createCurationMutationContext();
   try {
@@ -130,6 +205,55 @@ it('writes original lyrics through the P4 worker after token revocation and leas
     expect(
       (await c.post('metadata-jobs', { ...body, operationId: randomUUID() }, headers)).statusCode,
     ).toBe(401);
+  } finally {
+    await c.cleanup();
+  }
+});
+
+it('admits replace-all JPEG normalization through an optional automation claim', async () => {
+  const c = await createCurationMutationContext();
+  try {
+    const headers = await c.token();
+    const upload = await c.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-covers',
+      headers: {
+        ...headers,
+        'content-type': 'image/jpeg',
+        'x-operation-id': randomUUID(),
+        'x-metadata-library-id': 'music',
+      },
+      payload: readFileSync('docs/verification/phase-1/step-08/empty-en-desktop.jpg'),
+    });
+    expect(upload.statusCode).toBe(201);
+    const targets = [
+      { trackId: 'track-1', expectedRevision: c.repository.get(c.trackRef)!.fileRevision! },
+    ];
+    const claim = (
+      await c.post(
+        'curation-claims',
+        { operationId: randomUUID(), purpose: 'optional_enrichment', fields: ['cover'], targets },
+        headers,
+      )
+    ).json();
+    const accepted = await c.post(
+      'metadata-jobs',
+      {
+        operationId: randomUUID(),
+        targets,
+        patch: { cover: { op: 'replaceAll', uploadId: upload.json().uploadId } },
+        automation: {
+          claimId: claim.claimId,
+          claimGeneration: claim.generation,
+          purpose: 'optional_enrichment',
+          sourceNotes: 'Synthetic JPEG normalization',
+        },
+        dryRun: false,
+      },
+      headers,
+    );
+    expect(accepted.statusCode).toBe(202);
+    expect(accepted.json().admissionResults).toMatchObject([{ status: 'accepted' }]);
   } finally {
     await c.cleanup();
   }

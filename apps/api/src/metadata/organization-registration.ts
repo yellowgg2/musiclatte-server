@@ -3,7 +3,7 @@ import type { MetadataTagSnapshot } from './helper-client.js';
 import type { ManagementDatabase } from '../storage/database.js';
 import type { OrganizationClaim } from '../storage/organization-repository.js';
 import type { SubsonicClient } from '../subsonic/client.js';
-import { createExactPathLookup } from '../subsonic/exact-path-lookup.js';
+import { createExactPathLookup, ExactPathFailure } from '../subsonic/exact-path-lookup.js';
 import { createScanCoordinator } from '../subsonic/scan-coordinator.js';
 import { sanitizeMediaName } from '../imports/file-keys.js';
 import { curationSnapshot } from '../curation/reconciliation.js';
@@ -97,6 +97,7 @@ export function createOrganizationRegistration(options: {
     async process(claim: OrganizationClaim, external?: AbortSignal) {
       if (!['moved', 'recovery_required'].includes(claim.stage))
         throw new Error('invalid_transition');
+      const recovering = claim.stage === 'recovery_required';
       if (claim.stage === 'recovery_required')
         options.repository.resumeRecovery({ ...fence(claim), stage: 'scanning' });
       else options.repository.transition({ ...fence(claim), stage: 'scanning' });
@@ -109,31 +110,49 @@ export function createOrganizationRegistration(options: {
       const timer = setTimeout(abort, options.timeoutMs);
       const signal = controller.signal;
       const deadline = options.clock() + options.timeoutMs;
-      const owned = () => {
+      const alive = () => {
         signal.throwIfAborted();
-        if (options.clock() >= deadline || !coordinator.owns(owner))
-          throw new Error('registration_timeout');
+        if (options.clock() >= deadline) throw new Error('registration_timeout');
+      };
+      const owned = () => {
+        alive();
+        if (!coordinator.owns(owner)) throw new Error('registration_timeout');
       };
       try {
-        acquired = coordinator.acquire(owner);
-        if (!acquired) throw new Error('registration_pending');
-        if (!(await options.scanClient.getScanStatus({ signal })).scanning) {
-          owned();
-          await options.scanClient.startScan({ signal });
-        }
-        while (true) {
-          owned();
-          if (!(await options.scanClient.getScanStatus({ signal })).scanning) break;
-          await options.wait(
-            Math.min(options.pollMs, Math.max(1, deadline - options.clock())),
-            signal,
-          );
-        }
-        owned();
         const library = options.libraries.find((entry) => entry.id === claim.libraryId);
         if (!library) throw new Error('registration_path');
-        const lookup = createExactPathLookup(options.scanClient, { signal, assertOwned: owned });
-        const newTrackId = await lookup(library, claim.targetKey);
+        const visibleTrack = () =>
+          createExactPathLookup(options.scanClient, {
+            signal,
+            assertOwned: acquired ? owned : alive,
+          })(library, claim.targetKey);
+        let newTrackId: string | undefined;
+        if (recovering) {
+          try {
+            newTrackId = await visibleTrack();
+          } catch (error) {
+            if (!(error instanceof ExactPathFailure && error.code === 'registration_pending'))
+              throw error;
+          }
+        }
+        if (!newTrackId) {
+          acquired = coordinator.acquire(owner);
+          if (!acquired) throw new Error('registration_pending');
+          if (!(await options.scanClient.getScanStatus({ signal })).scanning) {
+            owned();
+            await options.scanClient.startScan({ signal });
+          }
+          while (true) {
+            owned();
+            if (!(await options.scanClient.getScanStatus({ signal })).scanning) break;
+            await options.wait(
+              Math.min(options.pollMs, Math.max(1, deadline - options.clock())),
+              signal,
+            );
+          }
+          owned();
+          newTrackId = await visibleTrack();
+        }
         const current = await options.scanClient.recentSong(newTrackId, { signal });
         if (
           current.song.id !== newTrackId ||
@@ -149,7 +168,8 @@ export function createOrganizationRegistration(options: {
           inspected.snapshot,
           claim.targetKey,
         );
-        owned();
+        if (acquired) owned();
+        else alive();
         const targetFileIdentity = options.fileIdentity(claim.libraryId, claim.targetKey);
         const revision = options.revision(
           claim.libraryId,
@@ -163,7 +183,7 @@ export function createOrganizationRegistration(options: {
         });
         if (rebound.trackRef) options.reconcile(rebound.trackRef, inspected.snapshot, revision);
         options.repository.completeRegistration({ ...fence(claim), newTrackId });
-        coordinator.release(owner, false);
+        if (acquired) coordinator.release(owner, false);
       } catch (cause) {
         if (acquired && coordinator.owns(owner)) coordinator.release(owner, true);
         const code = cause instanceof Error ? cause.message : 'registration_upstream';

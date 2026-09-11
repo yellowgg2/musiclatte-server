@@ -709,6 +709,69 @@ it('should keep a heartbeat while awaiting registration and stop it on shutdown'
 });
 
 describe('account import replacement', () => {
+  it('completes an organized managed source as a duplicate without staging it again', async () => {
+    const s = await workerSUT();
+    s.c.db.connection
+      .prepare("UPDATE import_jobs SET account_directory='listener' WHERE id='job'")
+      .run();
+    await s.worker.runOnce();
+    const first = s.item();
+    const media = s.c.mediaLinks.get(first.mediaLinkId!)!;
+    s.c.db.connection
+      .prepare("UPDATE import_items SET stage='ready',ready_at=1000 WHERE id='item'")
+      .run();
+    s.c.db.connection
+      .prepare(
+        "UPDATE media_links SET availability='available',gonic_song_id='managed-song' WHERE id=?",
+      )
+      .run(first.mediaLinkId!);
+    s.c.db.connection.exec('PRAGMA foreign_keys=OFF');
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES('organized-job',?,'library',?,?,'test-token',1,'id3-managed-v1','test-metadata-job','revision','[]',1000)",
+      )
+      .run('1'.repeat(64), '2'.repeat(64), '3'.repeat(64));
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('organized-item','organized-job',?,?,?,?,?,?,?,'succeeded',1000)",
+      )
+      .run(
+        first.mediaLinkId!,
+        media.relativeFileKey,
+        media.relativeFileKey,
+        'old-song',
+        'managed-song',
+        '4'.repeat(64),
+        '5'.repeat(64),
+      );
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO organization_source_locations(media_link_id,source_id,managed_key,organization_item_id,updated_at) VALUES(?,'abcdefghijk',?,'organized-item',1000)",
+      )
+      .run(first.mediaLinkId!, media.relativeFileKey);
+    s.c.db.connection.exec('PRAGMA foreign_keys=ON');
+    s.c.imports.createJob({
+      id: 'managed-reimport',
+      identityKey: 'a'.repeat(64),
+      libraryId: 'library',
+      accountDirectory: 'listener',
+      operationIdHash: '6'.repeat(64),
+      requestHash: '7'.repeat(64),
+      deduplicate: true,
+      items: [{ id: 'managed-reimport-item', sourceId: 'abcdefghijk' }],
+    });
+
+    await s.worker.runOnce();
+
+    expect(s.c.imports.getJob('managed-reimport')!.items[0]).toMatchObject({
+      stage: 'duplicate',
+      mediaLinkId: first.mediaLinkId,
+    });
+    expect(s.acquired()).toBe(1);
+    expect(s.events()).toHaveLength(1);
+    expect(s.files()).toHaveLength(1);
+  });
+
   it('downloads again into the account/channel/title path and reuses the media binding', async () => {
     const s = await workerSUT();
     s.c.db.connection

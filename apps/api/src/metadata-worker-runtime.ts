@@ -38,8 +38,15 @@ import { createOrganizationRegistration } from './metadata/organization-registra
 import { createReferenceMigration } from './metadata/reference-migration.js';
 import { createCurationRepository } from './storage/curation-repository.js';
 import { curationSnapshot, reconcileVerifiedSnapshot } from './curation/reconciliation.js';
+import type { MetadataPatch } from '@musiclatte/contracts';
 
 export { readMetadataWorkerConfig } from './metadata/runtime-config.js';
+
+export function metadataWorkerCoverUploadId(patch: MetadataPatch): string | undefined {
+  return patch.cover?.op === 'set' || patch.cover?.op === 'replaceAll'
+    ? patch.cover.uploadId
+    : undefined;
+}
 
 export function createMetadataScheduler(tasks: {
   recover(signal: AbortSignal): Promise<boolean>;
@@ -58,12 +65,16 @@ export function createMetadataScheduler(tasks: {
         for (const work of [
           tasks.recover,
           ...(tasks.organize ? [tasks.organize] : []),
+          ...(tasks.inventory ? [tasks.inventory] : []),
           tasks.file,
           tasks.reflect,
-          ...(tasks.inventory ? [tasks.inventory] : []),
         ]) {
           if (signal.aborted) break;
-          worked = (await work(signal)) || worked;
+          try {
+            worked = (await work(signal)) || worked;
+          } catch (error) {
+            if (!metadataWorkerContention(error)) throw error;
+          }
         }
         return worked;
       } finally {
@@ -71,6 +82,15 @@ export function createMetadataScheduler(tasks: {
       }
     },
   };
+}
+
+export function metadataWorkerContention(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    ['database is locked', 'database_is_locked', 'SQLITE_BUSY'].some((message) =>
+      error.message.includes(message),
+    )
+  );
 }
 /** Read-only health inspection cannot initialize keys, execute tools, or refresh its own receipt. */
 export function metadataWorkerHealth(env: MetadataEnvironment, now = Date.now()): boolean {
@@ -93,6 +113,19 @@ export function metadataWorkerHealth(env: MetadataEnvironment, now = Date.now())
     return false;
   } finally {
     db?.close();
+  }
+}
+
+/** Organization health is published only when the shared worker and organization policy are live. */
+export function metadataOrganizationWorkerHealth(
+  env: MetadataEnvironment,
+  now = Date.now(),
+): boolean {
+  try {
+    const automation = readAutomationConfig(env);
+    return automation.enabled && !!automation.organization && metadataWorkerHealth(env, now);
+  } catch {
+    return false;
   }
 }
 
@@ -152,8 +185,8 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
     timer = setInterval(() => {
       try {
         heartbeat();
-      } catch {
-        stop.abort();
+      } catch (error) {
+        if (!metadataWorkerContention(error)) stop.abort();
       }
     }, 1000);
     const helper = createMetadataHelper({
@@ -275,12 +308,13 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
       )
         throw new Error('permission_changed');
       let cover;
-      if (work.patch.cover?.op === 'set') {
+      const coverUploadId = metadataWorkerCoverUploadId(work.patch);
+      if (coverUploadId) {
         const row = db
           .prepare(
             'SELECT relative_key,digest FROM metadata_cover_uploads WHERE id=? AND identity_key=? AND library_id=? AND actor_token_id IS ?',
           )
-          .get(work.patch.cover.uploadId, work.identityKey, work.libraryId, work.actorTokenId);
+          .get(coverUploadId, work.identityKey, work.libraryId, work.actorTokenId);
         if (!row || !/^[a-f0-9-]{36}\.upload$/.test(String(row.relative_key)))
           throw new Error('invalid_cover');
         const root = lstatSync(config.uploadRoot, { bigint: true });
@@ -394,7 +428,8 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
                 revisions.fileIdentity({ libraryId, relativeFileKey }),
               inspectAudio: async (relativeFileKey) =>
                 curationSnapshot(await helper.read({ key: relativeFileKey, signal })).audioIdentity,
-              assertAvailable: (fileIdentity) => publications.assertAvailable(fileIdentity),
+              assertAvailable: (fileIdentity, availability) =>
+                publications.assertAvailable(fileIdentity, undefined, availability),
             }),
             fileIdentity: (libraryId, relativeFileKey) =>
               revisions.fileIdentity({ libraryId, relativeFileKey }),
@@ -522,17 +557,29 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
     healthy = true;
     heartbeat();
     while (!signal.aborted) {
-      await scheduler.cycle(signal);
-      if (!signal.aborted) await indexBackup();
+      try {
+        await scheduler.cycle(signal);
+        if (!signal.aborted) await indexBackup();
+      } catch (error) {
+        if (!metadataWorkerContention(error)) throw error;
+      }
       await delay(500, undefined, { signal }).catch(() => {});
     }
   } finally {
     stop.abort();
     if (timer) clearInterval(timer);
     if (owns)
-      db.prepare(
-        "UPDATE metadata_worker_state SET status='stopped',worker_id=NULL,heartbeat_at=NULL,active_item_id=NULL WHERE singleton=1 AND worker_id=?",
-      ).run(workerId);
+      for (let attempt = 0; attempt < 50; attempt++) {
+        try {
+          db.prepare(
+            "UPDATE metadata_worker_state SET status='stopped',worker_id=NULL,heartbeat_at=NULL,active_item_id=NULL WHERE singleton=1 AND worker_id=?",
+          ).run(workerId);
+          break;
+        } catch (error) {
+          if (!metadataWorkerContention(error) || attempt === 49) throw error;
+          await delay(100);
+        }
+      }
     database.close();
   }
 }

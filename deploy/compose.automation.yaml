@@ -33,6 +33,8 @@ services:
         read_only: true
         bind:
           create_host_path: false
+    healthcheck:
+      test: ['CMD', 'node', 'apps/api/dist/metadata-worker-entry.js', '--organization-healthcheck']
   worker:
     environment:
       AUTOMATION_ENABLED: 'true'

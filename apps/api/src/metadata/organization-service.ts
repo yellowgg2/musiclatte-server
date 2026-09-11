@@ -19,6 +19,7 @@ import { createMetadataJobAuthorizer } from '../auth/metadata-job-authorizer.js'
 import { curationSnapshot } from '../curation/reconciliation.js';
 import { createOrganizationCandidates } from './organization-candidates.js';
 import { rejectMetadataUpstream } from '../auth/metadata-principal.js';
+import { isOrganizationAlbumProjectionPending } from './organization-album-projection.js';
 
 type Principal = Awaited<ReturnType<typeof verifyAccessTokenPrincipal>>;
 
@@ -180,17 +181,24 @@ export function createOrganizationService(service: SessionService) {
       if (plan.status !== 'ready') throw new ApiError(422, 'invalid_request');
       const metadataItem = db
         .prepare(
-          "SELECT i.id,i.result_revision,i.changed_fields_json,j.identity_key,j.library_id FROM metadata_items i JOIN metadata_jobs j ON j.id=i.job_id WHERE j.id=? AND i.actor_token_id=? AND i.current_track_id=? AND i.stage='succeeded'",
+          'SELECT i.id,i.result_revision,i.changed_fields_json,i.stage,i.error_code,e.reflection_json,j.identity_key,j.library_id FROM metadata_items i JOIN metadata_jobs j ON j.id=i.job_id LEFT JOIN metadata_item_evidence e ON e.item_id=i.id WHERE j.id=? AND i.actor_token_id=? AND i.current_track_id=?',
         )
         .get(body.metadataJobId, principal.accessToken.id, body.trackId);
+      let changed: MetadataField[] = [];
+      try {
+        changed = JSON.parse(String(metadataItem?.changed_fields_json)) as MetadataField[];
+      } catch {
+        changed = [];
+      }
       if (
         !metadataItem ||
+        (metadataItem.stage !== 'succeeded' &&
+          !isOrganizationAlbumProjectionPending(metadataItem)) ||
         metadataItem.identity_key !== principal.actorIdentityKey ||
         metadataItem.library_id !== file.libraryId ||
         metadataItem.result_revision !== file.fileRevision
       )
         throw new ApiError(422, 'invalid_request');
-      const changed = JSON.parse(String(metadataItem.changed_fields_json)) as MetadataField[];
       const present = new Set<MetadataField>([
         ...(snapshot.values.title ? (['title'] as const) : []),
         ...(snapshot.values.artist.length ? (['artist'] as const) : []),

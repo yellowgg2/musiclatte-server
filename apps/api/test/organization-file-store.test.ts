@@ -24,7 +24,12 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function setup(assertAvailable?: (fileIdentity: string) => void) {
+function setup(
+  assertAvailable?: (
+    fileIdentity: string,
+    options?: { allowOrganizationAlbumProjection: boolean },
+  ) => void,
+) {
   const created = mkdtempSync(join(tmpdir(), 'musiclatte-move-'));
   roots.push(created);
   const root = realpathSync(created);
@@ -153,6 +158,23 @@ it('rejects an active publication and a replaced target parent before rename', a
   mkdirSync(parent, { mode: 0o750 });
   await expect(replaced.store.move(prepared)).rejects.toThrow('unsafe_target');
   expect(existsSync(join(replaced.musicRoot, replaced.sourceKey))).toBe(true);
+});
+
+it('allows a file-verified album projection through the organization rename boundary', async () => {
+  const checks: { allowOrganizationAlbumProjection: boolean }[] = [];
+  const s = setup((_fileIdentity, options) => {
+    if (options) checks.push(options);
+  });
+  const prepared = await s.store.prepare({
+    libraryId: 'library',
+    sourceKey: s.sourceKey,
+    targetKey: s.targetKey,
+  });
+  await s.store.move(prepared);
+  expect(checks).toEqual([
+    { allowOrganizationAlbumProjection: true },
+    { allowOrganizationAlbumProjection: true },
+  ]);
 });
 
 it.each([

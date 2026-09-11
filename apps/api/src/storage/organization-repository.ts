@@ -301,11 +301,22 @@ export function createOrganizationRepository(options: {
           if (prior.requestHash !== input.requestHash) throw new Error('conflict');
           return readJob(text(row.job_id), input.identityKey)!;
         }
-        if (
-          row.stage !== 'recovery_required' ||
-          row.lease_owner !== null ||
-          !['filesystem', 'gonic', 'references', 'verification'].includes(String(row.next_owner))
-        )
+        if (row.stage !== 'recovery_required' || row.lease_owner !== null) {
+          if (
+            [
+              'moving',
+              'moved',
+              'scanning',
+              'rebound',
+              'migrating_references',
+              'verifying',
+              'succeeded',
+            ].includes(String(row.stage))
+          )
+            return readJob(text(row.job_id), input.identityKey)!;
+          throw new Error('conflict');
+        }
+        if (!['filesystem', 'gonic', 'references', 'verification'].includes(String(row.next_owner)))
           throw new Error('conflict');
         event(input.itemId, 'retry_requested', {
           operationIdHash: input.operationIdHash,
@@ -491,14 +502,24 @@ export function createOrganizationRepository(options: {
         const row = owned(input);
         const current = { stage: row.stage as OrganizationStage };
         const state =
-          input.stage === 'conflict'
-            ? conflictOrganizationState(current, input.errorCode ?? 'destination_conflict')
-            : input.stage === 'failed' || input.stage === 'recovery_required'
-              ? failOrganizationState(current, input.errorCode ?? 'worker_interrupted')
-              : advanceOrganizationState(current, input.stage);
+          input.stage === 'recovery_required' && current.stage === 'recovery_required'
+            ? {
+                stage: 'recovery_required' as const,
+                errorCode: input.errorCode ?? 'worker_interrupted',
+                nextOwner: String(row.next_owner) as OrganizationRecoveryOwner,
+              }
+            : input.stage === 'conflict'
+              ? conflictOrganizationState(current, input.errorCode ?? 'destination_conflict')
+              : input.stage === 'failed' || input.stage === 'recovery_required'
+                ? failOrganizationState(current, input.errorCode ?? 'worker_interrupted')
+                : advanceOrganizationState(current, input.stage);
         if (state.stage !== input.stage) throw new Error('invalid_transition');
         const terminal = ['succeeded', 'failed', 'conflict'].includes(state.stage);
-        const relinquish = terminal || state.stage === 'moved' || state.stage === 'rebound';
+        const relinquish =
+          terminal ||
+          state.stage === 'moved' ||
+          state.stage === 'rebound' ||
+          state.stage === 'recovery_required';
         db.prepare(
           'UPDATE organization_items SET stage=$stage,new_track_id=COALESCE($new_track_id,new_track_id),error_code=$error_code,next_owner=$next_owner,stage_changed_at=$changed_at,lease_owner=$lease_owner,lease_expires_at=$lease_expires_at,encrypted_job_grant=CASE WHEN $terminal THEN NULL ELSE encrypted_job_grant END,grant_epoch=CASE WHEN $terminal THEN NULL ELSE grant_epoch END WHERE id=$id',
         ).run({

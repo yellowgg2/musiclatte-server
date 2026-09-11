@@ -81,7 +81,10 @@ export function createOrganizationFileStore(options: {
   fence: ReturnType<typeof createMediaFence>;
   fileIdentity(libraryId: string, key: string): string;
   inspectAudio(key: string): Promise<string>;
-  assertAvailable?(fileIdentity: string): void;
+  assertAvailable?(
+    fileIdentity: string,
+    options: { allowOrganizationAlbumProjection: boolean },
+  ): void;
 }) {
   if (
     ![options.musicRoot, options.python, options.helperPath, options.accessHelperPath].every(
@@ -214,8 +217,9 @@ export function createOrganizationFileStore(options: {
         [input.sourceFenceIdentity, input.targetFenceIdentity],
         'publish',
         async () => {
-          options.assertAvailable?.(input.sourceFenceIdentity);
-          options.assertAvailable?.(input.targetFenceIdentity);
+          const availability = { allowOrganizationAlbumProjection: true };
+          options.assertAvailable?.(input.sourceFenceIdentity, availability);
+          options.assertAvailable?.(input.targetFenceIdentity, availability);
           const result = await invoke('move', input, control.crashAt);
           const identity = decodeIdentity(result);
           const audioIdentity = await options.inspectAudio(input.targetKey);

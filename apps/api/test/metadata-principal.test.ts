@@ -229,6 +229,19 @@ describe('metadata principal compatibility', () => {
       const preview = await c.app.inject({ url: '/api/v1/tracks/track-1/metadata', headers: auth });
       expect(preview.statusCode).toBe(200);
       expect(preview.json().values.title).toBeTypeOf('string');
+      const writePreview = await c.app.inject({
+        method: 'POST',
+        url: '/api/v1/metadata-previews',
+        headers: { ...auth, 'content-type': 'application/json' },
+        payload: {
+          targets: [
+            { trackId: 'track-1', expectedRevision: preview.json().fileRevision as string },
+          ],
+          patch: { album: { op: 'set', value: 'Synthetic PAT preview' } },
+        },
+      });
+      expect(writePreview.statusCode).toBe(200);
+      expect(writePreview.json().changedFields).toEqual(['album']);
       const frame = preview.json().coverFrames[0];
       expect((await c.app.inject({ url: frame.previewUrl, headers: auth })).statusCode).toBe(200);
       expect((await c.app.inject({ url: frame.previewUrl, headers: other })).statusCode).toBe(404);

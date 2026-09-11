@@ -13,12 +13,36 @@ it('keeps automation opt-in and shares only the fence with all writers', () => {
   expect(base).not.toContain('AUTOMATION_ENABLED');
   const overlay = readFileSync('deploy/compose.automation.yaml', 'utf8');
   expect(overlay.match(/MEDIA_FENCE_ROOT: \/media-fence/g)).toHaveLength(3);
+  expect(overlay).toContain('--organization-healthcheck');
   expect(overlay).not.toContain('metadata-data:');
   expect(overlay).not.toContain('docker.sock');
   const metadata = readFileSync('deploy/compose.metadata.yaml', 'utf8');
   expect(
     metadata.slice(metadata.indexOf('  api:'), metadata.indexOf('\n  metadata-volume-init:')),
   ).toContain('read_only: true');
+});
+it('ships the secret-safe ID3 organization client and isolated runtime probe', () => {
+  const source = readFileSync('tools/id3-organize-client.ts', 'utf8');
+  expect(source).toContain('authorization: `Bearer ${token}`');
+  expect(source).not.toMatch(/process\.env\.(?:TOKEN|ACCESS_TOKEN)|[?&]token=/);
+  const probe = readFileSync('tools/verification/id3-organization-runtime-probe.ts', 'utf8');
+  expect(probe).toContain("owner.purpose === 'phase-9-id3-organization-probe'");
+  expect(probe).toContain('client.workflow(title)');
+  expect(probe).toContain('!organizationStarted || organizationSettled');
+  expect(probe).toContain("'cover_claim_release'");
+  expect(probe).toContain('const importPollAttempts = 720');
+  expect(probe).toContain('playlistOccurrences: 2');
+  expect(probe).toContain("'no_duplicate'");
+  expect(probe).toContain("'/retries'");
+  expect(probe).not.toContain("['failed', 'conflict', 'recovery_required']");
+  expect(readFileSync('deploy/metadata.Dockerfile', 'utf8')).toContain(
+    'COPY apps/api/helpers/file_transaction.py apps/api/helpers/organization_move.py',
+  );
+  const scripts = JSON.parse(readFileSync('package.json', 'utf8')).scripts;
+  expect(scripts['id3:organize']).toBe('tsx tools/id3-organize-client.ts');
+  expect(scripts['verify:id3-organization-runtime']).toBe(
+    'tsx tools/verification/id3-organization-runtime-probe.ts',
+  );
 });
 it('ships a credential-free explicit account organization mapping example', () => {
   const raw = readFileSync('deploy/automation-config.example.json', 'utf8');

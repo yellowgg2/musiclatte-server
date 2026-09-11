@@ -179,6 +179,64 @@ it('should claim all non-lyrics optional metadata fields with metadata write aut
   }
 });
 
+it('allows a successor claim after a file-verified album projection waits for organization', async () => {
+  const c = await createCurationMutationContext();
+  try {
+    const headers = await c.token(['metadata:read', 'metadata:write']);
+    const track = c.repository.rowFor(c.trackRef)!;
+    const token = c.storage.db.connection
+      .prepare('SELECT id FROM access_tokens ORDER BY created_at DESC,id DESC LIMIT 1')
+      .get()!;
+    const snapshot = await c.helper.read({ key: 'imports/source.mp3' });
+    c.storage.db.connection
+      .prepare(
+        "INSERT INTO metadata_jobs(id,identity_key,library_id,operation_id_hash,request_hash,kind,created_at) VALUES('album-pending-job',?,'music',?,?,'edit',?)",
+      )
+      .run('c'.repeat(64), 'a'.repeat(64), 'b'.repeat(64), c.clock());
+    c.storage.db.connection
+      .prepare(
+        'INSERT INTO metadata_items(id,job_id,item_order,media_link_id,file_identity,binding_revision,original_track_id,current_track_id,expected_revision,expected_digest,patch_json,actor_token_id,policy_revision,stage,generation,stage_changed_at,file_saved_at,result_revision,result_digest,changed_fields_json,next_reflection_at,error_code) VALUES(\'album-pending-item\',\'album-pending-job\',0,?,?,?,?,?,?,?,\'{"album":{"op":"set","value":"Synthetic album"}}\',?,1,\'reflecting\',1,?,?,?,?,\'["album"]\',0,\'reflection_mismatch\')',
+      )
+      .run(
+        String(track.media_link_id),
+        String(track.file_identity),
+        Number(track.binding_revision),
+        'track-1',
+        'track-1',
+        String(track.revision),
+        snapshot.fullDigest,
+        String(token.id),
+        c.clock(),
+        c.clock(),
+        String(track.revision),
+        snapshot.fullDigest,
+      );
+    c.storage.db.connection
+      .prepare(
+        'INSERT INTO metadata_item_evidence(item_id,references_json,reflection_json,updated_at) VALUES(?,?,?,?)',
+      )
+      .run(
+        'album-pending-item',
+        JSON.stringify({ trackId: 'track-1', starred: false, playlists: [] }),
+        JSON.stringify({ fileVerifiedFields: ['album'], mismatched: ['album'] }),
+        c.clock(),
+      );
+    const response = await c.post(
+      'curation-claims',
+      {
+        operationId: randomUUID(),
+        purpose: 'optional_enrichment',
+        fields: ['album'],
+        targets: [{ trackId: 'track-1', expectedRevision: track.revision }],
+      },
+      headers,
+    );
+    expect(response.json().results).toEqual([{ trackId: 'track-1', status: 'granted' }]);
+  } finally {
+    await c.cleanup();
+  }
+});
+
 it('distinguishes stale revision and active file fences without creating permanent reservations', async () => {
   const c = await createCurationMutationContext();
   try {

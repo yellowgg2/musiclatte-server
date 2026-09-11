@@ -89,16 +89,21 @@ export function registerMetadataRoutes(app: FastifyInstance, service: SessionSer
   );
   async function boundary<T>(
     request: FastifyRequest,
-    mutation: boolean,
+    mutation: boolean | 'pat',
     work: (metadata: MetadataService, verified: VerifiedMetadataSession) => Promise<T>,
   ): Promise<T> {
     const auth = requiredCredentials(request, service);
     if (mutation) {
-      if (auth.scheme !== 'cookie') throw new ApiError(403, 'forbidden');
-      cookieMutation(request, service, auth.token);
+      if (auth.scheme === 'cookie') cookieMutation(request, service, auth.token);
+      else if (mutation === 'pat' && auth.scheme === 'bearer' && auth.token.startsWith('mlpat_'))
+        requireJSON(request);
+      else throw new ApiError(403, 'forbidden');
     }
     if (request.validationError) throw new ApiError(400, 'invalid_request');
-    const verified = await verifyMetadataPrincipal(request, service);
+    const verified =
+      mutation === 'pat'
+        ? await verifyMetadataPrincipal(request, service, ['metadata:read', 'metadata:write'])
+        : await verifyMetadataPrincipal(request, service);
     if (isTokenPrincipal(verified) && request.url.split('?')[0]!.endsWith('/restore-preview'))
       throw new ApiError(403, 'forbidden');
     const result = await metadataErrors(() => work(getService(), verified));
@@ -142,7 +147,7 @@ export function registerMetadataRoutes(app: FastifyInstance, service: SessionSer
         response: { 200: responses.preview },
       },
     },
-    (request) => boundary(request, true, (m, v) => m.preview(v, request.body)),
+    (request) => boundary(request, 'pat', (m, v) => m.preview(v, request.body)),
   );
   app.get<{ Params: { id: string; itemId: string } }>(
     '/api/v1/metadata-jobs/:id/items/:itemId/intent',

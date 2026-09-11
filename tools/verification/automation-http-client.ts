@@ -23,6 +23,8 @@ export interface AutomationProbeConfig {
   root?: string;
   project?: string;
   fixtureRelativeKey?: string;
+  coverPath?: string;
+  musicRoot?: string;
 }
 export function readPrivateJSON(path: string): unknown {
   if (!isAbsolute(path) || realpathSync(path) !== path)
@@ -59,6 +61,8 @@ export function readAutomationProbeConfig(path: string): AutomationProbeConfig {
           'root',
           'project',
           'fixtureRelativeKey',
+          'coverPath',
+          'musicRoot',
         ].includes(k),
     )
   )
@@ -146,7 +150,31 @@ export async function createAutomationHTTPClient(config: AutomationProbeConfig) 
         await delay(500);
         return json(path, body, status, options, retries - 1);
       }
-      const reason = error?.error?.reason ?? error?.error?.code ?? 'unknown';
+      const admissionReasons = Array.isArray(error?.admissionResults)
+        ? [
+            ...new Set(
+              error.admissionResults
+                .map((item: { reason?: unknown }) => item.reason)
+                .filter((value: unknown): value is string => typeof value === 'string'),
+            ),
+          ]
+        : [];
+      const reason =
+        error?.error?.reason ??
+        error?.error?.code ??
+        (admissionReasons.length === 1 ? admissionReasons[0] : 'unknown');
+      if (r.status === 500 && reason === 'internal_error' && retries > 0) {
+        await delay(250);
+        return json(path, body, status, options, retries - 1);
+      }
+      if (
+        r.status === 503 &&
+        ['storage_unavailable', 'upstream_unavailable'].includes(reason) &&
+        retries > 0
+      ) {
+        await delay(250);
+        return json(path, body, status, options, retries - 1);
+      }
       if (r.status === 409 && reason === 'pending_job' && retries > 0) {
         await delay(250);
         return json(path, body, status, options, retries - 1);
@@ -159,7 +187,20 @@ export async function createAutomationHTTPClient(config: AutomationProbeConfig) 
         .filter((v) => /^[a-z-]+$/.test(v))
         .join('_')
         .replaceAll('-', '_');
-      throw new Error(`probe_failed:${route}_http_${status}_${r.status}_${safe}`);
+      const patchFields =
+        body && typeof body === 'object' && 'patch' in body && body.patch
+          ? Object.keys(body.patch as Record<string, unknown>)
+              .filter((field) => /^[a-z]+$/i.test(field))
+              .sort()
+              .join('_')
+          : '';
+      const intent =
+        path === '/metadata-jobs' && body && typeof body === 'object' && 'dryRun' in body
+          ? body.dryRun === true
+            ? `_dry_run${patchFields ? '_' + patchFields : ''}`
+            : `_submit${patchFields ? '_' + patchFields : ''}`
+          : '';
+      throw new Error(`probe_failed:${route}${intent}_http_${status}_${r.status}_${safe}`);
     }
     const value = await r.json();
     if (
@@ -186,7 +227,13 @@ export async function createAutomationHTTPClient(config: AutomationProbeConfig) 
       '/access-tokens',
       {
         name: 'Isolated automation verification',
-        scopes: ['metadata:read', 'metadata:write', 'lyrics:write', 'curation:write'],
+        scopes: [
+          'metadata:read',
+          'metadata:write',
+          'lyrics:write',
+          'curation:write',
+          'media:organize',
+        ],
         libraryIds: [config.libraryId],
         expiresAt: Date.now() + 3600000,
       },
@@ -195,6 +242,30 @@ export async function createAutomationHTTPClient(config: AutomationProbeConfig) 
     );
     tokenHeaders = { authorization: 'Bearer ' + r.token, 'content-type': 'application/json' };
     tokenId = r.accessToken.id;
+  }
+  async function uploadJpeg(path: string, libraryId: string) {
+    const image = readFileSync(path);
+    probeCheck(
+      isAbsolute(path) &&
+        lstatSync(path).isFile() &&
+        !lstatSync(path).isSymbolicLink() &&
+        image[0] === 0xff &&
+        image[1] === 0xd8,
+      'cover_fixture',
+    );
+    const response = await fetch(config.api + '/metadata-covers', {
+      method: 'POST',
+      headers: {
+        ...tokenHeaders,
+        'content-type': 'image/jpeg',
+        'x-operation-id': randomUUID(),
+        'x-metadata-library-id': libraryId,
+      },
+      body: image,
+      signal: AbortSignal.timeout(15000),
+    });
+    probeCheck(response.status === 201, 'cover_upload');
+    return response.json() as Promise<{ uploadId: string }>;
   }
   async function revoke() {
     for (const id of ownedClaims)
@@ -209,13 +280,13 @@ export async function createAutomationHTTPClient(config: AutomationProbeConfig) 
   }
   async function upstream(
     method: string,
-    params: Record<string, string> = {},
+    params: Record<string, string> | URLSearchParams = {},
     base = config.upstream,
     headers: Record<string, string> = {},
   ) {
     const salt = randomUUID();
     const url = new URL('/rest/' + method + '.view', base);
-    url.search = new URLSearchParams({
+    const query = new URLSearchParams({
       u: credential.username,
       t: createHash('md5')
         .update(credential.password + salt)
@@ -224,16 +295,16 @@ export async function createAutomationHTTPClient(config: AutomationProbeConfig) 
       c: 'musiclatte-isolated-automation',
       v: '1.16.1',
       f: 'json',
-      ...params,
-    }).toString();
+    });
+    const additions = params instanceof URLSearchParams ? params : new URLSearchParams(params);
+    additions.forEach((value, key) => query.append(key, value));
+    url.search = query.toString();
     return fetch(url, { headers, signal: AbortSignal.timeout(10000) });
   }
   async function poll(jobId: string) {
-    for (let n = 0; n < 180; n++) {
+    for (let n = 0; n < 720; n++) {
       const r = decodeAutomationJobResponse(await json('/metadata-jobs/' + jobId));
       if (r.job?.status === 'succeeded') {
-        // Let the worker consume its publication event before the next verification mutation.
-        await delay(1000);
         return r;
       }
       if (['failed', 'partial'].includes(r.job?.status ?? ''))
@@ -246,10 +317,11 @@ export async function createAutomationHTTPClient(config: AutomationProbeConfig) 
     raw,
     json,
     issue,
+    uploadJpeg,
     revoke,
     upstream,
     poll,
-    async workflow() {
+    async workflow(reviewTitle = 'Reviewed isolated automation fixture') {
       let ready = false;
       for (let i = 0; i < 120; i++) {
         const cap = await json('/capabilities', undefined, 200, { token: false });
@@ -264,13 +336,12 @@ export async function createAutomationHTTPClient(config: AutomationProbeConfig) 
       const policy = (await json('/metadata-policy')).policy;
       probeCheck(policy.policyVersion === 'required-v1', 'policy');
       let track;
-      for (let n = 0; n < 180; n++) {
-        const page = decodeCurationList(
-          await json('/tracks?libraryId=' + encodeURIComponent(config.libraryId)),
-        );
-        const candidates = page.tracks.filter((t) =>
-          config.trackId ? t.trackId === config.trackId : t.title === config.fixtureTitle,
-        );
+      for (let n = 0; n < 720; n++) {
+        const candidates = config.trackId
+          ? [(await json('/tracks/' + encodeURIComponent(config.trackId) + '/curation')).track]
+          : decodeCurationList(
+              await json('/tracks?libraryId=' + encodeURIComponent(config.libraryId)),
+            ).tracks.filter((t) => t.title === config.fixtureTitle);
         if (candidates.length === 1 && candidates[0]!.validation === 'verified') {
           track = candidates[0]!;
           break;
@@ -280,6 +351,7 @@ export async function createAutomationHTTPClient(config: AutomationProbeConfig) 
       probeCheck(track, 'inventory');
       const trackId = track.trackId;
       let revision = track.fileRevision!;
+      probeCheck(typeof revision === 'string' && revision.length > 0, 'inventory_revision');
       const targets = () => [{ trackId, expectedRevision: revision }];
       const claim = decodeCurationClaimResult(
         await json('/curation-claims', {
@@ -290,13 +362,17 @@ export async function createAutomationHTTPClient(config: AutomationProbeConfig) 
         }),
       );
       probeCheck(claim.claimId, 'claim');
+      probeCheck(
+        Number.isSafeInteger(claim.generation) && claim.generation! > 0,
+        'claim_generation',
+      );
       const request = {
         operationId: randomUUID(),
         targets: [
           ...targets(),
           { trackId: 'synthetic-missing-' + randomUUID(), expectedRevision: 'unknown' },
         ],
-        patch: { title: { op: 'set' as const, value: 'Reviewed isolated automation fixture' } },
+        patch: { title: { op: 'set' as const, value: reviewTitle } },
         automation: {
           claimId: claim.claimId,
           claimGeneration: claim.generation!,
@@ -306,8 +382,9 @@ export async function createAutomationHTTPClient(config: AutomationProbeConfig) 
         dryRun: true,
       };
       probeCheck(
-        decodeAutomationDryRun(await json('/metadata-jobs', request)).results[0]!.status ===
-          'changed',
+        ['changed', 'no_change'].includes(
+          decodeAutomationDryRun(await json('/metadata-jobs', request)).results[0]!.status,
+        ),
         'dry_run',
       );
       request.dryRun = false;

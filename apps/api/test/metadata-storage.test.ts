@@ -34,7 +34,7 @@ describe('metadata storage', () => {
       raw.close();
     }
     const upgraded = context.open(directory);
-    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 19 });
+    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 24 });
     expect(
       upgraded.connection.prepare('SELECT revision,gonic_song_id FROM media_links').get(),
     ).toEqual({ revision: 7, gonic_song_id: 'song-1' });
@@ -214,11 +214,69 @@ describe('metadata storage', () => {
       c.createBackup(c.db, c.keyPath, join(c.root, 'invalid-metadata-snapshot')),
     ).rejects.toThrow();
   });
+  /** A deferred old mismatch must not monopolize the reflector ahead of a newly due item. */
+  it('should order reflection claims by their retry deadline', async () => {
+    const { createMetadataRepository } = await import(
+      resolve('apps/api/src/storage/metadata-repository.ts')
+    );
+    context = await createTestContext();
+    context.sessions.create(proof);
+    const actorSessionId = context.db.connection.prepare('SELECT id_hash FROM sessions').get()
+      ?.id_hash as string;
+    for (const value of ['old', 'new'])
+      context.mediaLinks.create({
+        id: `media-${value}`,
+        libraryId: 'library-1',
+        relativeFileKey: `${value}.mp3`,
+        gonicSongId: `song-${value}`,
+      });
+    const repository = createMetadataRepository({ database: context.db, clock: () => 5000 });
+    for (const [index, value] of ['old', 'new'].entries())
+      repository.createOrReplay({
+        id: `job-${value}`,
+        identityKey: `${index + 1}`.repeat(64),
+        libraryId: 'library-1',
+        operationIdHash: `${index + 3}`.repeat(64),
+        requestHash: `${index + 5}`.repeat(64),
+        items: [
+          {
+            id: `item-${value}`,
+            mediaLinkId: `media-${value}`,
+            fileIdentity: `${index + 7}`.repeat(64),
+            bindingRevision: 1,
+            trackId: `song-${value}`,
+            expectedRevision: `revision-${value}`,
+            expectedDigest: ['9', 'a'][index]!.repeat(64),
+            actorSessionId,
+            policyRevision: 1,
+            patch: { title: { op: 'set', value } },
+          },
+        ],
+      });
+    context.db.connection
+      .prepare(
+        "UPDATE metadata_items SET stage='reflecting',stage_changed_at=?,file_saved_at=?,result_revision=?,result_digest=?,next_reflection_at=? WHERE id=?",
+      )
+      .run(1000, 1000, 'old-result', 'a'.repeat(64), 4000, 'item-old');
+    context.db.connection
+      .prepare(
+        "UPDATE metadata_items SET stage='reflecting',stage_changed_at=?,file_saved_at=?,result_revision=?,result_digest=?,next_reflection_at=? WHERE id=?",
+      )
+      .run(2000, 2000, 'new-result', 'b'.repeat(64), 0, 'item-new');
+
+    expect(
+      repository.claimNext({
+        workerId: 'metadata-reflection',
+        leaseDurationMs: 1000,
+        reflectionOnly: true,
+      })?.itemId,
+    ).toBe('item-new');
+  });
   /** A fresh database includes the durable metadata ledger without changing import data semantics. */
   it('should create the current schema with every metadata ledger table', async () => {
     context = await createTestContext();
     expect(context.db.connection.prepare('PRAGMA user_version').get()).toEqual({
-      user_version: 19,
+      user_version: 24,
     });
     expect(
       context.db.connection

@@ -10,6 +10,7 @@ import type { createMetadataFileAccess } from '../metadata/file-access.js';
 import { createMediaPublicationLedger, type createMediaFence } from '../metadata/media-fence.js';
 import { createMediaLinkRepository } from '../storage/media-link-repository.js';
 import { validateRelativeKey } from '../imports/policy.js';
+import { isOrganizationAlbumProjectionPending } from '../metadata/organization-album-projection.js';
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export function curationSnapshot(snapshot: MetadataTagSnapshot) {
   const scalar = (value: string | null) => value?.normalize('NFC').trim() || null;
@@ -121,13 +122,12 @@ export function createCurationReconciler(options: CurationReconcilerOptions) {
         });
         await fence.withMediaFence(fileIdentity, 'verify', async (held) => {
           const publication = publications.begin(fileIdentity, held.nonce);
-          if (
-            db
-              .prepare(
-                "SELECT 1 FROM metadata_items WHERE file_identity=? AND stage IN ('preparing','backed_up','prepared','file_saved','reflecting','recovery_required') LIMIT 1",
-              )
-              .get(fileIdentity)
-          ) {
+          const activeMetadata = db
+            .prepare(
+              "SELECT i.stage,i.error_code,i.changed_fields_json,e.reflection_json FROM metadata_items i LEFT JOIN metadata_item_evidence e ON e.item_id=i.id WHERE i.file_identity=? AND i.stage IN ('preparing','backed_up','prepared','file_saved','reflecting','recovery_required')",
+            )
+            .all(fileIdentity);
+          if (activeMetadata.some((item) => !isOrganizationAlbumProjectionPending(item))) {
             repository.transition(trackRef, { type: 'pending' });
             throw new Error('inventory_pending');
           }

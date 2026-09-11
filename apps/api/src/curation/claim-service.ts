@@ -171,7 +171,9 @@ export function createCurationClaimService(service: SessionService) {
                 return;
               }
               try {
-                publications.assertAvailable(held.fileIdentity, scope.actorKey);
+                publications.assertAvailable(held.fileIdentity, scope.actorKey, {
+                  allowOrganizationAlbumProjection: true,
+                });
               } catch {
                 status = 'file_busy';
                 return;
@@ -212,7 +214,9 @@ export function createCurationClaimService(service: SessionService) {
                   throw new ApiError(409, 'conflict');
                 const competing = repo.activeClaim(id);
                 if (competing && competing.id !== pendingId) throw new ApiError(409, 'conflict');
-                publications.assertAvailable(held.fileIdentity, scope.actorKey);
+                publications.assertAvailable(held.fileIdentity, scope.actorKey, {
+                  allowOrganizationAlbumProjection: true,
+                });
                 db.prepare(
                   'INSERT OR IGNORE INTO curation_claims VALUES(?,?,?,?,1,?,?,?,NULL)',
                 ).run(

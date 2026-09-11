@@ -220,8 +220,6 @@ export function createMetadataFileStore(
                   input.fileIdentity,
                   `${input.itemId}:${input.generation}`,
                 );
-                if (publication && action === 'execute')
-                  options.publications!.dirty(publication, input.itemId);
                 child.stdin.write(
                   JSON.stringify({ ack: 'fence_acquired', generation: input.generation }) + '\n',
                 );
@@ -272,6 +270,8 @@ export function createMetadataFileStore(
                 validateRelativeKey(value.candidateKey as string);
               }
               if (publication) options.publications!.validate(publication);
+              if (publication && value.stage === 'candidate_verified')
+                options.publications!.dirty(publication, input.itemId);
               if (publication && value.stage === 'file_saved')
                 options.publications!.recordMediaPublication(publication, String(value.digest));
               await hooks!.onEvent(value as unknown as FileTransactionEvent, { kill });

@@ -40,8 +40,22 @@ Startup executes a synthetic read/prepare/read-back self-test outside the music 
 
 The scheduler attempts recovery, one file job, then due reflection. Each helper/scan is bounded; an active session and current folder/editor permission are rechecked before mutation. Reflection retains the submitting account's encrypted session reference. If that session expires, signing in again and requesting a recheck refreshes only the same owner's reflection authorization. Upload bytes are immutable and digest-checked; unreferenced expired uploads are cleaned during later uploads, while referenced bytes are retained.
 
+When the automation policy includes `organization`, the same metadata worker additionally owns
+durable ID3-managed moves, gonic rebinding, playlist/star reference migration, and final
+verification. `compose.automation.yaml` changes its health command to the organization-aware check;
+the API publishes `metadata.organization` as available only while both the metadata runtime and
+that shared worker heartbeat are ready. All import, metadata, and organization writers share the
+single `/media-fence` volume. The API remains read-only on `/music`; only the workers receive the
+minimum writable mounts they own. See the
+[Codex ID3 organization runbook](../operations/codex-id3-organization.md) for the secret-safe client
+and bounded recovery workflow.
+
 File save and gonic reflection are separate states. Gonic 0.22.0 can retain warmed cover cache after a scan; such jobs stay `reflecting` with `reflection_mismatch`. Do not delete cache, rewrite IDs, request a random unused image size, or report success to conceal this behavior. Worker absence disables metadata writes but keeps API readiness, job history and existing music playback available. SIGTERM stops new claims and lets bounded work acknowledge its state; after a crash, a replacement worker waits for the old heartbeat/leases to expire and recovers durable receipts.
 
-Follow [matching backup and rollback](../../deploy/backup/README.md). Current schema is v11, including the v9 metadata ledger and later reflection/recheck migrations. Keep a v8 management/key plus matching media snapshot made with the old build before the first Phase 4 migration. Disabling metadata does not reverse migrations or edited files. An older image must never be paired with a newer database.
+Follow [matching backup and rollback](../../deploy/backup/README.md). Current schema is v24,
+including the metadata, automation, and organization ledgers. Keep a matching management/key plus
+media snapshot made with the old build before migration. Disabling metadata or organization does
+not reverse migrations, reference changes, or edited/moved files. An older image must never be
+paired with a newer database.
 
 The repository contains source, dependency locks and synthetic-fixture generators only. Images exclude tests, probe tools, credentials, private stores and generated media. [Third-party notices](../../THIRD_PARTY_NOTICES.md) describe included dependencies; no project license has been selected.

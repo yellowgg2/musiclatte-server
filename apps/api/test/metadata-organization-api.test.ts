@@ -266,6 +266,112 @@ describe('metadata organization PAT API', () => {
         .prepare("SELECT count(*) AS count FROM organization_events WHERE kind='retry_requested'")
         .get()!.count,
     ).toBe(1);
+    s.c.storage.db.connection
+      .prepare(
+        "UPDATE organization_items SET stage='moving',error_code=NULL,next_owner=NULL,lease_owner='recovery-worker',lease_expires_at=? WHERE id=?",
+      )
+      .run(Date.now() + 30_000, job.itemId);
+    const raced = await s.app.inject({
+      method: 'POST',
+      url: `/api/v1/metadata-organization-jobs/${job.id}/retries`,
+      headers: s.headers,
+      payload: { operationId: 'organization_retry_raced_00002' },
+    });
+    expect(raced.statusCode).toBe(202);
+    expect(raced.json().job.stage).toBe('moving');
+    expect(
+      s.c.storage.db.connection
+        .prepare("SELECT count(*) AS count FROM organization_events WHERE kind='retry_requested'")
+        .get()!.count,
+    ).toBe(1);
+  });
+
+  it('admits an album-only reflection mismatch so the managed move can repair the directory projection', async () => {
+    const s = await setup();
+    s.c.storage.db.connection
+      .prepare(
+        "UPDATE metadata_items SET stage='reflecting',error_code='reflection_mismatch',changed_fields_json='[\"album\"]' WHERE id='completed-item'",
+      )
+      .run();
+    s.c.storage.db.connection
+      .prepare(
+        'INSERT INTO metadata_item_evidence(item_id,references_json,reflection_json,updated_at) VALUES(?,?,?,?)',
+      )
+      .run(
+        'completed-item',
+        JSON.stringify({ trackId: s.trackId, starred: false, playlists: [] }),
+        JSON.stringify({
+          fileVerifiedFields: ['album'],
+          indexVerifiedFields: ['title', 'artist', 'trackNumber', 'year', 'genre', 'cover'],
+          unsupportedProjection: ['albumArtist', 'lyrics'],
+          mismatched: ['album'],
+        }),
+        recentNow,
+      );
+    const response = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization-jobs',
+      headers: s.headers,
+      payload: {
+        trackId: s.trackId,
+        expectedRevision: s.revision,
+        destinationPolicy: 'id3-managed-v1',
+        operationId: 'organization_album_projection_0001',
+        metadataJobId: 'completed-metadata',
+        sourceEvidence: [
+          {
+            url: 'https://example.invalid/official',
+            kind: 'official_artist',
+            fields: ['album'],
+          },
+        ],
+      },
+    });
+    expect(response.statusCode).toBe(202);
+  });
+
+  it('rejects other reflection mismatches before organization admission', async () => {
+    const s = await setup();
+    s.c.storage.db.connection
+      .prepare(
+        "UPDATE metadata_items SET stage='reflecting',error_code='reflection_mismatch',changed_fields_json='[\"cover\"]' WHERE id='completed-item'",
+      )
+      .run();
+    s.c.storage.db.connection
+      .prepare(
+        'INSERT INTO metadata_item_evidence(item_id,references_json,reflection_json,updated_at) VALUES(?,?,?,?)',
+      )
+      .run(
+        'completed-item',
+        JSON.stringify({ trackId: s.trackId, starred: false, playlists: [] }),
+        JSON.stringify({
+          fileVerifiedFields: ['cover'],
+          indexVerifiedFields: ['title', 'artist', 'album', 'trackNumber', 'year', 'genre'],
+          unsupportedProjection: ['albumArtist', 'lyrics'],
+          mismatched: ['cover'],
+        }),
+        recentNow,
+      );
+    const response = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization-jobs',
+      headers: s.headers,
+      payload: {
+        trackId: s.trackId,
+        expectedRevision: s.revision,
+        destinationPolicy: 'id3-managed-v1',
+        operationId: 'organization_cover_projection_0001',
+        metadataJobId: 'completed-metadata',
+        sourceEvidence: [
+          {
+            url: 'https://example.invalid/official',
+            kind: 'official_artist',
+            fields: ['cover'],
+          },
+        ],
+      },
+    });
+    expect(response.statusCode).toBe(422);
   });
 
   it('rejects sessions, query tokens, missing scope, and conflicting replay before admission', async () => {

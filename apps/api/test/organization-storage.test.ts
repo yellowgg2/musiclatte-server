@@ -254,13 +254,12 @@ describe('organization storage', () => {
       database: s.c.open(),
       clock: () => 1_101,
     });
-    expect(
-      recoveryRepository.claimNext({
-        workerId: 'recovery-worker',
-        leaseDurationMs: 100,
-        recoveryOnly: true,
-      }),
-    ).toMatchObject({
+    const recovery = recoveryRepository.claimNext({
+      workerId: 'recovery-worker',
+      leaseDurationMs: 100,
+      recoveryOnly: true,
+    })!;
+    expect(recovery).toMatchObject({
       stage: 'recovery_required',
       generation: 2,
       workerId: 'recovery-worker',
@@ -268,6 +267,61 @@ describe('organization storage', () => {
     expect(
       s.c.db.connection.prepare('SELECT error_code,next_owner FROM organization_items').get(),
     ).toEqual({ error_code: 'worker_interrupted', next_owner: 'filesystem' });
+    recoveryRepository.transition({
+      ...recovery,
+      stage: 'recovery_required',
+      errorCode: 'identity_mismatch',
+    });
+    expect(
+      s.c.db.connection
+        .prepare('SELECT error_code,next_owner,lease_owner FROM organization_items')
+        .get(),
+    ).toEqual({ error_code: 'identity_mismatch', next_owner: 'filesystem', lease_owner: null });
+  });
+
+  it('relinquishes a failed stage lease for the next recovery owner immediately', async () => {
+    const s = await setup();
+    s.repository.createOrReplay(s.input);
+    const file = s.repository.claimNext({
+      workerId: 'filesystem-worker',
+      leaseDurationMs: 30_000,
+      fileOnly: true,
+    })!;
+    s.repository.recordReferences({
+      ...file,
+      baseline: { trackId: 'song-1', starred: false, playlists: [] },
+    });
+    s.repository.recordMovePreimage({ ...file, preimage: s.preimage });
+    s.repository.transition({ ...file, stage: 'moving' });
+    s.repository.transition({ ...file, stage: 'moved' });
+    const registration = s.repository.claimNext({
+      workerId: 'gonic-worker',
+      leaseDurationMs: 30_000,
+      registrationOnly: true,
+    })!;
+    s.repository.transition({ ...registration, stage: 'scanning' });
+    s.repository.transition({
+      ...registration,
+      stage: 'recovery_required',
+      errorCode: 'registration_pending',
+    });
+
+    expect(
+      s.c.db.connection
+        .prepare('SELECT lease_owner,lease_expires_at,next_owner FROM organization_items')
+        .get(),
+    ).toEqual({ lease_owner: null, lease_expires_at: null, next_owner: 'gonic' });
+    expect(
+      s.repository.claimNext({
+        workerId: 'gonic-recovery-worker',
+        leaseDurationMs: 30_000,
+        registrationOnly: true,
+      }),
+    ).toMatchObject({
+      stage: 'recovery_required',
+      generation: 3,
+      workerId: 'gonic-recovery-worker',
+    });
   });
 
   it('atomically rebinds the stable media link and every current projection', async () => {

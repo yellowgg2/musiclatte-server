@@ -1,4 +1,5 @@
 import {
+  metadataOrganizationWorkerHealth,
   metadataWorkerHealth,
   readMetadataWorkerConfig,
   runMetadataWorker,
@@ -8,9 +9,16 @@ const controller = new AbortController();
 const stop = () => controller.abort();
 try {
   const args = process.argv.slice(2);
-  if (args.length > 1 || (args.length && !['--check-config', '--healthcheck'].includes(args[0]!)))
+  if (
+    args.length > 1 ||
+    (args.length &&
+      !['--check-config', '--healthcheck', '--organization-healthcheck'].includes(args[0]!))
+  )
     throw new Error();
-  if (args[0] === '--healthcheck') process.exitCode = metadataWorkerHealth(process.env) ? 0 : 1;
+  if (args[0] === '--organization-healthcheck')
+    process.exitCode = metadataOrganizationWorkerHealth(process.env) ? 0 : 1;
+  else if (args[0] === '--healthcheck')
+    process.exitCode = metadataWorkerHealth(process.env) ? 0 : 1;
   else if (args[0] === '--check-config')
     process.stdout.write(
       readMetadataWorkerConfig(process.env).enabled

@@ -130,7 +130,7 @@ async function setup(candidateId = 'new-song', audioIdentity = claim.audioIdenti
     revision: () => 'c'.repeat(64),
     reconcile: (_trackRef, _snapshot, _revision) => calls.push('reconcile'),
   });
-  return { calls, fixture, upstream, scanClient, repository, service };
+  return { c, calls, fixture, upstream, scanClient, repository, service };
 }
 
 it.each([
@@ -147,6 +147,20 @@ it.each([
     ).toHaveLength(1);
   },
 );
+
+it('reuses an already-visible exact path during gonic recovery without another full scan', async () => {
+  const s = await setup();
+  s.c.db.connection
+    .prepare(
+      "UPDATE registration_cycle SET owner='reflection-worker',expires_at=2000,next_scan_at=2000 WHERE singleton=1",
+    )
+    .run();
+  await s.service.process({ ...claim, stage: 'recovery_required' });
+  expect(s.calls).toEqual(['resume:scanning', 'bind:new-song', 'reconcile', 'complete:new-song']);
+  expect(
+    s.upstream.requests.filter((request) => request.pathname.endsWith('startScan')),
+  ).toHaveLength(0);
+});
 
 it('keeps audio mismatch in gonic-owned recovery without rebinding', async () => {
   const s = await setup('new-song', '0'.repeat(64));

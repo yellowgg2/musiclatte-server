@@ -126,3 +126,34 @@ it('resumes from a durable reference baseline without capturing it twice', async
   await worker.process({ ...claim, stage: 'references_captured' });
   expect(calls).toEqual(['preimage', 'moving', 'rename', 'moved']);
 });
+
+it('relinquishes a failed source-only recovery with its stable error code', async () => {
+  const transitions: { stage: string; errorCode?: string }[] = [];
+  const worker = createOrganizationWorker({
+    repository: {
+      recordReferences: () => {},
+      recordMovePreimage: () => {},
+      transition: (input) => transitions.push(input),
+      resumeRecovery: (input) => transitions.push(input),
+    },
+    authorize: async () => ({ client: {} }),
+    captureReferences: async () => ({ trackId: 'old', starred: false, playlists: [] }),
+    fileIdentity: (_libraryId, key) =>
+      key === claim.sourceKey ? claim.fileIdentity : prepared.targetFenceIdentity,
+    fileStore: {
+      prepare: async () => prepared,
+      move: async () => {
+        throw new Error('identity_mismatch');
+      },
+      classify: async () => 'source_only' as const,
+    },
+  });
+
+  await expect(
+    worker.recover({ ...claim, stage: 'recovery_required', preimage: prepared }),
+  ).rejects.toThrow('identity_mismatch');
+  expect(transitions).toEqual([
+    expect.objectContaining({ stage: 'moving' }),
+    expect.objectContaining({ stage: 'recovery_required', errorCode: 'identity_mismatch' }),
+  ]);
+});

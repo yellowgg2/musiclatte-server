@@ -329,47 +329,56 @@ export function createWorkerRunner(options: WorkerOptions) {
           );
           syncMediaDirectory(options.musicRoot, finalIntent.fileKey);
         }
-        const result = recovered
-          ? 'published'
-          : await publishMediaFile({
-              replaceExisting: job.accountDirectory !== undefined,
-              commit: (publish) => {
-                if (held && publicationFence && options.mediaProtection) {
-                  held.assertHeld();
-                  options.database.transaction(() => {
-                    options.mediaProtection!.publications.validate(publicationFence!);
-                    options.mediaProtection!.publications.assertAvailable(
-                      publicationFence!.fileIdentity,
-                    );
-                    options.mediaProtection!.publications.dirty(publicationFence!, item.id);
-                  });
-                  publish();
-                  return;
-                }
+        let result: 'published' | 'duplicate_candidate';
+        if (finalIntent.disposition === 'duplicate') {
+          await downloader.validateFile(
+            options.musicRoot,
+            finalIntent.fileKey,
+            item.sourceId,
+            signal,
+          );
+          result = 'duplicate_candidate';
+        } else if (recovered) result = 'published';
+        else
+          result = await publishMediaFile({
+            replaceExisting: job.accountDirectory !== undefined,
+            commit: (publish) => {
+              if (held && publicationFence && options.mediaProtection) {
+                held.assertHeld();
                 options.database.transaction(() => {
-                  const locked = options.database.connection
-                    .prepare(
-                      "SELECT 1 FROM metadata_items i JOIN media_links m ON m.id=i.media_link_id WHERE m.library_id=? AND m.relative_file_key=? AND (i.stage IN ('preparing','backed_up','prepared','recovery_required') OR EXISTS (SELECT 1 FROM metadata_file_locks l WHERE l.item_id=i.id)) LIMIT 1",
-                    )
-                    .get(job.libraryId, finalIntent.fileKey);
-                  if (locked) throw new Error('file_conflict');
-                  publish();
+                  options.mediaProtection!.publications.validate(publicationFence!);
+                  options.mediaProtection!.publications.assertAvailable(
+                    publicationFence!.fileIdentity,
+                  );
+                  options.mediaProtection!.publications.dirty(publicationFence!, item.id);
                 });
-              },
-              musicRoot: options.musicRoot,
-              stagingRoot: options.stagingRoot,
-              stagedFileKey: finalIntent.stagingKey,
-              pendingToken: finalIntent.eventId,
-              commitIdentity: (identity) => ledger.recordIdentity(item.id, identity),
-              checkpoint,
-              fileKey: finalIntent.fileKey,
-              videoId: item.sourceId,
-              inspectAudio: (file) => downloader.inspectAudio(file, signal),
-              beforeCommit: () => {
-                ledger.assertOwned(item.id);
-                signal.throwIfAborted();
-              },
-            });
+                publish();
+                return;
+              }
+              options.database.transaction(() => {
+                const locked = options.database.connection
+                  .prepare(
+                    "SELECT 1 FROM metadata_items i JOIN media_links m ON m.id=i.media_link_id WHERE m.library_id=? AND m.relative_file_key=? AND (i.stage IN ('preparing','backed_up','prepared','recovery_required') OR EXISTS (SELECT 1 FROM metadata_file_locks l WHERE l.item_id=i.id)) LIMIT 1",
+                  )
+                  .get(job.libraryId, finalIntent.fileKey);
+                if (locked) throw new Error('file_conflict');
+                publish();
+              });
+            },
+            musicRoot: options.musicRoot,
+            stagingRoot: options.stagingRoot,
+            stagedFileKey: finalIntent.stagingKey,
+            pendingToken: finalIntent.eventId,
+            commitIdentity: (identity) => ledger.recordIdentity(item.id, identity),
+            checkpoint,
+            fileKey: finalIntent.fileKey,
+            videoId: item.sourceId,
+            inspectAudio: (file) => downloader.inspectAudio(file, signal),
+            beforeCommit: () => {
+              ledger.assertOwned(item.id);
+              signal.throwIfAborted();
+            },
+          });
         if (held && publicationFence && options.mediaProtection) {
           const observed = await options.mediaProtection.inspect(finalIntent.fileKey);
           await held.validate();

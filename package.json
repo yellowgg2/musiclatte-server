@@ -22,6 +22,8 @@
     "test:contract": "vitest run --config vitest.contract.config.ts",
     "dev:web": "npm run dev -w @musiclatte/web --",
     "dev:api": "npm run dev -w @musiclatte/api --",
+    "id3:organize": "tsx tools/id3-organize-client.ts",
+    "verify:id3-organization-runtime": "tsx tools/verification/id3-organization-runtime-probe.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

@@ -93,6 +93,56 @@ it.each(['candidate_verified', 'file_saved'] as const)(
   },
 );
 
+it('keeps a pre-write validation failure clean in the publication ledger', async () => {
+  const c = await createTestContext();
+  try {
+    const root = realpathSync(c.root);
+    const dir = (name: string) => {
+      const path = join(root, name);
+      mkdirSync(path, { mode: 0o700 });
+      return path;
+    };
+    const musicRoot = dir('music');
+    const privateRoot = dir('private');
+    const lockRoot = dir('locks');
+    await createMetadataFixture({ root: musicRoot, python, ffmpeg, version: 4 });
+    const original = readFileSync(join(musicRoot, 'source.mp3'));
+    const store = createMetadataFileStore({
+      musicRoot,
+      privateRoot,
+      lockRoot,
+      publications: createMediaPublicationLedger(c.db, () => 1000),
+      python,
+      ffmpeg,
+      ffprobe,
+      helperPath: resolve('apps/api/helpers/file_transaction.py'),
+      timeoutMs: 60000,
+      maxFileBytes: 10 * 1024 * 1024,
+    });
+
+    await expect(
+      store.execute(
+        {
+          itemId: 'invalid-cover',
+          fileIdentity: 'c'.repeat(64),
+          key: 'source.mp3',
+          generation: 1,
+          expectedDigest: hash(original),
+          patch: { cover: { op: 'replaceAll', uploadId: 'missing' } },
+          preserveOwnership: true,
+        },
+        { onEvent: async () => {} },
+      ),
+    ).rejects.toThrow('invalid_cover');
+    expect(c.db.connection.prepare('SELECT dirty FROM media_publications').get()).toEqual({
+      dirty: 0,
+    });
+    expect(readFileSync(join(musicRoot, 'source.mp3'))).toEqual(original);
+  } finally {
+    c.cleanup();
+  }
+});
+
 it('rejects external changes during verification without recording a successful receipt', async () => {
   const c = await createTestContext();
   try {

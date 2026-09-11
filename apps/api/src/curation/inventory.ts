@@ -72,10 +72,14 @@ export function createCurationInventory(options: CurationInventoryOptions) {
     let run = db
       .prepare('SELECT * FROM curation_inventory_runs WHERE library_id=?')
       .get(library.id);
+    const priorCheckpoint = run
+      ? (JSON.parse(String(run.checkpoint_json)) as { discoveryComplete?: boolean })
+      : {};
     if (
       !run ||
       run.status === 'stale' ||
-      (['ready', 'partial', 'stale', 'error'].includes(String(run.status)) &&
+      ((['ready', 'error'].includes(String(run.status)) ||
+        (run.status === 'partial' && priorCheckpoint.discoveryComplete === true)) &&
         clock() - Number(run.last_discovery_at ?? 0) >= options.sweepIntervalMs)
     ) {
       const generation = randomUUID();
@@ -128,6 +132,9 @@ export function createCurationInventory(options: CurationInventoryOptions) {
         if (event.track_id) {
           enqueue(library.id, generation, String(event.track_id), false);
           db.prepare(
+            'UPDATE curation_tracks SET source_sequence=? WHERE library_id=? AND track_id=? AND source_sequence<?',
+          ).run(event.sequence!, library.id, event.track_id!, event.sequence!);
+          db.prepare(
             "UPDATE curation_inventory_queue SET status='pending' WHERE library_id=? AND generation=? AND opaque_id=? AND kind='track'",
           ).run(library.id, generation, event.track_id!);
         }
@@ -140,7 +147,7 @@ export function createCurationInventory(options: CurationInventoryOptions) {
     }
     const pending = db
       .prepare(
-        "SELECT * FROM curation_inventory_queue WHERE library_id=? AND generation=? AND status='pending' ORDER BY CASE kind WHEN 'directory' THEN 0 ELSE 1 END,opaque_id COLLATE BINARY LIMIT 1",
+        "SELECT q.* FROM curation_inventory_queue q LEFT JOIN curation_tracks t ON q.kind='track' AND t.library_id=q.library_id AND t.track_id=q.opaque_id WHERE q.library_id=? AND q.generation=? AND q.status='pending' ORDER BY CASE q.kind WHEN 'track' THEN 0 ELSE 1 END,COALESCE(t.source_sequence,0) DESC,q.opaque_id COLLATE BINARY LIMIT 1",
       )
       .get(library.id, generation);
     if (pending) {

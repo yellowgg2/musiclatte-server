@@ -13,6 +13,7 @@ import {
 } from '@musiclatte/contracts';
 import type { ManagementDatabase } from './database.js';
 import { decodeMetadataReferences, type MetadataReferences } from '../metadata/reference-check.js';
+import { isOrganizationAlbumProjectionPending } from '../metadata/organization-album-projection.js';
 
 export interface ValidatedMetadataItem {
   id: string;
@@ -630,9 +631,10 @@ export function createMetadataRepository({
         const row = owned(claim);
         if (row.stage !== 'reflecting' || row.file_saved_at === null) throw new Error('conflict');
         const timestamp = now();
+        const reflection = JSON.stringify(input.evidence);
         db.prepare(
           'UPDATE metadata_item_evidence SET reflection_json=?,updated_at=? WHERE item_id=?',
-        ).run(JSON.stringify(input.evidence), timestamp, claim.itemId);
+        ).run(reflection, timestamp, claim.itemId);
         if (input.status === 'verified') {
           db.prepare(
             "UPDATE metadata_items SET stage='succeeded',error_code=NULL,stage_changed_at=?,reflected_at=? WHERE id=?",
@@ -662,6 +664,23 @@ export function createMetadataRepository({
           );
         if (input.status !== 'reflection_unavailable') {
           const job = db.prepare('SELECT * FROM metadata_jobs WHERE id=?').get(text(row.job_id))!;
+          if (
+            isOrganizationAlbumProjectionPending({
+              stage: row.stage,
+              error_code: input.status,
+              changed_fields_json: row.changed_fields_json,
+              reflection_json: reflection,
+            })
+          )
+            db.prepare(
+              "INSERT OR IGNORE INTO curation_source_events(library_id,media_link_id,track_id,kind,source_key,created_at) VALUES(?,?,?,'metadata_album_projection_pending',?,?)",
+            ).run(
+              text(job.library_id),
+              text(row.media_link_id),
+              text(row.current_track_id),
+              `metadata:${claim.itemId}:album_projection_pending`,
+              timestamp,
+            );
           db.prepare(
             'INSERT INTO metadata_changes(item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET sequence=excluded.sequence,reflection_result=excluded.reflection_result,related_ids_json=excluded.related_ids_json WHERE metadata_changes.reflection_result<>excluded.reflection_result OR metadata_changes.related_ids_json<>excluded.related_ids_json',
           ).run(
@@ -904,7 +923,7 @@ export function createMetadataRepository({
         const timestamp = now();
         const row = db
           .prepare(
-            `SELECT i.* FROM metadata_items i LEFT JOIN metadata_file_locks l ON l.file_identity=i.file_identity WHERE i.stage IN ('queued','preparing','backed_up','prepared','file_saved','reflecting') AND (?=0 OR i.stage IN ('file_saved','reflecting')) AND (i.stage NOT IN ('file_saved','reflecting') OR i.next_reflection_at<=?) AND (?=0 OR i.stage IN ('preparing','backed_up','prepared')) AND (?=0 OR i.stage NOT IN ('file_saved','reflecting')) AND NOT EXISTS (SELECT 1 FROM metadata_items blocked WHERE blocked.file_identity=i.file_identity AND blocked.stage='recovery_required') AND (l.file_identity IS NULL OR (l.item_id=i.id AND l.expires_at<=?)) ORDER BY CASE WHEN i.stage='queued' THEN 1 ELSE 0 END,i.stage_changed_at,i.id LIMIT 1`,
+            `SELECT i.* FROM metadata_items i LEFT JOIN metadata_file_locks l ON l.file_identity=i.file_identity WHERE i.stage IN ('queued','preparing','backed_up','prepared','file_saved','reflecting') AND (?=0 OR i.stage IN ('file_saved','reflecting')) AND (i.stage NOT IN ('file_saved','reflecting') OR i.next_reflection_at<=?) AND (?=0 OR i.stage IN ('preparing','backed_up','prepared')) AND (?=0 OR i.stage NOT IN ('file_saved','reflecting')) AND NOT EXISTS (SELECT 1 FROM metadata_items blocked WHERE blocked.file_identity=i.file_identity AND blocked.stage='recovery_required') AND (l.file_identity IS NULL OR (l.item_id=i.id AND l.expires_at<=?)) ORDER BY CASE WHEN i.stage='queued' THEN 1 ELSE 0 END,CASE WHEN i.stage IN ('file_saved','reflecting') THEN i.next_reflection_at ELSE 0 END,i.stage_changed_at,i.id LIMIT 1`,
           )
           .get(
             input.reflectionOnly ? 1 : 0,

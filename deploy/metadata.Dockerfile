@@ -52,7 +52,7 @@ EXPOSE 3000
 CMD ["node", "apps/api/dist/config/container-entry.js"]
 
 FROM runtime AS worker
-COPY apps/api/helpers/file_transaction.py ./apps/api/helpers/
+COPY apps/api/helpers/file_transaction.py apps/api/helpers/organization_move.py ./apps/api/helpers/
 COPY --from=cover-projector /cover-projection /opt/metadata/cover-projection
 COPY --from=cover-projector /notices /usr/share/musiclatte/third-party/
 USER node
