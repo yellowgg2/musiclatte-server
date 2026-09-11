@@ -23,4 +23,4 @@ The source-only automation UI harness served the production Router with syntheti
 - GREEN: focused web unit 3 files, 51/51; focused contract 3 files, 40/40.
 - Connected Chrome production Router check: the preset selected read/edit/organize without lyrics, all five descriptions and the library boundary appeared in KO/EN, visible Codex text was absent, and document width equaled viewport width.
 
-P9-UA-001 previously passed with run `20260911-210122`. This visible copy and layout change marks that acceptance evidence stale until the affected matrix is rerun.
+P9-UA-001 passed again with run `20260911-215239` on `main`/`origin/main` commit `24be3f0917162f09903784b90145a99a38998b21`. Connected Chrome 152 covered the affected KO/EN 1440/390/320, actual 200% zoom, keyboard, and accessibility-name/description matrix with FATAL 0, MAJOR 0, MINOR 0, and deferred UI debt 0. Evidence is retained under `artifact/ui-acceptance/phase-9/20260911-215239/`.
