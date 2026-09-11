@@ -2,6 +2,19 @@ import { expect, it } from 'vitest';
 import { createAccessTokenTestContext } from '../support/access-token-harness.js';
 import { createAccessTokenClient } from '../../apps/web/src/automation/client.js';
 import { decodeAccessTokenOptions } from '@musiclatte/contracts';
+import { messages } from '../../apps/web/src/i18n/index.js';
+
+it('keeps collection token guidance exact and complete in Korean and English', () => {
+  expect(messages.en['tokens.scope.collections:read']).toBe('Read collections');
+  expect(messages.en['tokens.scopeDescription.collections:read']).toBe(
+    "Read the current account's favorites and owned playlists to freeze targets for batch organization.",
+  );
+  expect(messages.ko['tokens.scope.collections:read']).toBe('컬렉션 읽기');
+  expect(messages.ko['tokens.scopeDescription.collections:read']).toBe(
+    '현재 계정의 즐겨찾기와 소유한 재생목록을 읽어 일괄 정리 대상을 고정합니다.',
+  );
+});
+
 it('roundtrips the settings client through session-authenticated token options, create, list and revoke', async () => {
   const c = await createAccessTokenTestContext();
   const base = await c.app.listen({ host: '127.0.0.1', port: 0 });

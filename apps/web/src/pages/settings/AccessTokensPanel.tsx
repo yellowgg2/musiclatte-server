@@ -20,14 +20,8 @@ import { messages, type Locale } from '../../i18n';
 import shell from '../../app/Shell.module.css';
 import styles from './AccessTokensPanel.module.css';
 
-type PresentedAccessTokenScope = Exclude<AccessTokenScope, 'collections:read'>;
-
-const presentedAccessTokenScopes = accessTokenScopes.filter(
-  (scope): scope is PresentedAccessTokenScope => scope !== 'collections:read',
-);
-
 function accessTokenScopeLabel(copy: (typeof messages)[Locale], scope: AccessTokenScope): string {
-  return scope === 'collections:read' ? scope : copy[`tokens.scope.${scope}`];
+  return copy[`tokens.scope.${scope}`];
 }
 
 export function AccessTokensPanel({
@@ -259,6 +253,12 @@ export function AccessTokensPanel({
           new Set([...previous, 'metadata:read', 'metadata:write', scope]).has(entry),
         );
       }
+      if (scope === 'collections:read') {
+        if (!checked) return previous.filter((entry) => entry !== scope);
+        return accessTokenScopes.filter((entry) =>
+          new Set([...previous, 'metadata:read', scope]).has(entry),
+        );
+      }
       return checked
         ? accessTokenScopes.filter((entry) => new Set([...previous, scope]).has(entry))
         : previous.filter((entry) => entry !== scope);
@@ -343,7 +343,7 @@ export function AccessTokensPanel({
           <div className={styles.columns}>
             <fieldset disabled={!!busy || unavailable} className={styles.choices}>
               <legend>{copy['tokens.scopes']}</legend>
-              {presentedAccessTokenScopes
+              {accessTokenScopes
                 .filter((scope) => options.scopes.includes(scope))
                 .map((scope) => {
                   const id = scope.replace(':', '-');

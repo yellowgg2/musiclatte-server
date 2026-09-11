@@ -15,6 +15,7 @@ function fixture() {
     organizationPermission: 'allowed',
     organizationAvailability: 'available',
     maxTokenAgeMs: 86400000,
+    advertiseCollections: true,
     lost: false,
     late: null as Promise<Response> | null,
     tokens: [] as AccessToken[],
@@ -94,6 +95,7 @@ function fixture() {
         libraryIds: ['music', 'archive'],
         scopes: [
           'metadata:read',
+          ...(state.advertiseCollections ? (['collections:read'] as const) : []),
           'metadata:write',
           'lyrics:write',
           'curation:write',
@@ -166,6 +168,19 @@ it('keeps the recommended preset action compact beside multi-line guidance', () 
   );
 
   expect(css).toMatch(/\.guide\s*\{[^}]*align-items:\s*start/);
+});
+
+it('keeps permission help and expiry controls shrinkable at narrow zoomed layouts', () => {
+  const css = readFileSync(
+    resolve('apps/web/src/pages/settings/AccessTokensPanel.module.css'),
+    'utf8',
+  );
+
+  expect(css).toMatch(/\.choices\s*\{[^}]*min-inline-size:\s*0/);
+  expect(css).toMatch(/\.choiceCopy\s*\{[^}]*min-inline-size:\s*0/);
+  expect(css).toMatch(
+    /@media\s*\(max-width:\s*40rem\)[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/,
+  );
 });
 
 /** One-time token focus reveals the whole card above fixed mobile controls. */
@@ -320,6 +335,50 @@ it('describes every permission and the library boundary without Codex wording', 
   expect(document.body.textContent).not.toMatch(/Codex/i);
 });
 
+it('offers the advertised collection scope with accessible guidance and submits it exactly', async () => {
+  const c = setup();
+  const collection = (await screen.findByRole('checkbox', {
+    name: 'Read collections',
+  })) as HTMLInputElement;
+  const read = screen.getByRole('checkbox', { name: 'Read metadata' }) as HTMLInputElement;
+
+  expect(collection.getAttribute('aria-describedby')).toBe(
+    'token-scope-collections-read-description',
+  );
+  expect(
+    screen.getByText(
+      "Read the current account's favorites and owned playlists to freeze targets for batch organization.",
+    ),
+  ).toBeTruthy();
+  collection.focus();
+  await c.user.keyboard('[Space]');
+  expect(collection.checked).toBe(true);
+  expect(read.checked).toBe(true);
+  expect(read.disabled).toBe(true);
+
+  await c.user.type(screen.getByRole('textbox', { name: 'Token name' }), 'Batch selector');
+  await c.user.click(screen.getByRole('button', { name: 'Create token' }));
+  expect(
+    screen.getByText('Select at least one library and a valid permission combination.'),
+  ).toBeTruthy();
+  expect(c.calls.filter((call) => call.method === 'POST')).toHaveLength(0);
+  await c.user.click(screen.getByRole('checkbox', { name: 'music' }));
+  await c.user.click(screen.getByRole('button', { name: 'Create token' }));
+
+  expect(c.calls.find((call) => call.method === 'POST')?.body).toMatchObject({
+    scopes: ['metadata:read', 'collections:read'],
+  });
+});
+
+it('hides collection access when the server does not advertise it', async () => {
+  const c = fixture();
+  c.state.advertiseCollections = false;
+  setup(c);
+
+  await screen.findByRole('heading', { name: 'Access tokens' });
+  expect(screen.queryByRole('checkbox', { name: 'Read collections' })).toBeNull();
+});
+
 it('builds the recommended scope preset without issuing and preserves explicit dependency control', async () => {
   const c = setup();
   await screen.findByRole('heading', { name: 'Access tokens' });
@@ -329,16 +388,21 @@ it('builds the recommended scope preset without issuing and preserves explicit d
   const organize = screen.getByRole('checkbox', {
     name: 'Organize media files',
   }) as HTMLInputElement;
+  const collections = screen.getByRole('checkbox', {
+    name: 'Read collections',
+  }) as HTMLInputElement;
 
   expect(read.checked).toBe(true);
   expect(write.checked).toBe(false);
   expect(lyrics.checked).toBe(false);
   expect(organize.checked).toBe(false);
+  expect(collections.checked).toBe(false);
   await c.user.click(screen.getByRole('button', { name: 'Use recommended settings' }));
   expect(write.checked).toBe(true);
   expect(write.disabled).toBe(true);
   expect(organize.checked).toBe(true);
   expect(lyrics.checked).toBe(false);
+  expect(collections.checked).toBe(false);
   expect(c.calls.filter((call) => call.method === 'POST')).toHaveLength(0);
 
   await c.user.click(organize);
