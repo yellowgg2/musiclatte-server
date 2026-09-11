@@ -125,7 +125,11 @@ describe('organization storage', () => {
     expect(other.claimNext({ workerId: 'worker-b', leaseDurationMs: 100 })).toBeNull();
     s.repository.recordReferences({
       ...claim,
-      baseline: { starred: true, playlists: [{ id: 'playlist', songIds: ['song-1', 'b'] }] },
+      baseline: {
+        trackId: 'song-1',
+        starred: true,
+        playlists: [{ id: 'playlist', songIds: ['song-1', 'b'] }],
+      },
     });
     s.repository.recordMovePreimage({ ...claim, preimage: s.preimage });
     s.repository.transition({ ...claim, stage: 'moving' });
@@ -137,6 +141,11 @@ describe('organization storage', () => {
     const references = s.repository.claimNext({ workerId: 'worker-a', leaseDurationMs: 100 })!;
     expect(references).toMatchObject({ stage: 'rebound', generation: 3 });
     s.repository.transition({ ...references, stage: 'migrating_references' });
+    expect(s.repository.readBaseline(references)).toEqual({
+      trackId: 'song-1',
+      starred: true,
+      playlists: [{ id: 'playlist', songIds: ['song-1', 'b'] }],
+    });
     s.repository.putReferenceCheckpoint({
       ...references,
       kind: 'playlist',
@@ -149,8 +158,34 @@ describe('organization storage', () => {
       kind: 'playlist',
       referenceId: 'playlist',
     });
+    s.repository.putReferenceCheckpoint({
+      ...references,
+      kind: 'star',
+      referenceId: 'star',
+      baseline: true,
+      desired: true,
+    });
+    s.repository.failReferenceCheckpoint({
+      ...references,
+      kind: 'star',
+      referenceId: 'star',
+      errorCode: 'reference_conflict',
+    });
+    s.repository.putReferenceCheckpoint({
+      ...references,
+      kind: 'star',
+      referenceId: 'star',
+      baseline: true,
+      desired: true,
+    });
+    s.repository.completeReferenceCheckpoint({
+      ...references,
+      kind: 'star',
+      referenceId: 'star',
+    });
     expect(s.repository.referenceCheckpoints(s.input.itemId)).toEqual([
       expect.objectContaining({ referenceId: 'playlist', status: 'completed' }),
+      expect.objectContaining({ referenceId: 'star', status: 'completed' }),
     ]);
     s.repository.bindSourceLocation({
       itemId: s.input.itemId,
@@ -172,7 +207,10 @@ describe('organization storage', () => {
     s.repository.createOrReplay(s.input);
     expect(s.tokens.revokeOwned(proof.username, s.issued.accessToken.id)).toBe(true);
     const claim = s.repository.claimNext({ workerId: 'worker', leaseDurationMs: 100 })!;
-    s.repository.recordReferences({ ...claim, baseline: { starred: false, playlists: [] } });
+    s.repository.recordReferences({
+      ...claim,
+      baseline: { trackId: 'song-1', starred: false, playlists: [] },
+    });
     s.repository.recordMovePreimage({ ...claim, preimage: s.preimage });
     s.repository.transition({ ...claim, stage: 'moving' });
     s.repository.transition({ ...claim, stage: 'moved' });
@@ -204,7 +242,10 @@ describe('organization storage', () => {
     const s = await setup();
     s.repository.createOrReplay(s.input);
     const claim = s.repository.claimNext({ workerId: 'dead-worker', leaseDurationMs: 100 })!;
-    s.repository.recordReferences({ ...claim, baseline: { starred: false, playlists: [] } });
+    s.repository.recordReferences({
+      ...claim,
+      baseline: { trackId: 'song-1', starred: false, playlists: [] },
+    });
     s.repository.recordMovePreimage({ ...claim, preimage: s.preimage });
     s.repository.transition({ ...claim, stage: 'moving' });
     const recoveryRepository = createOrganizationRepository({
@@ -264,7 +305,10 @@ describe('organization storage', () => {
       bindingRevision: 1,
     });
     const move = s.repository.claimNext({ workerId: 'filesystem', leaseDurationMs: 100 })!;
-    s.repository.recordReferences({ ...move, baseline: { starred: false, playlists: [] } });
+    s.repository.recordReferences({
+      ...move,
+      baseline: { trackId: 'song-1', starred: false, playlists: [] },
+    });
     s.repository.recordMovePreimage({ ...move, preimage: s.preimage });
     s.repository.transition({ ...move, stage: 'moving' });
     s.repository.transition({ ...move, stage: 'moved' });

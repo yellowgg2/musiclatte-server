@@ -35,6 +35,7 @@ import { createOrganizationWorker } from './metadata/organization-worker.js';
 import { captureMetadataReferences } from './metadata/reference-check.js';
 import { createMetadataFileAccess } from './metadata/file-access.js';
 import { createOrganizationRegistration } from './metadata/organization-registration.js';
+import { createReferenceMigration } from './metadata/reference-migration.js';
 import { createCurationRepository } from './storage/curation-repository.js';
 import { curationSnapshot, reconcileVerifiedSnapshot } from './curation/reconciliation.js';
 
@@ -342,6 +343,41 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
         : undefined;
     const organizationPolicy = automation.enabled ? automation.organization : undefined;
     const organizationRepository = createOrganizationRepository({ database, clock: Date.now });
+    const organizationAccount = async (
+      claim: Parameters<typeof organizationRepository.readBaseline>[0],
+    ) => {
+      if (!organizationPolicy) throw new Error('permission_changed');
+      const accepted = grants.authorizeAcceptedOrganization(claim.itemId);
+      if (
+        accepted.intent.libraryId !== claim.libraryId ||
+        accepted.intent.sourceKey !== claim.sourceKey ||
+        accepted.intent.targetKey !== claim.targetKey ||
+        accepted.intent.fileIdentity !== claim.fileIdentity ||
+        accepted.intent.audioIdentity !== claim.audioIdentity ||
+        accepted.intent.oldTrackId !== claim.oldTrackId
+      )
+        throw new Error('permission_changed');
+      const client = createSubsonicClient({
+        upstream: config.upstream,
+        timeoutMs: 5000,
+        proof: accepted.proof,
+      });
+      const user = await client.currentUser({ signal });
+      const folders = (await client.folders({ signal })).map((folder) => folder.id);
+      const library = config.policy.libraries.find((entry) => entry.id === claim.libraryId);
+      const account = organizationPolicy.accounts.find(
+        (entry) => entry.username === accepted.username,
+      );
+      if (
+        user.username !== accepted.username ||
+        !library ||
+        !account ||
+        !folders.includes(library.musicFolderId) ||
+        !canEditMetadata(config.policy, accepted.username, claim.libraryId)
+      )
+        throw new Error('permission_changed');
+      return { username: accepted.username, client };
+    };
     const organizationWorker =
       organizationPolicy && fence
         ? createOrganizationWorker({
@@ -362,38 +398,7 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
             }),
             fileIdentity: (libraryId, relativeFileKey) =>
               revisions.fileIdentity({ libraryId, relativeFileKey }),
-            authorize: async (claim) => {
-              const accepted = grants.authorizeAcceptedOrganization(claim.itemId);
-              if (
-                accepted.intent.libraryId !== claim.libraryId ||
-                accepted.intent.sourceKey !== claim.sourceKey ||
-                accepted.intent.targetKey !== claim.targetKey ||
-                accepted.intent.fileIdentity !== claim.fileIdentity ||
-                accepted.intent.audioIdentity !== claim.audioIdentity ||
-                accepted.intent.oldTrackId !== claim.oldTrackId
-              )
-                throw new Error('permission_changed');
-              const client = createSubsonicClient({
-                upstream: config.upstream,
-                timeoutMs: 5000,
-                proof: accepted.proof,
-              });
-              const user = await client.currentUser({ signal });
-              const folders = (await client.folders({ signal })).map((folder) => folder.id);
-              const library = config.policy.libraries.find((entry) => entry.id === claim.libraryId);
-              const account = organizationPolicy.accounts.find(
-                (entry) => entry.username === accepted.username,
-              );
-              if (
-                user.username !== accepted.username ||
-                !library ||
-                !account ||
-                !folders.includes(library.musicFolderId) ||
-                !canEditMetadata(config.policy, accepted.username, claim.libraryId)
-              )
-                throw new Error('permission_changed');
-              return { client };
-            },
+            authorize: async (claim) => ({ client: (await organizationAccount(claim)).client }),
             captureReferences: (client, trackId) =>
               captureMetadataReferences(
                 client as ReturnType<typeof createSubsonicClient>,
@@ -449,6 +454,12 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
               ),
           })
         : undefined;
+    const organizationReferences = organizationPolicy
+      ? createReferenceMigration({
+          repository: organizationRepository,
+          authorize: organizationAccount,
+        })
+      : undefined;
     const scheduler = createMetadataScheduler({
       ...(curation ? { inventory: (abort: AbortSignal) => curation.cycle(abort) } : {}),
       ...(organizationWorker
@@ -470,6 +481,15 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
               });
               if (registration && organizationRegistration) {
                 await organizationRegistration.process(registration, signal).catch(() => {});
+                return true;
+              }
+              const references = organizationRepository.claimNext({
+                workerId,
+                leaseDurationMs: 30000,
+                referenceOnly: true,
+              });
+              if (references && organizationReferences) {
+                await organizationReferences.process(references, signal).catch(() => {});
                 return true;
               }
               const claim = organizationRepository.claimNext({

@@ -98,3 +98,24 @@ The rebound transaction also moves the current curation track/file binding witho
 append-only receipt or event history. A fresh trusted snapshot reconciliation updates standard
 field state. The import item that originally established the MediaLink supplies the YouTube source
 ID for `organization_source_locations`; no raw source or media payload is copied into this mapping.
+
+## Account reference migration
+
+After rebound, reference work reopens only the accepted token owner's account and replaces every
+old song occurrence with the verified new song ID. Playlist order and duplicate occurrences are
+preserved. A post-scan playlist is eligible only when its name and owner are unchanged and its
+ordered members equal either the captured baseline, the baseline with all old occurrences removed,
+or the exact desired new-ID list. Any other concurrent edit is `reference_conflict` and is never
+overwritten.
+
+Each playlist and the star state has a durable checkpoint written before the upstream operation.
+Completed checkpoints are skipped on retry; incomplete conflict/failed checkpoints can be reclaimed
+only with the same immutable baseline and desired value. A timeout after an upstream write is
+resolved by exact authenticated readback rather than blind repetition. A deleted, read-only, or
+otherwise changed playlist leaves the file and verified MediaLink at the managed target while the
+job remains `recovery_required` for explicit forward recovery.
+
+Final verification enumerates the target account's playlists containing the new ID and compares the
+playlist ID set, metadata, full ordered occurrence lists, and star state with the captured baseline.
+Only that exact result advances to `succeeded` and clears the accepted grant. Reference migration
+does not call recent, scrobble, bookmark, listening-history, import, tag, or filesystem APIs.

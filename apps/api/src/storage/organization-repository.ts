@@ -9,6 +9,7 @@ import {
   type OrganizationRecoveryOwner,
   type OrganizationStage,
 } from '../metadata/organization-state.js';
+import { decodeMetadataReferences, type MetadataReferences } from '../metadata/reference-check.js';
 
 type Row = Record<string, SQLOutputValue>;
 const hex = (value: unknown) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -280,6 +281,7 @@ export function createOrganizationRepository(options: {
       recoveryOnly?: boolean;
       fileOnly?: boolean;
       registrationOnly?: boolean;
+      referenceOnly?: boolean;
     }) {
       return atomic(() => {
         if (
@@ -289,7 +291,11 @@ export function createOrganizationRepository(options: {
         )
           throw new Error('invalid_claim');
         const timestamp = now();
-        if ([input.recoveryOnly, input.fileOnly, input.registrationOnly].filter(Boolean).length > 1)
+        if (
+          [input.recoveryOnly, input.fileOnly, input.registrationOnly, input.referenceOnly].filter(
+            Boolean,
+          ).length > 1
+        )
           throw new Error('invalid_claim');
         const stages = input.recoveryOnly
           ? "(stage='moving' OR (stage='recovery_required' AND next_owner='filesystem'))"
@@ -297,7 +303,9 @@ export function createOrganizationRepository(options: {
             ? "stage IN ('queued','validating','references_captured')"
             : input.registrationOnly
               ? "(stage IN ('moved','scanning') OR (stage='recovery_required' AND next_owner='gonic'))"
-              : "stage NOT IN ('succeeded','failed','conflict','recovery_required')";
+              : input.referenceOnly
+                ? "(stage IN ('rebound','migrating_references','verifying') OR (stage='recovery_required' AND next_owner IN ('references','verification')))"
+                : "stage NOT IN ('succeeded','failed','conflict','recovery_required')";
         const row = db
           .prepare(
             `SELECT * FROM organization_items WHERE ${stages} AND (lease_owner IS NULL OR lease_expires_at<=?) ORDER BY stage_changed_at,id LIMIT 1`,
@@ -311,9 +319,17 @@ export function createOrganizationRepository(options: {
               ? 'recovery_required'
               : input.registrationOnly && row.stage === 'scanning'
                 ? 'recovery_required'
-                : String(row.stage);
+                : input.referenceOnly &&
+                    ['migrating_references', 'verifying'].includes(String(row.stage))
+                  ? 'recovery_required'
+                  : String(row.stage);
         const generation = integer(row.generation) + 1;
         const leaseExpiresAt = timestamp + input.leaseDurationMs;
+        const interrupted =
+          (input.recoveryOnly && row.stage === 'moving') ||
+          (input.registrationOnly && row.stage === 'scanning') ||
+          (input.referenceOnly &&
+            ['migrating_references', 'verifying'].includes(String(row.stage)));
         db.prepare(
           'UPDATE organization_items SET stage=?,generation=?,lease_owner=?,lease_expires_at=?,stage_changed_at=?,error_code=CASE WHEN ? THEN ? ELSE error_code END,next_owner=CASE WHEN ? THEN ? ELSE next_owner END WHERE id=?',
         ).run(
@@ -322,16 +338,16 @@ export function createOrganizationRepository(options: {
           input.workerId,
           leaseExpiresAt,
           timestamp,
-          (input.recoveryOnly && row.stage === 'moving') ||
-            (input.registrationOnly && row.stage === 'scanning')
-            ? 1
-            : 0,
+          interrupted ? 1 : 0,
           'worker_interrupted',
-          (input.recoveryOnly && row.stage === 'moving') ||
-            (input.registrationOnly && row.stage === 'scanning')
-            ? 1
-            : 0,
-          input.registrationOnly ? 'gonic' : 'filesystem',
+          interrupted ? 1 : 0,
+          input.registrationOnly
+            ? 'gonic'
+            : input.referenceOnly
+              ? row.stage === 'verifying'
+                ? 'verification'
+                : 'references'
+              : 'filesystem',
           text(row.id),
         );
         db.prepare(
@@ -352,7 +368,7 @@ export function createOrganizationRepository(options: {
     ) {
       return atomic(() => {
         const row = owned(input);
-        const baseline = JSON.stringify(input.baseline);
+        const baseline = JSON.stringify(decodeMetadataReferences(input.baseline));
         if (row.stage !== 'validating' || Buffer.byteLength(baseline) > 1024 * 1024)
           throw new Error('conflict');
         const state = advanceOrganizationState({ stage: 'validating' }, 'references_captured');
@@ -475,16 +491,25 @@ export function createOrganizationRepository(options: {
       return atomic(() => {
         const row = owned(input);
         if (row.stage !== 'migrating_references') throw new Error('conflict');
+        const baseline = JSON.stringify(input.baseline);
+        const desired = JSON.stringify(input.desired);
+        const existing = db
+          .prepare(
+            'SELECT baseline_json,desired_json,status FROM organization_reference_checkpoints WHERE item_id=? AND kind=? AND reference_id=?',
+          )
+          .get(input.itemId, input.kind, input.referenceId);
+        if (existing) {
+          if (existing.baseline_json !== baseline || existing.desired_json !== desired)
+            throw new Error('conflict');
+          if (existing.status !== 'completed')
+            db.prepare(
+              "UPDATE organization_reference_checkpoints SET status='pending',error_code=NULL,updated_at=? WHERE item_id=? AND kind=? AND reference_id=?",
+            ).run(now(), input.itemId, input.kind, input.referenceId);
+          return;
+        }
         db.prepare(
-          "INSERT INTO organization_reference_checkpoints(item_id,kind,reference_id,baseline_json,desired_json,status,updated_at) VALUES(?,?,?,?,?,'pending',?) ON CONFLICT(item_id,kind,reference_id) DO NOTHING",
-        ).run(
-          input.itemId,
-          input.kind,
-          input.referenceId,
-          JSON.stringify(input.baseline),
-          JSON.stringify(input.desired),
-          now(),
-        );
+          "INSERT INTO organization_reference_checkpoints(item_id,kind,reference_id,baseline_json,desired_json,status,updated_at) VALUES(?,?,?,?,?,'pending',?)",
+        ).run(input.itemId, input.kind, input.referenceId, baseline, desired, now());
       });
     },
     completeReferenceCheckpoint(
@@ -515,6 +540,29 @@ export function createOrganizationRepository(options: {
           status: String(row.status),
           errorCode: row.error_code === null ? null : String(row.error_code),
         }));
+    },
+    readBaseline(claim: OrganizationClaim): MetadataReferences {
+      const row = owned(claim);
+      if (row.baseline_json === null) throw new Error('reference_conflict');
+      return decodeMetadataReferences(JSON.parse(text(row.baseline_json)));
+    },
+    failReferenceCheckpoint(
+      input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
+        kind: 'playlist' | 'star';
+        referenceId: string;
+        errorCode: string;
+      },
+    ) {
+      return atomic(() => {
+        const row = owned(input);
+        if (row.stage !== 'migrating_references' || !input.errorCode) throw new Error('conflict');
+        const result = db
+          .prepare(
+            "UPDATE organization_reference_checkpoints SET status='conflict',error_code=?,updated_at=? WHERE item_id=? AND kind=? AND reference_id=? AND status<>'completed'",
+          )
+          .run(input.errorCode, now(), input.itemId, input.kind, input.referenceId);
+        if (result.changes !== 1) throw new Error('conflict');
+      });
     },
     bindSourceLocation(input: {
       itemId: string;
@@ -662,7 +710,7 @@ export function createOrganizationRepository(options: {
     },
     resumeRecovery(
       input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
-        stage: 'moving' | 'moved' | 'scanning';
+        stage: 'moving' | 'moved' | 'scanning' | 'migrating_references';
       },
     ) {
       return atomic(() => {
@@ -671,7 +719,9 @@ export function createOrganizationRepository(options: {
           row.stage !== 'recovery_required' ||
           (input.stage === 'scanning'
             ? row.next_owner !== 'gonic'
-            : row.next_owner !== 'filesystem')
+            : input.stage === 'migrating_references'
+              ? !['references', 'verification'].includes(String(row.next_owner))
+              : row.next_owner !== 'filesystem')
         )
           throw new Error('conflict');
         db.prepare(

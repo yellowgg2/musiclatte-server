@@ -2,7 +2,7 @@ import type { SubsonicClient } from '../subsonic/client.js';
 export interface MetadataReferences {
   trackId: string;
   starred: boolean;
-  playlists: { id: string; songIds: string[] }[];
+  playlists: { id: string; name?: string; owner?: string; songIds: string[] }[];
 }
 export function decodeMetadataReferences(value: unknown): MetadataReferences {
   const v = value as MetadataReferences;
@@ -14,14 +14,13 @@ export function decodeMetadataReferences(value: unknown): MetadataReferences {
     typeof v.starred !== 'boolean' ||
     !Array.isArray(v.playlists) ||
     v.playlists.length > 1000 ||
-    !v.playlists.every(
-      (p) =>
-        p &&
-        Object.keys(p).length === 2 &&
-        id(p.id) &&
-        Array.isArray(p.songIds) &&
-        p.songIds.every(id),
-    ) ||
+    !v.playlists.every((p) => {
+      if (!p || ![2, 4].includes(Object.keys(p).length) || !id(p.id) || !Array.isArray(p.songIds))
+        return false;
+      if (p.songIds.some((songId) => !id(songId))) return false;
+      const detailed = p.name !== undefined || p.owner !== undefined;
+      return detailed ? id(p.name) && id(p.owner) : true;
+    }) ||
     new Set(v.playlists.map((p) => p.id)).size !== v.playlists.length ||
     v.playlists.reduce((n, p) => n + p.songIds.length, 0) > 100000
   )
@@ -44,7 +43,12 @@ export async function captureMetadataReferences(
     entries += detail.entry.length;
     if (entries > 100000) throw new Error('reference_conflict');
     if (detail.entry.some((entry) => entry.id === trackId))
-      playlists.push({ id: detail.id, songIds: detail.entry.map((entry) => entry.id) });
+      playlists.push({
+        id: detail.id,
+        name: detail.name,
+        owner: detail.owner,
+        songIds: detail.entry.map((entry) => entry.id),
+      });
   }
   return {
     trackId,

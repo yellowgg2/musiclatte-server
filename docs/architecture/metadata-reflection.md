@@ -25,6 +25,12 @@ The candidate ID is not made a new available MediaLink and no playlists, stars o
 rewritten. Unreachable accounts are not treated as verified; inaccessible foreign-account state
 is outside this evidence scope. Tests preserve duplicate occurrences [A,B,A].
 
+Organization is the deliberate exception after an atomic rename has already changed the managed
+path and gonic may issue a new song ID. It persists the same private reference shape before rename,
+including playlist name and owner, then performs a separate checkpointed old-to-new migration only
+after exact target registration and stable MediaLink rebound. Normal metadata reflection remains
+read-only with respect to references.
+
 Schema v10 adds bounded private reference/reflection evidence and a persisted reflection retry
 deadline. A waiting reflector releases its file claim, allowing an authorized restore to run.
 Recheck schedules only reflection, never another file write. An older job superseded by a known
