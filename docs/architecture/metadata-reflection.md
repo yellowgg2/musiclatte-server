@@ -18,7 +18,11 @@ and genre projections can represent one of multiple file values; their full arra
 claimed as standard verification. Empty title falls back to the filename including extension.
 An absent track artist may fall back to an album artist. Missing standard values do not count
 as positive evidence. Mixed folder albums can report another track's album metadata and remain
-`reflection_mismatch`; the server does not retag or move files to conceal that limitation.
+`reflection_mismatch` when the current job changes that projection; the server does not retag or
+move files to conceal that limitation. Completion compares only the standard projection fields
+written by the current job, so a title-only edit is not held indefinitely by gonic's unrelated
+`Unknown Album` fallback. Saved-file digest, exact song ID and account references remain mandatory
+for every job, and any mismatch in a field that the job did change still blocks success.
 
 A changed song ID, ordered occurrence/star mismatch or missing baseline is `reference_conflict`.
 The candidate ID is not made a new available MediaLink and no playlists, stars or aliases are

@@ -22,6 +22,12 @@ import {
 } from '../../music/queries';
 import { FolderRow } from '../../music/components/FolderRow';
 import { MusicRow } from '../../music/components/MusicRow';
+import {
+  SongList,
+  SongViewHeading,
+  songLayout,
+  useSongView,
+} from '../../music/components/SongView';
 import { usePlayer } from '../../player/PlayerProvider';
 import { useSelection } from '../../selection/SelectionProvider';
 import { SelectionBar } from '../../selection/components/SelectionBar';
@@ -88,6 +94,7 @@ export function MusicPage({
   sections: MusicSectionAvailability;
   csrfToken: string;
 }) {
+  const [songView, setSongView] = useSongView();
   const player = usePlayer();
   const metadataUI = useMetadataUI();
   const metadata = useMetadataSync();
@@ -316,6 +323,7 @@ export function MusicPage({
     <MusicRow
       key={song.id}
       song={song}
+      layout={songLayout(songView)}
       songs={songs}
       locale={locale}
       base={base}
@@ -526,11 +534,15 @@ export function MusicPage({
       )}
       {data?.kind === 'folder' && !empty && (
         <section className={styles.section}>
-          <h2>
+          <SongViewHeading locale={locale} view={songView} onChange={setSongView}>
             {copy['music.folderContents']}{' '}
             <span className={styles.count}>{formatCount(data.directory.child.length, locale)}</span>
-          </h2>
-          <ul className={styles.list}>
+          </SongViewHeading>
+          <SongList
+            className={styles.list}
+            aria-label={copy['music.folderContents']}
+            view={songView}
+          >
             {data.directory.child.map((song, index) =>
               song.isDir ? (
                 <FolderRow key={song.id} title={song.title} href={link('folder', song.id)} />
@@ -538,7 +550,7 @@ export function MusicPage({
                 songRow(song, data.directory.child, index)
               ),
             )}
-          </ul>
+          </SongList>
         </section>
       )}
       {data?.kind === 'artist' && !empty && (
@@ -577,13 +589,13 @@ export function MusicPage({
           )}
           {!empty && (
             <section className={styles.section}>
-              <h2>
+              <SongViewHeading locale={locale} view={songView} onChange={setSongView}>
                 {copy['music.songs']}{' '}
                 <span className={styles.count}>{formatCount(data.album.song.length, locale)}</span>
-              </h2>
-              <ul className={styles.list}>
+              </SongViewHeading>
+              <SongList className={styles.list} aria-label={copy['music.songs']} view={songView}>
                 {data.album.song.map((song) => songRow(song, data.album.song))}
-              </ul>
+              </SongList>
             </section>
           )}
         </>
@@ -608,11 +620,22 @@ export function MusicPage({
           };
           return (
             <section className={styles.section} key={kind}>
-              <h2>
-                {copy[`music.${kind}s`]}{' '}
-                <span className={styles.count}>{formatCount(items.length, locale)}</span>
-              </h2>
-              <ul className={styles.list}>
+              {kind === 'song' ? (
+                <SongViewHeading locale={locale} view={songView} onChange={setSongView}>
+                  {copy[`music.${kind}s`]}{' '}
+                  <span className={styles.count}>{formatCount(items.length, locale)}</span>
+                </SongViewHeading>
+              ) : (
+                <h2>
+                  {copy[`music.${kind}s`]}{' '}
+                  <span className={styles.count}>{formatCount(items.length, locale)}</span>
+                </h2>
+              )}
+              <SongList
+                className={styles.list}
+                aria-label={copy[`music.${kind}s`]}
+                view={kind === 'song' ? songView : 'list'}
+              >
                 {kind === 'song'
                   ? searchItems.song.map((song, index) =>
                       songRow(song, searchItems.song, offset + index),
@@ -625,7 +648,7 @@ export function MusicPage({
                         href={link(kind, item.id)}
                       />
                     ))}
-              </ul>
+              </SongList>
               {(offset > 0 || items.length === 20) && (
                 <nav className={styles.pagination} aria-label={copy[`music.${kind}s`]}>
                   {offset > 0 && (

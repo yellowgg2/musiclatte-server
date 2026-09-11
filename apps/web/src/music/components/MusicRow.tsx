@@ -24,6 +24,7 @@ export function MusicRow({
   selected,
   onSelect,
   actions,
+  layout = 'list',
 }: {
   song: MusicEntry;
   locale: Locale;
@@ -39,13 +40,18 @@ export function MusicRow({
   selected?: boolean;
   onSelect?: (selected: boolean) => void;
   actions?: ReactNode;
+  layout?: 'list' | 'tile';
 }) {
   const [expanded, setExpanded] = useState(false);
   const copy = messages[locale];
   const seconds = song.duration === undefined ? null : Math.floor(song.duration);
   return (
-    <li className={styles.row}>
-      <div className={styles.rowMain} data-selectable={onSelect ? 'true' : undefined}>
+    <li className={styles.row} data-layout={layout}>
+      <div
+        className={styles.rowMain}
+        data-layout={layout}
+        data-selectable={onSelect ? 'true' : undefined}
+      >
         {onSelect && (
           <label className={styles.selection}>
             <input

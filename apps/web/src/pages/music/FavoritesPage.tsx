@@ -6,6 +6,7 @@ import { FavoriteAction } from '../../favorites/components/FavoriteAction';
 import { useFavorites } from '../../favorites/FavoritesProvider';
 import { formatCount, messages, type Locale } from '../../i18n';
 import { MusicRow } from '../../music/components/MusicRow';
+import { SongList, SongViewToggle, songLayout, useSongView } from '../../music/components/SongView';
 import { usePlayer } from '../../player/PlayerProvider';
 import { useSelection } from '../../selection/SelectionProvider';
 import { useMetadataSelectionRebase } from '../../metadata/selection';
@@ -42,6 +43,7 @@ export function FavoritesPage({
   const player = usePlayer();
   const selection = useSelection();
   const copy = messages[locale];
+  const [view, setView] = useSongView();
   const selectionKey = selectionScopeKey({ kind: 'favorites' });
   const source = 'favorites:songs';
   useMetadataSelectionRebase({
@@ -132,14 +134,18 @@ export function FavoritesPage({
       )}
       {state.songs.length > 0 && (
         <section className={styles.section}>
-          <h2>
-            {copy['favorites.songs']}{' '}
-            <span className={styles.count}>{formatCount(state.songs.length, locale)}</span>
-          </h2>
-          <ul className={styles.list}>
+          <div className={styles.sectionHeading}>
+            <h2>
+              {copy['favorites.songs']}{' '}
+              <span className={styles.count}>{formatCount(state.songs.length, locale)}</span>
+            </h2>
+            <SongViewToggle locale={locale} view={view} onChange={setView} />
+          </div>
+          <SongList className={styles.list} aria-label={copy['favorites.songs']} view={view}>
             {state.songs.map((song, position) => (
               <MusicRow
                 key={song.id}
+                layout={songLayout(view)}
                 song={song}
                 songs={state.songs}
                 locale={locale}
@@ -175,7 +181,7 @@ export function FavoritesPage({
                 }
               />
             ))}
-          </ul>
+          </SongList>
         </section>
       )}
     </div>

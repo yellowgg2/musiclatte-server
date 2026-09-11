@@ -4,6 +4,12 @@
 .row:last-child {
   border-bottom: 0;
 }
+.row[data-layout='tile'] {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+}
 .rowMain {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -12,6 +18,36 @@
 }
 .rowMain[data-selectable='true'] {
   grid-template-columns: var(--control-size) minmax(0, 1fr) auto auto;
+}
+.rowMain[data-layout='tile'] {
+  height: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'details details'
+    'play actions';
+  align-content: start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+.rowMain[data-layout='tile'][data-selectable='true'] {
+  grid-template-columns: var(--control-size) minmax(0, 1fr) auto;
+  grid-template-areas:
+    'selection details details'
+    '. play actions';
+}
+.rowMain[data-layout='tile'] details {
+  grid-area: details;
+}
+.rowMain[data-layout='tile'] .selection {
+  grid-area: selection;
+}
+.rowMain[data-layout='tile'] .play {
+  grid-area: play;
+  justify-self: start;
+}
+.rowMain[data-layout='tile'] .rowActions {
+  grid-area: actions;
+  justify-self: end;
 }
 .selection {
   display: grid;
@@ -157,6 +193,47 @@
   color: var(--color-secondary);
   overflow-wrap: anywhere;
 }
+.rowMain[data-layout='tile'] .summary {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  padding: 0;
+}
+.rowMain[data-layout='tile'] .summary:hover {
+  background: transparent;
+}
+.rowMain[data-layout='tile'] .cover {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+.rowMain[data-layout='tile'] .information {
+  grid-column: 1 / -1;
+  min-height: 3.25rem;
+}
+.rowMain[data-layout='tile'] .title {
+  display: -webkit-box;
+  min-height: 2.8em;
+  white-space: normal;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.rowMain[data-layout='tile'] .metadata {
+  display: block;
+  margin-top: var(--space-1);
+}
+.rowMain[data-layout='tile'] .metadata span {
+  display: block;
+}
+.rowMain[data-layout='tile'] .duration {
+  grid-column: 1;
+}
+.rowMain[data-layout='tile'] .disclosure {
+  grid-column: 2;
+}
+.rowMain[data-layout='tile'] .expanded {
+  padding: var(--space-3) 0 0;
+}
 @media (max-width: 30rem) {
   .rowActions {
     grid-column: 1 / -1;
@@ -165,6 +242,10 @@
     flex-wrap: wrap;
     gap: var(--space-2);
     padding: 0 0 var(--space-3) var(--space-3);
+  }
+  .rowMain[data-layout='tile'] .rowActions {
+    grid-column: auto;
+    padding: 0;
   }
   .summary {
     padding: var(--space-3);

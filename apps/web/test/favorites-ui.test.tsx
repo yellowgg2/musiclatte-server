@@ -93,8 +93,9 @@ function createTestContext() {
   };
 }
 
-function makeSUT(path = '/music/folders/fixture') {
+function makeSUT(path = '/music/folders/fixture', initialFavorites: MusicEntry[] = []) {
   const context = createTestContext();
+  context.setFavorites(initialFavorites);
   const audio = {
     src: '',
     currentTime: 0,
@@ -127,6 +128,30 @@ afterEach(() => {
 });
 
 describe('favorites UI', () => {
+  /** The favorite song view switches to artwork tiles and restores the saved preference. */
+  it('should switch between list and tile layouts and persist the selected view', async () => {
+    const { user } = makeSUT('/music/favorites', songs);
+    const view = await screen.findByRole('group', { name: 'Song view' });
+    const list = within(view).getByRole('button', { name: 'List' });
+    const tiles = within(view).getByRole('button', { name: 'Tiles' });
+
+    expect(list.getAttribute('aria-pressed')).toBe('true');
+    await user.click(tiles);
+
+    expect(tiles.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('list', { name: 'Favorite songs' }).getAttribute('data-view')).toBe(
+      'tiles',
+    );
+    expect(document.querySelectorAll('li[data-layout="tile"]')).toHaveLength(2);
+    expect(localStorage.getItem('musiclatte.songView')).toBe('tiles');
+
+    cleanup();
+    makeSUT('/music/favorites', songs);
+    expect(
+      (await screen.findByRole('button', { name: 'Tiles' })).getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
+
   /** Row state flips immediately, blocks a duplicate request, and commits the server result. */
   it('should expose optimistic pressed and pending state on every song row', async () => {
     const { context, user } = makeSUT();

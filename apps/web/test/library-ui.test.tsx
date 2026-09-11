@@ -197,6 +197,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe('library UI', () => {
+  /** Folder tracks use the shared song view and persist artwork tiles for other collections. */
+  it('should switch folder songs to the shared tile view', async () => {
+    const { user } = makeSUT('/music/folders/fixture?musicFolderId=root');
+    await screen.findByRole('heading', { name: 'Daylight folder' });
+
+    const view = screen.getByRole('group', { name: 'Song view' });
+    await user.click(within(view).getByRole('button', { name: 'Tiles' }));
+
+    const songs = screen.getByRole('list', { name: 'Folder contents' });
+    expect(songs.getAttribute('data-view')).toBe('tiles');
+    expect(songs.querySelectorAll('li[data-layout="tile"]')).toHaveLength(1);
+    expect(localStorage.getItem('musiclatte.songView')).toBe('tiles');
+  });
+
   /** The first authenticated entry exposes browsing, while unfinished transport stays absent. */
   it('should enter music after login and drill through opaque folder IDs', async () => {
     const context = createTestContext();
@@ -664,6 +678,9 @@ describe('library regression boundaries', () => {
     expect(document.querySelector('#music-row')).not.toBeNull();
     const gallery = document.querySelector<HTMLElement>('#music-row')!;
     expect(gallery.querySelectorAll('li').length).toBeGreaterThanOrEqual(2);
+    expect(
+      gallery.querySelectorAll('[data-gallery-layout="tiles"] li[data-layout="tile"]'),
+    ).toHaveLength(2);
     const play = within(gallery).getAllByRole('button', { name: /재생$/ })[0]!;
     await userEvent.setup().click(play);
     expect(within(gallery).getAllByRole('button', { name: /일시 정지$/ })).toHaveLength(1);

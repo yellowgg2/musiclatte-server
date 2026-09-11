@@ -134,6 +134,7 @@ import type { SubsonicClient } from '../src/subsonic/client.js';
 const reflectionScenarios = [
   'verified',
   'mixed',
+  'changed-mismatch',
   'id-change',
   'stale-cover',
   'file-change',
@@ -178,7 +179,10 @@ it.each(reflectionScenarios)(
             expectedDigest: '5'.repeat(64),
             actorSessionId,
             policyRevision: 1,
-            patch: { title: { op: 'set', value: 'Synthetic title' } },
+            patch:
+              scenario === 'stale-cover'
+                ? { cover: { op: 'clearAll' } }
+                : { title: { op: 'set', value: 'Synthetic title' } },
           },
         ],
       });
@@ -242,6 +246,7 @@ it.each(reflectionScenarios)(
         getSong: async () => ({
           ...song,
           ...(scenario === 'mixed' ? { album: 'Another album' } : {}),
+          ...(scenario === 'changed-mismatch' ? { title: 'Another title' } : {}),
         }),
         getPlaylists: async () => [],
         getStarred2: async () => [],
@@ -279,7 +284,7 @@ it.each(reflectionScenarios)(
       await reflector.reflect(claim, repo.readWork(claim));
       const item = repo.getJob('job', '1'.repeat(64))!.items[0]!;
       expect(item.stage).toBe(
-        scenario === 'verified' || scenario === 'refreshed-cover'
+        scenario === 'verified' || scenario === 'mixed' || scenario === 'refreshed-cover'
           ? 'succeeded'
           : scenario === 'file-change'
             ? 'recovery_required'
@@ -290,7 +295,7 @@ it.each(reflectionScenarios)(
         ['file-change', 'id-change', 'lost-scan-lease', 'lease-during-snapshot'].includes(scenario)
       )
         expect(coverRefreshed).toBe(false);
-      if (scenario === 'mixed' || scenario === 'stale-cover')
+      if (scenario === 'changed-mismatch' || scenario === 'stale-cover')
         expect(item.errorCode).toBe('reflection_mismatch');
       if (scenario === 'id-change') expect(item.errorCode).toBe('reference_conflict');
       expect(c.mediaLinks.get('media')!.gonicSongId).toBe('song-a');
@@ -300,7 +305,7 @@ it.each(reflectionScenarios)(
           'new-owner',
         );
       expect(starts).toBe(scenario === 'file-change' ? 0 : 1);
-      if (scenario === 'mixed') {
+      if (scenario === 'changed-mismatch') {
         expect(
           repo.claimNext({
             workerId: 'early-reflector',

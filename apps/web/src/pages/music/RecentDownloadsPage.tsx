@@ -13,6 +13,12 @@ import { TextField } from '../../design/components/TextField';
 import { StatusSurface } from '../../design/components/StatusSurface';
 import { formatCount, messages, type Locale } from '../../i18n';
 import { MusicRow } from '../../music/components/MusicRow';
+import {
+  SongList,
+  SongViewHeading,
+  songLayout,
+  useSongView,
+} from '../../music/components/SongView';
 import { usePlayer } from '../../player/PlayerProvider';
 import { createRecentClient } from '../../recent/client';
 import { appendRecent, localDateRange } from '../../recent/model';
@@ -52,6 +58,7 @@ export function RecentDownloadsPage({
   onCapabilityRetry: () => void;
   sections: MusicSectionAvailability;
 }) {
+  const [songView, setSongView] = useSongView();
   const copy = messages[locale];
   const player = usePlayer();
   const metadata = useMetadataSync();
@@ -330,10 +337,10 @@ export function RecentDownloadsPage({
       )}
       {data && !blocked && data.items.length > 0 && (
         <section className={styles.section}>
-          <h2>
+          <SongViewHeading locale={locale} view={songView} onChange={setSongView}>
             {copy['recent.order']} <span>{formatCount(data.items.length, locale)}</span>
-          </h2>
-          <ul className={styles.list}>
+          </SongViewHeading>
+          <SongList className={styles.list} aria-label={copy['recent.order']} view={songView}>
             {data.items.map((item) => {
               if (item.state !== 'ready')
                 return (
@@ -363,6 +370,7 @@ export function RecentDownloadsPage({
                 <MusicRow
                   key={item.eventId}
                   song={song}
+                  layout={songLayout(songView)}
                   songs={songs}
                   base={base}
                   locale={locale}
@@ -401,7 +409,7 @@ export function RecentDownloadsPage({
                 />
               );
             })}
-          </ul>
+          </SongList>
           <div ref={moreTarget}>
             <Action
               variant="secondary"

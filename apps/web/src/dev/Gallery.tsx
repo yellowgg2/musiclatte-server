@@ -359,6 +359,12 @@ export function Gallery() {
               />
             ))}
           </ul>
+          <h3 className={styles.variantHeading}>{t['songView.tiles']}</h3>
+          <ul className={styles.musicTiles} data-gallery-layout="tiles">
+            {librarySongs.slice(0, 2).map((song) => (
+              <MusicRow key={song.id} song={song} locale={locale} layout="tile" />
+            ))}
+          </ul>
         </section>
         <footer className={styles.footer}>
           <span>musiclatte</span>

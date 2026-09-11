@@ -8,6 +8,12 @@ import { Artwork } from '../../design/components/Artwork';
 import { StatusSurface } from '../../design/components/StatusSurface';
 import { formatCount, messages, type Locale } from '../../i18n';
 import { MusicRow } from '../../music/components/MusicRow';
+import {
+  SongList,
+  SongViewHeading,
+  songLayout,
+  useSongView,
+} from '../../music/components/SongView';
 import { createPlaylistClient, PlaylistMutationError } from '../../playlists/client';
 import { DeletePlaylistConfirmation } from '../../playlists/components/DeletePlaylistConfirmation';
 import { PlaylistForm } from '../../playlists/components/PlaylistForm';
@@ -54,6 +60,7 @@ export function PlaylistDetailPage({
   canFavorites: boolean;
   csrfToken: string;
 }) {
+  const [songView, setSongView] = useSongView();
   const player = usePlayer();
   const metadata = useMetadataSync();
   const selection = useSelection();
@@ -387,7 +394,7 @@ export function PlaylistDetailPage({
             />
           ) : (
             <section className={styles.section}>
-              <h2>
+              <SongViewHeading locale={locale} view={songView} onChange={setSongView}>
                 {copy['playlists.songs']}{' '}
                 <span className={styles.count}>
                   {copy['playlists.sectionCount'].replace(
@@ -395,12 +402,17 @@ export function PlaylistDetailPage({
                     formatCount(songs.length, locale),
                   )}
                 </span>
-              </h2>
-              <ul className={styles.songList}>
+              </SongViewHeading>
+              <SongList
+                className={styles.songList}
+                aria-label={copy['playlists.songs']}
+                view={songView}
+              >
                 {playlist.entries.map((entry) => (
                   <MusicRow
                     key={`${entry.position}:${entry.song.id}`}
                     song={entry.song}
+                    layout={songLayout(songView)}
                     songs={songs}
                     locale={locale}
                     base={base}
@@ -457,7 +469,7 @@ export function PlaylistDetailPage({
                     }
                   />
                 ))}
-              </ul>
+              </SongList>
             </section>
           )}
           {overlay === 'rename' && (

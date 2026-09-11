@@ -189,6 +189,21 @@ afterEach(() => {
 });
 
 describe('playlist read UI', () => {
+  /** Playlist tracks restore the same artwork-tile preference used by library collections. */
+  it('should restore the shared tile view in a playlist', async () => {
+    localStorage.setItem('musiclatte.songView', 'tiles');
+    makeSUT(`/playlists/${encodeURIComponent(playlistSummary.id)}`);
+    await screen.findByRole('heading', { name: playlistSummary.name });
+
+    const view = screen.getByRole('group', { name: 'Song view' });
+    expect(within(view).getByRole('button', { name: 'Tiles' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    const songs = screen.getByRole('list', { name: 'Songs' });
+    expect(songs.getAttribute('data-view')).toBe('tiles');
+    expect(songs.querySelectorAll('li[data-layout="tile"]')).toHaveLength(3);
+  });
+
   /** List navigation avoids detail fan-out and ordered playback preserves duplicate occurrences. */
   it('should browse opaque playlists and play every occurrence in its original order', async () => {
     const { audio, context, user } = makeSUT();

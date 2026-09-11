@@ -120,6 +120,18 @@
   display: grid;
   gap: var(--space-4);
 }
+.variantHeading {
+  margin: var(--space-5) 0 var(--space-3);
+  font-size: var(--text-small);
+  color: var(--color-secondary);
+}
+.musicTiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 12rem));
+  gap: var(--space-4);
+  list-style: none;
+  padding: 0;
+}
 .foundationGrid {
   display: grid;
   grid-template-columns: 1.15fr 1fr;

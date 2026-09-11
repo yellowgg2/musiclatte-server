@@ -7,6 +7,7 @@ import { navigateMusic } from '../../music/navigation';
 import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
 import { usePlayer } from '../../player/PlayerProvider';
 import { MusicRow } from '../../music/components/MusicRow';
+import { SongList, SongViewToggle, songLayout, useSongView } from '../../music/components/SongView';
 import { Action } from '../../design/components/Action';
 import { TextField } from '../../design/components/TextField';
 import { StatusSurface } from '../../design/components/StatusSurface';
@@ -38,6 +39,7 @@ export function MixesPage({
   onLocale?: (locale: Locale) => void;
   sections: MusicSectionAvailability;
 }) {
+  const [songView, setSongView] = useSongView();
   const copy = messages[locale];
   const player = usePlayer();
   const metadata = useMetadataSync();
@@ -431,11 +433,15 @@ export function MixesPage({
                 </div>
               </div>
               {songs?.length === 0 && <p role="status">{copy['mix.noSongs']}</p>}
-              <ul className={styles.results}>
+              {!!songs?.length && (
+                <SongViewToggle locale={locale} view={songView} onChange={setSongView} />
+              )}
+              <SongList className={styles.results} aria-label={copy['mix.results']} view={songView}>
                 {songs?.map((song) => (
                   <MusicRow
                     key={song.id}
                     song={song}
+                    layout={songLayout(songView)}
                     songs={songs}
                     locale={locale}
                     base={base}
@@ -447,7 +453,7 @@ export function MixesPage({
                     onResume={player.resume}
                   />
                 ))}
-              </ul>
+              </SongList>
             </section>
           )}
         </>

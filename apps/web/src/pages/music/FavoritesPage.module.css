@@ -50,7 +50,14 @@
   display: grid;
   gap: var(--space-3);
 }
-.section h2 {
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.sectionHeading h2 {
   display: flex;
   align-items: baseline;
   gap: var(--space-3);

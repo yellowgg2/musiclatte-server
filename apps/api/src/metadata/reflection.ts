@@ -5,12 +5,15 @@ export function compareMetadataProjection(
   snapshot: MetadataTagSnapshot,
   song: MusicEntry,
   profile: { filename: string; coverMatches: boolean },
+  requiredFields?: readonly MetadataField[],
 ) {
   const values = snapshot.values;
+  const required = requiredFields ? new Set(requiredFields) : null;
   const verified: MetadataField[] = [];
   const mismatched: MetadataField[] = [];
-  const compare = (field: MetadataField, matches: boolean) =>
-    (matches ? verified : mismatched).push(field);
+  const compare = (field: MetadataField, matches: boolean) => {
+    if (!required || required.has(field)) (matches ? verified : mismatched).push(field);
+  };
   compare('title', song.title === (values.title || profile.filename));
   const artists = values.artist.length ? values.artist : values.albumArtist;
   compare('artist', artists.length ? artists.includes(song.artist ?? '') : !song.artist);
@@ -201,10 +204,15 @@ export function createMetadataReflector(options: MetadataReflectorOptions) {
               ),
             ]);
             owned();
-            const evidence = compareMetadataProjection(snapshot, song, {
-              filename: posix.basename(work.key),
-              coverMatches: await options.coverMatches(work, snapshot, song, client),
-            });
+            const evidence = compareMetadataProjection(
+              snapshot,
+              song,
+              {
+                filename: posix.basename(work.key),
+                coverMatches: await options.coverMatches(work, snapshot, song, client),
+              },
+              Object.keys(work.patch) as MetadataField[],
+            );
             const currentDigest = (await options.fileSnapshot(work)).fullDigest;
             if (currentDigest !== work.resultDigest) {
               changedRevision(currentDigest);

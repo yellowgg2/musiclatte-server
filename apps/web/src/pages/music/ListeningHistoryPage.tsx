@@ -3,6 +3,7 @@ import { Action } from '../../design/components/Action';
 import { StatusSurface } from '../../design/components/StatusSurface';
 import { LanguagePicker } from '../../app/LanguagePicker';
 import { MusicRow } from '../../music/components/MusicRow';
+import { SongList, SongViewToggle, songLayout, useSongView } from '../../music/components/SongView';
 import { createMusicClient } from '../../music/client';
 import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
 import { usePlayer } from '../../player/PlayerProvider';
@@ -32,6 +33,7 @@ export function ListeningHistoryPage({
   canStream: boolean;
   sections: MusicSectionAvailability;
 }) {
+  const [songView, setSongView] = useSongView();
   const copy = messages[locale];
   const player = usePlayer();
   const metadata = useMetadataSync();
@@ -201,47 +203,55 @@ export function ListeningHistoryPage({
       ) : rows.length === 0 ? (
         <p role="status">{copy['listening.empty']}</p>
       ) : (
-        <ul className={styles.list} aria-label={title}>
-          {rows.map((row, index) => (
-            <li key={row.key} data-listening-event={row.key}>
-              <div className={styles.detail}>
-                <time dateTime={row.time}>{date(row.time)}</time>
-                {row.count !== undefined && (
-                  <span>{copy['listening.count'].replace('{count}', String(row.count))}</span>
-                )}
-              </div>
-              {row.song ? (
-                <ul className={styles.song}>
-                  <MusicRow
-                    song={row.song}
-                    songs={songs}
-                    locale={locale}
-                    base={base}
-                    coverUrl={player.coverUrl}
-                    current={player.state.current?.id === row.songId}
-                    playbackStatus={player.state.status}
-                    {...(canStream
-                      ? {
-                          onActivate: (activation) =>
-                            player.activate({
-                              ...activation,
-                              position: rows.slice(0, index).filter((item) => item.song).length,
-                            }),
-                        }
-                      : {})}
-                    onPause={player.pause}
-                    onResume={player.resume}
-                  />
-                </ul>
-              ) : (
-                <div className={styles.missing}>
-                  <p>{copy['listening.missing']}</p>
-                  <Action disabled>{copy['mix.play']}</Action>
+        <>
+          <SongViewToggle locale={locale} view={songView} onChange={setSongView} />
+          <SongList className={styles.list} aria-label={title} view={songView}>
+            {rows.map((row, index) => (
+              <li
+                key={row.key}
+                data-listening-event={row.key}
+                data-layout={row.song ? songLayout(songView) : 'list'}
+              >
+                <div className={styles.detail}>
+                  <time dateTime={row.time}>{date(row.time)}</time>
+                  {row.count !== undefined && (
+                    <span>{copy['listening.count'].replace('{count}', String(row.count))}</span>
+                  )}
                 </div>
-              )}
-            </li>
-          ))}
-        </ul>
+                {row.song ? (
+                  <ul className={styles.song}>
+                    <MusicRow
+                      song={row.song}
+                      layout={songLayout(songView)}
+                      songs={songs}
+                      locale={locale}
+                      base={base}
+                      coverUrl={player.coverUrl}
+                      current={player.state.current?.id === row.songId}
+                      playbackStatus={player.state.status}
+                      {...(canStream
+                        ? {
+                            onActivate: (activation) =>
+                              player.activate({
+                                ...activation,
+                                position: rows.slice(0, index).filter((item) => item.song).length,
+                              }),
+                          }
+                        : {})}
+                      onPause={player.pause}
+                      onResume={player.resume}
+                    />
+                  </ul>
+                ) : (
+                  <div className={styles.missing}>
+                    <p>{copy['listening.missing']}</p>
+                    <Action disabled>{copy['mix.play']}</Action>
+                  </div>
+                )}
+              </li>
+            ))}
+          </SongList>
+        </>
       )}
       {moreError && (
         <div role="alert">
