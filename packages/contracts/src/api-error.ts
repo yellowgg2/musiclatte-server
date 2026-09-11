@@ -28,6 +28,7 @@ export const apiErrorCodes = [
   'snapshot_expired',
   'snapshot_scope_changed',
   'snapshot_capacity',
+  'selection_too_large',
   'outcome_unknown',
   'internal_error',
 ] as const;

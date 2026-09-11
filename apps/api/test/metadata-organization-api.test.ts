@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { mkdirSync, realpathSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMetadataFixture } from '../../../packages/test-support/src/metadata-fixtures.js';
-import { browserHeaders, cookieOf, password } from '../../../tests/support/auth-harness.js';
+import { browserHeaders, cookieOf, native, password } from '../../../tests/support/auth-harness.js';
 import { createRecentContext, recentNow } from '../../../tests/support/recent-harness.js';
 import { createApp } from '../src/app.js';
 import { createSessionService } from '../src/auth/session-service.js';
@@ -103,7 +103,7 @@ async function setup({
     },
     payload: {
       name: 'Organization test',
-      scopes: ['metadata:read', 'metadata:write', 'media:organize'],
+      scopes: ['metadata:read', 'metadata:write', 'media:organize', 'collections:read'],
       libraryIds: ['music'],
       expiresAt: recentNow + 60000,
     },
@@ -152,10 +152,233 @@ async function setup({
     await app.close();
     await c.cleanup();
   });
-  return { c, app, token, headers, trackId, revision, login };
+  return {
+    c,
+    app,
+    token,
+    accessTokenId: String(created.json().accessToken.id),
+    headers,
+    trackId,
+    revision,
+    login,
+  };
 }
 
 describe('metadata organization PAT API', () => {
+  /** PAT collection reads freeze favorites and owned playlist duplicates without creating jobs. */
+  it('should select favorites and an owned playlist as private frozen snapshots', async () => {
+    const s = await setup();
+    s.c.state.favoriteSongIdsByUsername.set(password.username, ['fav-A', 'fav-B']);
+    const favorites = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/selections',
+      headers: s.headers,
+      payload: { source: { kind: 'favorites' } },
+    });
+    expect(favorites.statusCode, favorites.body).toBe(200);
+    expect(favorites.json()).toMatchObject({
+      schemaVersion: 1,
+      source: { kind: 'favorites' },
+      occurrenceCount: 2,
+      uniqueTrackCount: 2,
+      items: [
+        { trackId: 'fav-A', occurrenceIndexes: [0] },
+        { trackId: 'fav-B', occurrenceIndexes: [1] },
+      ],
+    });
+    const playlist = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/selections',
+      headers: s.headers,
+      payload: { source: { kind: 'playlist', playlistId: 'pl-1' } },
+    });
+    expect(playlist.statusCode).toBe(200);
+    expect(playlist.json()).toMatchObject({
+      source: { kind: 'playlist', playlistId: 'pl-1', name: 'Synthetic List' },
+      occurrenceCount: 3,
+      uniqueTrackCount: 2,
+      items: [
+        { trackId: 'tr-A', occurrenceIndexes: [0, 2] },
+        { trackId: 'tr-B', occurrenceIndexes: [1] },
+      ],
+    });
+    expect(playlist.json().selectionRevision).toMatch(/^[a-f0-9]{64}$/);
+    expect(playlist.body).not.toMatch(/path|proof|token|synthetic-secret/i);
+    s.c.state.emptyCollections = true;
+    const empty = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/selections',
+      headers: s.headers,
+      payload: { source: { kind: 'favorites' } },
+    });
+    expect(empty.json()).toMatchObject({ occurrenceCount: 0, uniqueTrackCount: 0, items: [] });
+    s.c.state.emptyCollections = false;
+    expect(s.c.requests.filter((request) => request.pathname === '/rest/getStarred2')).toHaveLength(
+      2,
+    );
+    expect(s.c.requests.filter((request) => request.pathname === '/rest/getPlaylist')).toHaveLength(
+      1,
+    );
+    expect(
+      s.c.storage.db.connection.prepare('SELECT count(*) AS count FROM organization_jobs').get()!
+        .count,
+    ).toBe(0);
+    expect(s.c.state.mutationWriteCount).toBe(0);
+  });
+
+  /** Foreign ownership, missing scope, oversized input and post-read revocation fail closed. */
+  it('should reject unsafe collection selections after the exact upstream read', async () => {
+    const s = await setup();
+    s.c.state.playlistOwner = 'foreign-owner';
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization/selections',
+          headers: s.headers,
+          payload: { source: { kind: 'playlist', playlistId: 'pl-1' } },
+        })
+      ).statusCode,
+    ).toBe(404);
+    s.c.state.playlistOwner = password.username;
+    s.c.state.playlistEntryIds = Array.from({ length: 1001 }, (_, index) => `track-${index}`);
+    const oversized = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/selections',
+      headers: s.headers,
+      payload: { source: { kind: 'playlist', playlistId: 'pl-1' } },
+    });
+    expect(oversized.statusCode).toBe(422);
+    expect(oversized.json().error.code).toBe('selection_too_large');
+    const limited = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/access-tokens',
+      headers: {
+        ...browserHeaders,
+        cookie: cookieOf(s.login),
+        'x-csrf-token': s.login.json().csrfToken,
+      },
+      payload: {
+        name: 'No collection scope',
+        scopes: ['metadata:read'],
+        libraryIds: ['music'],
+        expiresAt: recentNow + 60000,
+      },
+    });
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization/selections',
+          headers: {
+            authorization: `Bearer ${limited.json().token}`,
+            'content-type': 'application/json',
+          },
+          payload: { source: { kind: 'favorites' } },
+        })
+      ).statusCode,
+    ).toBe(403);
+    let release!: () => void;
+    s.c.state.collectionResponseGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    s.c.state.playlistEntryIds = ['tr-A'];
+    const pending = s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/selections',
+      headers: s.headers,
+      payload: { source: { kind: 'playlist', playlistId: 'pl-1' } },
+    });
+    await expect
+      .poll(() => s.c.requests.filter((request) => request.pathname === '/rest/getPlaylist').length)
+      .toBeGreaterThanOrEqual(3);
+    await s.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/access-tokens/${s.accessTokenId}`,
+      headers: {
+        ...browserHeaders,
+        cookie: cookieOf(s.login),
+        'x-csrf-token': s.login.json().csrfToken,
+      },
+      payload: {},
+    });
+    release();
+    expect((await pending).statusCode).toBe(401);
+  });
+
+  /** PAT-only selection rejects browser sessions, query credentials, and mixed transports. */
+  it('should reject non-PAT and ambiguous collection credentials', async () => {
+    const s = await setup();
+    const payload = { source: { kind: 'favorites' } };
+    const legacy = await s.c.login(
+      { 'content-type': 'application/json', 'x-musiclatte-client': 'native' },
+      native,
+    );
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization/selections',
+          headers: { ...browserHeaders, cookie: cookieOf(s.login) },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization/selections',
+          headers: {
+            authorization: `Bearer ${legacy.json().accessToken}`,
+            'content-type': 'application/json',
+          },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: `/api/v1/metadata-organization/selections?token=${encodeURIComponent(s.token)}`,
+          headers: s.headers,
+          payload,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization/selections',
+          headers: { ...s.headers, cookie: cookieOf(s.login) },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(400);
+  });
+
+  /** Closing a client request aborts a stalled collection read. */
+  it('should propagate selection disconnect cancellation', async () => {
+    const s = await setup();
+    const address = await s.app.listen({ port: 0, host: '127.0.0.1' });
+    s.c.state.collectionStall = true;
+    const controller = new AbortController();
+    const pending = fetch(`${address}/api/v1/metadata-organization/selections`, {
+      method: 'POST',
+      headers: s.headers,
+      body: JSON.stringify({ source: { kind: 'playlist', playlistId: 'pl-1' } }),
+      signal: controller.signal,
+    }).catch(() => undefined);
+    await expect
+      .poll(() => s.c.requests.some((request) => request.pathname === '/rest/getPlaylist'))
+      .toBe(true);
+    controller.abort();
+    await pending;
+    await expect.poll(() => s.c.state.closedCollectionRequests).toBe(1);
+    s.c.state.collectionStall = false;
+  });
   /** A scoped PAT may organize a shared song without changing its source account directory. */
   it('should keep a configured source account when another account submits the organization', async () => {
     const s = await setup({

@@ -140,3 +140,21 @@ original job; a changed body is a conflict. Status is limited to the exact submi
 current library intersection, and exposes no current/target path, evidence URL, proof, file digest,
 or raw row. Retry can only nudge an unleased `recovery_required` item toward its already recorded
 filesystem, gonic, references, or verification owner. Successful work cannot be retried.
+
+## Collection selection snapshot
+
+`POST /api/v1/metadata-organization/selections` is a PAT-only, read-only boundary requiring both
+`metadata:read` and `collections:read`. It reads either the current account's favorites or one
+playlist whose owner exactly matches the canonical PAT username. A playlist that is missing or
+owned by another account returns the same `not_found` result and does not reveal visibility.
+
+The response freezes at most 1,000 occurrences. It keeps the first occurrence order, emits each
+track once, and records every zero-based occurrence index, so `[A, B, A]` becomes `A:[0,2], B:[1]`
+without losing playlist semantics. Empty collections are valid; oversized collections fail as a
+whole with `selection_too_large` and are never truncated.
+
+`selectionRevision` signs the credential context, source descriptor, ordered IDs, and occurrence
+positions. The caller cannot supply it. The server revalidates the PAT after the single upstream
+read, propagates client disconnect cancellation, and returns a strict DTO containing no path,
+token, proof, upstream payload, or unrelated playlist data. Selection creates no metadata or
+organization job and performs no filesystem, playlist, or favorite mutation.

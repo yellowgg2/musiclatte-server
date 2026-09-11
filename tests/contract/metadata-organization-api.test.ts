@@ -63,4 +63,56 @@ describe('metadata organization public contract', () => {
   ])('rejects expanded or malformed job DTO %#', (value) => {
     expect(() => decodeOrganizationJobResponse(value)).toThrow();
   });
+
+  /** Selection DTOs preserve ordered occurrence indexes and reject private or malformed fields. */
+  it('should strictly decode collection selection responses', async () => {
+    const contract =
+      (await import('../../packages/contracts/src/metadata-organization.js')) as Record<
+        string,
+        unknown
+      >;
+    const decodeOrganizationSelection = contract.decodeOrganizationSelection;
+    expect(decodeOrganizationSelection).toBeTypeOf('function');
+    if (typeof decodeOrganizationSelection !== 'function') return;
+    const selection = {
+      schemaVersion: 1,
+      capturedAt: 1000,
+      source: { kind: 'playlist', playlistId: 'pl-1', name: 'Synthetic List' },
+      selectionRevision: 'a'.repeat(64),
+      occurrenceCount: 3,
+      uniqueTrackCount: 2,
+      items: [
+        {
+          trackId: 'A',
+          title: 'A',
+          artist: null,
+          album: null,
+          occurrenceIndexes: [0, 2],
+        },
+        {
+          trackId: 'B',
+          title: 'B',
+          artist: 'Artist',
+          album: 'Album',
+          occurrenceIndexes: [1],
+        },
+      ],
+    };
+    expect(decodeOrganizationSelection(selection)).toEqual(selection);
+    for (const invalid of [
+      { ...selection, path: '/private/music.mp3' },
+      { ...selection, occurrenceCount: 2 },
+      { ...selection, uniqueTrackCount: 3 },
+      { ...selection, selectionRevision: 'not-opaque' },
+      {
+        ...selection,
+        items: [selection.items[0], { ...selection.items[1], trackId: 'A' }],
+      },
+      {
+        ...selection,
+        items: [{ ...selection.items[0], occurrenceIndexes: [2, 0] }, selection.items[1]],
+      },
+    ])
+      expect(() => decodeOrganizationSelection(invalid)).toThrow();
+  });
 });

@@ -90,6 +90,27 @@ export interface OrganizationJobResponse {
   schemaVersion: 1;
   job: OrganizationJob;
 }
+export type OrganizationSelectionRequest = {
+  source: { kind: 'favorites' } | { kind: 'playlist'; playlistId: string };
+};
+export type OrganizationSelectionSource =
+  { kind: 'favorites' } | { kind: 'playlist'; playlistId: string; name: string };
+export interface OrganizationSelectionItem {
+  trackId: string;
+  title: string;
+  artist: string | null;
+  album: string | null;
+  occurrenceIndexes: number[];
+}
+export interface OrganizationSelection {
+  schemaVersion: 1;
+  capturedAt: number;
+  source: OrganizationSelectionSource;
+  selectionRevision: string;
+  occurrenceCount: number;
+  uniqueTrackCount: number;
+  items: OrganizationSelectionItem[];
+}
 
 const text = { type: 'string', minLength: 1, maxLength: 4096 } as const;
 const id = { type: 'string', minLength: 1, maxLength: 2048 } as const;
@@ -126,6 +147,51 @@ const evidence = {
     },
   },
 } as const;
+const selectionSourceRequest = {
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind'],
+      properties: { kind: { const: 'favorites' } },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'playlistId'],
+      properties: { kind: { const: 'playlist' }, playlistId: id },
+    },
+  ],
+} as const;
+const selectionSourceResponse = {
+  oneOf: [
+    selectionSourceRequest.oneOf[0],
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'playlistId', 'name'],
+      properties: { kind: { const: 'playlist' }, playlistId: id, name: text },
+    },
+  ],
+} as const;
+const selectionItem = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['trackId', 'title', 'artist', 'album', 'occurrenceIndexes'],
+  properties: {
+    trackId: id,
+    title: text,
+    artist: { anyOf: [text, { type: 'null' }] },
+    album: { anyOf: [text, { type: 'null' }] },
+    occurrenceIndexes: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 1000,
+      uniqueItems: true,
+      items: { type: 'integer', minimum: 0, maximum: 999 },
+    },
+  },
+} as const;
 const job = {
   type: 'object',
   additionalProperties: false,
@@ -155,6 +221,12 @@ const job = {
 export const organizationRequestSchemas = {
   empty,
   params,
+  selection: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['source'],
+    properties: { source: selectionSourceRequest },
+  },
   candidates: {
     type: 'object',
     additionalProperties: false,
@@ -191,6 +263,28 @@ export const organizationRequestSchemas = {
   },
 } as const;
 export const organizationResponseSchemas = {
+  selection: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schemaVersion',
+      'capturedAt',
+      'source',
+      'selectionRevision',
+      'occurrenceCount',
+      'uniqueTrackCount',
+      'items',
+    ],
+    properties: {
+      schemaVersion: { const: 1 },
+      capturedAt: { type: 'integer', minimum: 0 },
+      source: selectionSourceResponse,
+      selectionRevision: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+      occurrenceCount: { type: 'integer', minimum: 0, maximum: 1000 },
+      uniqueTrackCount: { type: 'integer', minimum: 0, maximum: 1000 },
+      items: { type: 'array', maxItems: 1000, items: selectionItem },
+    },
+  },
   candidates: {
     type: 'object',
     additionalProperties: false,
@@ -271,6 +365,91 @@ function record(value: unknown, keys: readonly string[]) {
 const nonempty = (value: unknown): value is string => typeof value === 'string' && !!value;
 function stringList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(nonempty);
+}
+function decodeOrganizationSelectionSource(value: unknown): OrganizationSelectionSource {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid organization response');
+  const source = value as Record<string, unknown>;
+  if (source.kind === 'favorites') {
+    if (Object.keys(source).length !== 1) throw new Error('Invalid organization response');
+    return { kind: 'favorites' };
+  }
+  if (
+    source.kind !== 'playlist' ||
+    Object.keys(source).length !== 3 ||
+    !nonempty(source.playlistId) ||
+    !nonempty(source.name)
+  )
+    throw new Error('Invalid organization response');
+  return { kind: 'playlist', playlistId: source.playlistId, name: source.name };
+}
+export function decodeOrganizationSelection(value: unknown): OrganizationSelection {
+  const row = record(value, [
+    'schemaVersion',
+    'capturedAt',
+    'source',
+    'selectionRevision',
+    'occurrenceCount',
+    'uniqueTrackCount',
+    'items',
+  ]);
+  if (
+    row.schemaVersion !== 1 ||
+    !Number.isSafeInteger(row.capturedAt) ||
+    Number(row.capturedAt) < 0 ||
+    typeof row.selectionRevision !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(row.selectionRevision) ||
+    !Number.isSafeInteger(row.occurrenceCount) ||
+    Number(row.occurrenceCount) < 0 ||
+    Number(row.occurrenceCount) > 1000 ||
+    !Number.isSafeInteger(row.uniqueTrackCount) ||
+    Number(row.uniqueTrackCount) < 0 ||
+    Number(row.uniqueTrackCount) > 1000 ||
+    !Array.isArray(row.items) ||
+    row.items.length !== row.uniqueTrackCount
+  )
+    throw new Error('Invalid organization response');
+  const seenTracks = new Set<string>();
+  const seenOccurrences = new Set<number>();
+  let previousFirst = -1;
+  const items = row.items.map((value) => {
+    const item = record(value, ['trackId', 'title', 'artist', 'album', 'occurrenceIndexes']);
+    if (
+      !nonempty(item.trackId) ||
+      seenTracks.has(item.trackId) ||
+      !nonempty(item.title) ||
+      !(item.artist === null || nonempty(item.artist)) ||
+      !(item.album === null || nonempty(item.album)) ||
+      !Array.isArray(item.occurrenceIndexes) ||
+      item.occurrenceIndexes.length === 0 ||
+      item.occurrenceIndexes.some(
+        (index, position) =>
+          !Number.isSafeInteger(index) ||
+          Number(index) < 0 ||
+          Number(index) >= Number(row.occurrenceCount) ||
+          (position > 0 &&
+            Number(index) <= Number((item.occurrenceIndexes as unknown[])[position - 1])) ||
+          seenOccurrences.has(Number(index)),
+      ) ||
+      Number(item.occurrenceIndexes[0]) <= previousFirst
+    )
+      throw new Error('Invalid organization response');
+    seenTracks.add(item.trackId);
+    for (const index of item.occurrenceIndexes) seenOccurrences.add(Number(index));
+    previousFirst = Number(item.occurrenceIndexes[0]);
+    return item as unknown as OrganizationSelectionItem;
+  });
+  if (seenOccurrences.size !== row.occurrenceCount)
+    throw new Error('Invalid organization response');
+  return {
+    schemaVersion: 1,
+    capturedAt: Number(row.capturedAt),
+    source: decodeOrganizationSelectionSource(row.source),
+    selectionRevision: row.selectionRevision,
+    occurrenceCount: Number(row.occurrenceCount),
+    uniqueTrackCount: Number(row.uniqueTrackCount),
+    items,
+  };
 }
 export function decodeOrganizationCandidates(value: unknown): OrganizationCandidates {
   const row = record(value, ['schemaVersion', 'candidates', 'total']);

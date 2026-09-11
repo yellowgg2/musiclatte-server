@@ -397,31 +397,30 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
               },
             },
           }
-        : state.registration
-          ? registrationFixture(operation, url, state.registration)
-          : operation === 'startScan' || operation === 'getScanStatus'
-            ? {
-                'subsonic-response': {
-                  status: 'ok',
-                  version: '1.15.0',
-                  scanStatus: { scanning: operation === 'startScan', count: 0 },
-                },
-              }
-            : isCollection
-              ? collectionFixture(operation, {
-                  empty:
-                    state.emptyCollections ||
-                    (operation === 'getPlaylists' && !state.playlistExists),
-                  id: state.playlistId,
-                  owner: state.playlistOwner,
-                  public: state.playlistPublic,
-                  name: state.playlistName,
-                  changed: state.playlistChanged,
-                  entryIds: isFavoriteRead
-                    ? (state.favoriteSongIdsByUsername.get(url.searchParams.get('u') ?? '') ?? [])
-                    : state.playlistEntryIds,
-                  coverArt: state.playlistCoverArt,
-                })
+        : isCollection
+          ? collectionFixture(operation, {
+              empty:
+                state.emptyCollections || (operation === 'getPlaylists' && !state.playlistExists),
+              id: state.playlistId,
+              owner: state.playlistOwner,
+              public: state.playlistPublic,
+              name: state.playlistName,
+              changed: state.playlistChanged,
+              entryIds: isFavoriteRead
+                ? (state.favoriteSongIdsByUsername.get(url.searchParams.get('u') ?? '') ?? [])
+                : state.playlistEntryIds,
+              coverArt: state.playlistCoverArt,
+            })
+          : state.registration
+            ? registrationFixture(operation, url, state.registration)
+            : operation === 'startScan' || operation === 'getScanStatus'
+              ? {
+                  'subsonic-response': {
+                    status: 'ok',
+                    version: '1.15.0',
+                    scanStatus: { scanning: operation === 'startScan', count: 0 },
+                  },
+                }
               : operation === 'getGenres' ||
                   operation === 'scrobble' ||
                   operation === 'getOpenSubsonicExtensions'

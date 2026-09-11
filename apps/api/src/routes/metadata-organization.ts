@@ -4,6 +4,8 @@ import {
   organizationResponseSchemas as responses,
   type OrganizationJobRequest,
   type OrganizationPreviewRequest,
+  type OrganizationSelectionRequest,
+  type AccessTokenScope,
 } from '@musiclatte/contracts';
 import { requiredCredentials } from '../auth/guards.js';
 import { requireJSON } from '../auth/csrf.js';
@@ -19,8 +21,11 @@ export function registerMetadataOrganizationRoutes(
   const getService = () => (organization ??= createOrganizationService(sessionService));
   const boundary = async <T>(
     request: FastifyRequest,
-    mutation: boolean,
-    work: (principal: Awaited<ReturnType<typeof verifyAccessTokenPrincipal>>) => Promise<T> | T,
+    options: { json: boolean; scopes: readonly AccessTokenScope[] },
+    work: (
+      principal: Awaited<ReturnType<typeof verifyAccessTokenPrincipal>>,
+      signal: AbortSignal,
+    ) => Promise<T> | T,
   ) => {
     if (request.validationError) throw new ApiError(400, 'invalid_request');
     const credentials = requiredCredentials(request, sessionService);
@@ -30,14 +35,43 @@ export function registerMetadataOrganizationRoutes(
       new URL(request.url, sessionService.options.origin).searchParams.has('token')
     )
       throw new ApiError(403, 'forbidden');
-    if (mutation) requireJSON(request);
-    const principal = await verifyAccessTokenPrincipal(sessionService, credentials.token, [
-      'metadata:read',
-      'metadata:write',
-      'media:organize',
-    ]);
-    return work(principal);
+    if (options.json) requireJSON(request);
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    request.raw.once('aborted', abort);
+    if (request.raw.destroyed) abort();
+    try {
+      const principal = await verifyAccessTokenPrincipal(
+        sessionService,
+        credentials.token,
+        options.scopes,
+      );
+      return await work(principal, controller.signal);
+    } finally {
+      request.raw.off('aborted', abort);
+    }
   };
+  const writeBoundary = {
+    json: true,
+    scopes: ['metadata:read', 'metadata:write', 'media:organize'],
+  } as const;
+  app.post<{ Body: OrganizationSelectionRequest }>(
+    '/api/v1/metadata-organization/selections',
+    {
+      attachValidation: true,
+      schema: {
+        querystring: requests.empty,
+        body: requests.selection,
+        response: { 200: responses.selection },
+      },
+    },
+    (request) =>
+      boundary(
+        request,
+        { json: true, scopes: ['metadata:read', 'collections:read'] },
+        (principal, signal) => getService().selection(principal, request.body, signal),
+      ),
+  );
   app.get<{ Querystring: { title: string; libraryId?: string; limit?: string } }>(
     '/api/v1/metadata-organization/candidates',
     {
@@ -48,7 +82,9 @@ export function registerMetadataOrganizationRoutes(
       },
     },
     (request) =>
-      boundary(request, false, (principal) => getService().candidateList(principal, request.query)),
+      boundary(request, { ...writeBoundary, json: false }, (principal) =>
+        getService().candidateList(principal, request.query),
+      ),
   );
   app.post<{ Body: OrganizationPreviewRequest }>(
     '/api/v1/metadata-organization/previews',
@@ -61,7 +97,9 @@ export function registerMetadataOrganizationRoutes(
       },
     },
     (request) =>
-      boundary(request, true, (principal) => getService().preview(principal, request.body)),
+      boundary(request, writeBoundary, (principal) =>
+        getService().preview(principal, request.body),
+      ),
   );
   app.post<{ Body: OrganizationJobRequest }>(
     '/api/v1/metadata-organization-jobs',
@@ -78,7 +116,7 @@ export function registerMetadataOrganizationRoutes(
       reply
         .code(202)
         .send(
-          await boundary(request, true, (principal) =>
+          await boundary(request, writeBoundary, (principal) =>
             getService().submit(principal, request.body),
           ),
         ),
@@ -94,7 +132,9 @@ export function registerMetadataOrganizationRoutes(
       },
     },
     (request) =>
-      boundary(request, false, (principal) => getService().detail(principal, request.params.id)),
+      boundary(request, { ...writeBoundary, json: false }, (principal) =>
+        getService().detail(principal, request.params.id),
+      ),
   );
   app.post<{ Params: { id: string }; Body: { operationId: string } }>(
     '/api/v1/metadata-organization-jobs/:id/retries',
@@ -111,7 +151,7 @@ export function registerMetadataOrganizationRoutes(
       reply
         .code(202)
         .send(
-          await boundary(request, true, (principal) =>
+          await boundary(request, writeBoundary, (principal) =>
             getService().retry(principal, request.params.id, request.body),
           ),
         ),

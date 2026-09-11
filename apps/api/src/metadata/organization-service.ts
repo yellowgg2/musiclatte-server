@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   metadataFields,
+  type MusicEntry,
   type MetadataField,
   type OrganizationJobRequest,
   type OrganizationPreviewRequest,
+  type OrganizationSelectionRequest,
+  type OrganizationSelectionSource,
 } from '@musiclatte/contracts';
 import { ApiError, type SessionService } from '../auth/session-service.js';
 import {
@@ -20,6 +23,7 @@ import { curationSnapshot } from '../curation/reconciliation.js';
 import { createOrganizationCandidates } from './organization-candidates.js';
 import { rejectMetadataUpstream } from '../auth/metadata-principal.js';
 import { isOrganizationAlbumProjectionPending } from './organization-album-projection.js';
+import { createOrganizationSelection } from './organization-selection.js';
 
 type Principal = Awaited<ReturnType<typeof verifyAccessTokenPrincipal>>;
 
@@ -109,6 +113,56 @@ export function createOrganizationService(service: SessionService) {
     return { file, snapshot, plan };
   };
   return {
+    async selection(
+      principal: Principal,
+      body: OrganizationSelectionRequest,
+      signal?: AbortSignal,
+    ) {
+      available();
+      let source: OrganizationSelectionSource;
+      let songs: MusicEntry[];
+      try {
+        if (body.source.kind === 'favorites') {
+          source = { kind: 'favorites' };
+          songs = await principal.upstream.getStarred2(signal ? { signal } : undefined);
+        } else {
+          const playlist = await principal.upstream.getPlaylist(
+            body.source.playlistId,
+            signal ? { signal } : undefined,
+          );
+          source = {
+            kind: 'playlist',
+            playlistId: playlist.id,
+            name: playlist.name,
+          };
+          songs = playlist.entry;
+          await revalidateMetadataPrincipal(service, principal);
+          if (
+            playlist.id !== body.source.playlistId ||
+            playlist.owner !== principal.identity.username
+          )
+            throw new ApiError(404, 'not_found');
+          return createOrganizationSelection({
+            capturedAt: automation.clock(),
+            source,
+            songs,
+            actorCredentialFingerprint: metadataCredentialFingerprint(principal),
+            revision: (value) => hash('selection', value),
+          });
+        }
+      } catch (error) {
+        if (error instanceof ApiError) throw error;
+        return rejectMetadataUpstream(service, principal, error);
+      }
+      await revalidateMetadataPrincipal(service, principal);
+      return createOrganizationSelection({
+        capturedAt: automation.clock(),
+        source,
+        songs,
+        actorCredentialFingerprint: metadataCredentialFingerprint(principal),
+        revision: (value) => hash('selection', value),
+      });
+    },
     async candidateList(
       principal: Principal,
       query: { title: string; libraryId?: string; limit?: string },
