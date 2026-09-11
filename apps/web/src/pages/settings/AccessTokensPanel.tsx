@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   accessTokenScopes,
+  metadataFields,
   validateTokenName,
   validateTokenScopes,
   type AccessToken,
   type AccessTokenOptions,
   type AccessTokenScope,
   type ApiErrorCode,
+  type FeatureCapability,
+  type MetadataField,
 } from '@musiclatte/contracts';
 import { createAccessTokenClient } from '../../automation/client';
 import { errorCode } from '../../auth/client';
@@ -22,6 +25,8 @@ export function AccessTokensPanel({
   apiOrigin,
   csrfToken,
   unavailable,
+  metadataCapability,
+  organizationCapability,
   onUnauthenticated,
   onRetryCapabilities,
 }: {
@@ -30,6 +35,8 @@ export function AccessTokensPanel({
   apiOrigin: string;
   csrfToken: string;
   unavailable: boolean;
+  metadataCapability: FeatureCapability | undefined;
+  organizationCapability: FeatureCapability | undefined;
   onUnauthenticated: () => void;
   onRetryCapabilities: () => void;
 }) {
@@ -214,6 +221,35 @@ export function AccessTokensPanel({
         ),
       ].sort((a, b) => a - b)
     : [];
+  const organizationAllowed =
+    organizationCapability?.supported === true && organizationCapability.permission === 'allowed';
+  const organizationState =
+    organizationCapability?.supported !== true
+      ? 'tokens.organizeUnsupported'
+      : organizationCapability.permission === 'denied'
+        ? 'tokens.organizeDenied'
+        : organizationCapability.permission !== 'allowed'
+          ? 'tokens.organizePermissionUnknown'
+          : organizationCapability.availability !== 'available'
+            ? 'tokens.organizeUnavailable'
+            : 'tokens.organizeAvailable';
+  const writableFields = (metadataCapability?.fields ?? []).filter(
+    (field): field is MetadataField => metadataFields.includes(field as MetadataField),
+  );
+  function selectScope(scope: AccessTokenScope, checked: boolean) {
+    setScopes((previous) => {
+      if (scope === 'media:organize') {
+        if (!checked) return previous.filter((entry) => entry !== scope);
+        return accessTokenScopes.filter((entry) =>
+          new Set([...previous, 'metadata:read', 'metadata:write', scope]).has(entry),
+        );
+      }
+      return checked
+        ? accessTokenScopes.filter((entry) => new Set([...previous, scope]).has(entry))
+        : previous.filter((entry) => entry !== scope);
+    });
+    setSelectionError(false);
+  }
   return (
     <section className={shell.section} aria-labelledby="access-tokens-heading">
       <h2 id="access-tokens-heading">{copy['tokens.title']}</h2>
@@ -259,6 +295,37 @@ export function AccessTokensPanel({
               setNameError(false);
             }}
           />
+          {options.scopes.includes('media:organize') && (
+            <section className={styles.guide} aria-labelledby="codex-id3-heading">
+              <div>
+                <h3 id="codex-id3-heading">{copy['tokens.codexTitle']}</h3>
+                <p>{copy[organizationState]}</p>
+                <p className={shell.secondary}>{copy['tokens.lyricsOptional']}</p>
+              </div>
+              <Action
+                type="button"
+                variant="secondary"
+                disabled={!!busy || unavailable || !organizationAllowed}
+                onClick={() => {
+                  setScopes(['metadata:read', 'metadata:write', 'media:organize']);
+                  setSelectionError(false);
+                }}
+              >
+                {copy['tokens.codexPreset']}
+              </Action>
+              <p className={styles.presetHelp}>{copy['tokens.codexPresetHelp']}</p>
+              {writableFields.length > 0 && (
+                <div className={styles.capability}>
+                  <h4>{copy['tokens.supportedFields']}</h4>
+                  <p className={styles.fields}>
+                    {writableFields.map((field) => copy[`metadata.${field}`]).join(' · ')}
+                  </p>
+                  <p className={shell.secondary}>{copy['tokens.fieldsHelp']}</p>
+                  <p className={shell.secondary}>{copy['tokens.curationHelp']}</p>
+                </div>
+              )}
+            </section>
+          )}
           <div className={styles.columns}>
             <fieldset
               disabled={!!busy || unavailable}
@@ -275,16 +342,12 @@ export function AccessTokensPanel({
                       checked={scopes.includes(scope)}
                       disabled={
                         scope === 'metadata:read' ||
-                        (scope === 'metadata:write' && scopes.includes('lyrics:write')) ||
-                        (scope === 'lyrics:write' && !scopes.includes('metadata:write'))
+                        (scope === 'metadata:write' &&
+                          (scopes.includes('lyrics:write') || scopes.includes('media:organize'))) ||
+                        (scope === 'lyrics:write' && !scopes.includes('metadata:write')) ||
+                        (scope === 'media:organize' && !organizationAllowed)
                       }
-                      onChange={(event) =>
-                        setScopes((previous) =>
-                          event.target.checked
-                            ? [...previous, scope]
-                            : previous.filter((s) => s !== scope),
-                        )
-                      }
+                      onChange={(event) => selectScope(scope, event.target.checked)}
                     />
                     {copy[`tokens.scope.${scope}`]}
                   </label>

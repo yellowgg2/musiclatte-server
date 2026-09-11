@@ -119,6 +119,8 @@ export function SettingsPage({
             unavailable={
               state.capabilities.features['automation.tokens']?.availability !== 'available'
             }
+            metadataCapability={state.capabilities.features['metadata.write']}
+            organizationCapability={state.capabilities.features['metadata.organization']}
             onRetryCapabilities={onRetryCapabilities}
             onUnauthenticated={onUnauthenticated}
           />

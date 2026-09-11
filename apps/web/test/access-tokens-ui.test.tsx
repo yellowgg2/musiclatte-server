@@ -10,6 +10,8 @@ function fixture() {
     username: 'owner',
     permission: 'allowed',
     availability: 'available',
+    organizationPermission: 'allowed',
+    organizationAvailability: 'available',
     lost: false,
     late: null as Promise<Response> | null,
     tokens: [] as AccessToken[],
@@ -40,6 +42,40 @@ function fixture() {
             permission: state.permission,
             availability: state.availability,
           },
+          'metadata.write': {
+            supported: true,
+            permission: 'allowed',
+            availability: 'available',
+            formats: ['mp3'],
+            fields: [
+              'title',
+              'artist',
+              'album',
+              'albumArtist',
+              'trackNumber',
+              'year',
+              'genre',
+              'cover',
+              'lyrics',
+            ],
+          },
+          'metadata.organization': {
+            supported: true,
+            permission: state.organizationPermission,
+            availability: state.organizationAvailability,
+            formats: ['mp3'],
+            fields: [
+              'title',
+              'artist',
+              'album',
+              'albumArtist',
+              'trackNumber',
+              'year',
+              'genre',
+              'cover',
+              'lyrics',
+            ],
+          },
         },
       });
     if (path.endsWith('/access-tokens/options'))
@@ -48,7 +84,13 @@ function fixture() {
         now: Date.now(),
         maxTokenAgeMs: 86400000,
         libraryIds: ['music', 'archive'],
-        scopes: ['metadata:read', 'metadata:write', 'lyrics:write', 'curation:write'],
+        scopes: [
+          'metadata:read',
+          'metadata:write',
+          'lyrics:write',
+          'curation:write',
+          'media:organize',
+        ],
       });
     if (path.endsWith('/access-tokens') && method === 'POST') {
       const token: AccessToken = {
@@ -168,4 +210,77 @@ it('does not fetch token data for a denied owner', async () => {
   setup(c);
   await screen.findByText('You do not have permission to manage automation tokens.');
   expect(c.calls.filter((call) => call.path.includes('access-tokens'))).toHaveLength(0);
+});
+
+it('builds the Codex ID3 scope preset without issuing and preserves explicit dependency control', async () => {
+  const c = setup();
+  await screen.findByRole('heading', { name: 'Access tokens' });
+  const read = screen.getByRole('checkbox', { name: 'Read metadata' }) as HTMLInputElement;
+  const write = screen.getByRole('checkbox', { name: 'Edit metadata' }) as HTMLInputElement;
+  const lyrics = screen.getByRole('checkbox', { name: 'Edit lyrics' }) as HTMLInputElement;
+  const organize = screen.getByRole('checkbox', {
+    name: 'Organize media files',
+  }) as HTMLInputElement;
+
+  expect(read.checked).toBe(true);
+  expect(write.checked).toBe(false);
+  expect(lyrics.checked).toBe(false);
+  expect(organize.checked).toBe(false);
+  await c.user.click(screen.getByRole('button', { name: 'Use Codex ID3 preset' }));
+  expect(write.checked).toBe(true);
+  expect(write.disabled).toBe(true);
+  expect(organize.checked).toBe(true);
+  expect(lyrics.checked).toBe(false);
+  expect(c.calls.filter((call) => call.method === 'POST')).toHaveLength(0);
+
+  await c.user.click(organize);
+  expect(organize.checked).toBe(false);
+  expect(write.checked).toBe(true);
+  expect(write.disabled).toBe(false);
+  await c.user.click(write);
+  expect(write.checked).toBe(false);
+  await c.user.click(organize);
+  expect(write.checked).toBe(true);
+  expect(organize.checked).toBe(true);
+
+  await c.user.type(screen.getByRole('textbox', { name: 'Token name' }), 'Codex organizer');
+  await c.user.click(screen.getByRole('checkbox', { name: 'music' }));
+  await c.user.click(screen.getByRole('button', { name: 'Create token' }));
+  const request = c.calls.find((call) => call.method === 'POST');
+  expect(request?.body).toMatchObject({
+    scopes: ['metadata:read', 'metadata:write', 'media:organize'],
+  });
+});
+
+it('explains optional lyrics, advertised fields and distinct organization readiness failures', async () => {
+  const available = setup();
+  await screen.findByText(
+    'Lyrics permission is optional. Tag, cover, and file organization work without it.',
+  );
+  expect(screen.getByText(/Title · Artist · Album · Album artist/)).toBeTruthy();
+  expect(
+    screen.getByText(
+      'Supported fields describe what Musiclatte can write. Codex must still research and verify every value.',
+    ),
+  ).toBeTruthy();
+  cleanup();
+
+  const unavailable = fixture();
+  unavailable.state.organizationAvailability = 'temporarily_unavailable';
+  setup(unavailable);
+  await screen.findByText(
+    'Media organization is configured, but its worker is temporarily unavailable.',
+  );
+  cleanup();
+
+  const denied = fixture();
+  denied.state.organizationPermission = 'denied';
+  setup(denied);
+  await screen.findByText('This account is not allowed to organize media files.');
+  expect(
+    screen.getByRole('button', { name: 'Use Codex ID3 preset' }) as HTMLButtonElement,
+  ).toHaveProperty('disabled', true);
+  expect(
+    screen.getByRole('checkbox', { name: 'Organize media files' }) as HTMLInputElement,
+  ).toHaveProperty('disabled', true);
 });

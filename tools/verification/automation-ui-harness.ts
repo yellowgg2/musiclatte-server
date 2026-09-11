@@ -123,6 +123,41 @@ export async function startAutomationUIHarness({
             permission: state === 'denied' ? 'denied' : 'allowed',
             availability: state === 'unavailable' ? 'temporarily_unavailable' : 'available',
           },
+          'metadata.write': {
+            supported: true,
+            permission: 'allowed',
+            availability: 'available',
+            formats: ['mp3'],
+            fields: [
+              'title',
+              'artist',
+              'album',
+              'albumArtist',
+              'trackNumber',
+              'year',
+              'genre',
+              'cover',
+              'lyrics',
+            ],
+          },
+          'metadata.organization': {
+            supported: true,
+            permission: state === 'organization-denied' ? 'denied' : 'allowed',
+            availability:
+              state === 'organization-unavailable' ? 'temporarily_unavailable' : 'available',
+            formats: ['mp3'],
+            fields: [
+              'title',
+              'artist',
+              'album',
+              'albumArtist',
+              'trackNumber',
+              'year',
+              'genre',
+              'cover',
+              'lyrics',
+            ],
+          },
         },
       });
     if (path === '/api/v1/metadata-policy') {
@@ -142,7 +177,13 @@ export async function startAutomationUIHarness({
         now: Date.now(),
         maxTokenAgeMs: 30 * 86400000,
         libraryIds: ['music', 'archive'],
-        scopes: ['metadata:read', 'metadata:write', 'lyrics:write', 'curation:write'],
+        scopes: [
+          'metadata:read',
+          'metadata:write',
+          'lyrics:write',
+          'curation:write',
+          'media:organize',
+        ],
       });
     const owned = tokens.get(username) ?? [];
     tokens.set(username, owned);

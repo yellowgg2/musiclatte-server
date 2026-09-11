@@ -278,3 +278,30 @@ it('should advertise organization only when its complete account runtime is read
     await ctx.cleanup();
   }
 });
+
+it('should keep the complete writer field advertisement aligned with organization', async () => {
+  const ctx = await createCurationMutationContext();
+  const app = createApp({
+    ...ctx.options,
+    automation: {
+      ...ctx.automation,
+      organization: {
+        policy: {
+          policyVersion: 'id3-managed-v1',
+          accounts: [{ username: password.username, accountDirectory: 'account' }],
+        },
+        ready: () => true,
+      },
+    },
+  });
+  try {
+    const response = await app.inject({ url: '/api/v1/capabilities', headers: ctx.headers });
+    expect(response.statusCode).toBe(200);
+    const features = response.json().features;
+    expect(features['metadata.write'].fields).toEqual(metadataFields);
+    expect(features['metadata.organization'].fields).toEqual(features['metadata.write'].fields);
+  } finally {
+    await app.close();
+    await ctx.cleanup();
+  }
+});
