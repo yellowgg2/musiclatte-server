@@ -24,9 +24,15 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-async function setup() {
+async function setup({
+  sourceAccountDirectory = 'account',
+  actorAccountDirectory = 'account',
+}: {
+  sourceAccountDirectory?: string;
+  actorAccountDirectory?: string;
+} = {}) {
   const c = await createRecentContext();
-  const fixtureRoot = join(c.musicRoot, 'imports/account/Legacy');
+  const fixtureRoot = join(c.musicRoot, 'imports', sourceAccountDirectory, 'Legacy');
   mkdirSync(fixtureRoot, { recursive: true });
   await createMetadataFixture({ root: fixtureRoot, ...helper, version: 4 });
   const trackId = 'organization-track';
@@ -36,7 +42,7 @@ async function setup() {
     artist: 'Original artist',
     album: 'Original album',
     isDir: false,
-    path: 'imports/account/Legacy/source.mp3',
+    path: `imports/${sourceAccountDirectory}/Legacy/source.mp3`,
   });
   const uploadRoot = join(realpathSync(c.storage.root), 'organization-uploads');
   mkdirSync(uploadRoot, { mode: 0o700 });
@@ -74,7 +80,12 @@ async function setup() {
     organization: {
       policy: {
         policyVersion: 'id3-managed-v1' as const,
-        accounts: [{ username: password.username, accountDirectory: 'account' }],
+        accounts: [
+          { username: password.username, accountDirectory: actorAccountDirectory },
+          ...(sourceAccountDirectory === actorAccountDirectory
+            ? []
+            : [{ username: 'source-owner', accountDirectory: sourceAccountDirectory }]),
+        ],
       },
       ready: () => true,
     },
@@ -145,6 +156,51 @@ async function setup() {
 }
 
 describe('metadata organization PAT API', () => {
+  /** A scoped PAT may organize a shared song without changing its source account directory. */
+  it('should keep a configured source account when another account submits the organization', async () => {
+    const s = await setup({
+      sourceAccountDirectory: 'admin',
+      actorAccountDirectory: 'yellowgg2',
+    });
+    const previewBody = {
+      trackId: s.trackId,
+      expectedRevision: s.revision,
+      destinationPolicy: 'id3-managed-v1',
+    };
+    const preview = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/previews',
+      headers: s.headers,
+      payload: previewBody,
+    });
+
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json()).toMatchObject({
+      status: 'ready',
+      currentKey: 'imports/admin/Legacy/source.mp3',
+      targetKey:
+        'imports/admin/ID3-managed/Original album artist/Original album/01 - Original synthetic.mp3',
+    });
+    const submit = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization-jobs',
+      headers: s.headers,
+      payload: {
+        ...previewBody,
+        operationId: 'shared_source_account_operation_0001',
+        metadataJobId: 'completed-metadata',
+        sourceEvidence: [
+          {
+            url: 'https://example.invalid/official',
+            kind: 'official_artist',
+            fields: ['title'],
+          },
+        ],
+      },
+    });
+    expect(submit.statusCode).toBe(202);
+  });
+
   it('runs strict preview, submit, replay, owner status, and recovery retry', async () => {
     const s = await setup();
     const candidates = await s.app.inject({

@@ -14,6 +14,7 @@ function fixture() {
     availability: 'available',
     organizationPermission: 'allowed',
     organizationAvailability: 'available',
+    maxTokenAgeMs: 86400000,
     lost: false,
     late: null as Promise<Response> | null,
     tokens: [] as AccessToken[],
@@ -89,7 +90,7 @@ function fixture() {
       return Response.json({
         schemaVersion: 1,
         now: Date.now(),
-        maxTokenAgeMs: 86400000,
+        maxTokenAgeMs: state.maxTokenAgeMs,
         libraryIds: ['music', 'archive'],
         scopes: [
           'metadata:read',
@@ -130,6 +131,19 @@ function fixture() {
   };
   return { state, calls, fetcher };
 }
+
+/** The settings form exposes the long-lived choices only when the server policy allows them. */
+it('offers seven-day and thirty-day token expiry choices under a thirty-day policy', async () => {
+  const c = fixture();
+  c.state.maxTokenAgeMs = 30 * 86400000;
+  const { user } = setup(c);
+
+  const expiry = await screen.findByRole('combobox', { name: 'Expires after' });
+  expect(screen.getByRole('option', { name: '7 days' })).toBeTruthy();
+  expect(screen.getByRole('option', { name: '30 days' })).toBeTruthy();
+  await user.selectOptions(expiry, String(30 * 86400000));
+  expect((expiry as HTMLSelectElement).value).toBe(String(30 * 86400000));
+});
 function setup(c = fixture()) {
   localStorage.setItem('musiclatte.locale', 'en');
   window.history.replaceState(null, '', '/settings');

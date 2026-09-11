@@ -24,3 +24,9 @@ The source-only automation UI harness served the production Router with syntheti
 - Connected Chrome production Router check: the preset selected read/edit/organize without lyrics, all five descriptions and the library boundary appeared in KO/EN, visible Codex text was absent, and document width equaled viewport width.
 
 P9-UA-001 passed again with run `20260911-215239` on `main`/`origin/main` commit `24be3f0917162f09903784b90145a99a38998b21`. Connected Chrome 152 covered the affected KO/EN 1440/390/320, actual 200% zoom, keyboard, and accessibility-name/description matrix with FATAL 0, MAJOR 0, MINOR 0, and deferred UI debt 0. Evidence is retained under `artifact/ui-acceptance/phase-9/20260911-215239/`.
+
+## Expiry policy follow-up — 2026-09-12
+
+- The Settings UI already derived 1-hour, 1-day, 7-day, and 30-day choices from the server-advertised maximum. The shipped automation example limited that maximum to one day.
+- The credential-free deployment example and documentation now advertise a 30-day maximum. A focused UI regression verifies the 7-day and 30-day options and selecting the latter; the deployment contract pins `2592000000` milliseconds.
+- No devserver policy, token, container, or production deployment was changed in this follow-up.

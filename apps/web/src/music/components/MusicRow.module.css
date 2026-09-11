@@ -59,10 +59,13 @@
   display: grid;
   place-items: center;
 }
+.rowMain[data-layout='tile'] .controls > .play {
+  justify-self: center;
+}
 .rowMain[data-layout='tile'] .controls > .play,
 .rowMain[data-layout='tile'] .rowActions > :not([data-layout='tile']) > button {
-  width: 100%;
-  max-width: var(--control-size);
+  width: var(--control-size);
+  height: var(--control-size);
 }
 .rowMain[data-layout='tile'] .rowActions {
   display: contents;

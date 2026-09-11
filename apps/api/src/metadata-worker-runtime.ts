@@ -32,6 +32,7 @@ import { createMetadataJobAuthorizer } from './auth/metadata-job-authorizer.js';
 import { createOrganizationRepository } from './storage/organization-repository.js';
 import { createOrganizationFileStore } from './metadata/organization-file-store.js';
 import { createOrganizationWorker } from './metadata/organization-worker.js';
+import { resolveOrganizationAccountScope } from './metadata/organization-path.js';
 import { captureMetadataReferences } from './metadata/reference-check.js';
 import { createMetadataFileAccess } from './metadata/file-access.js';
 import { createOrganizationRegistration } from './metadata/organization-registration.js';
@@ -399,13 +400,20 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
       const user = await client.currentUser({ signal });
       const folders = (await client.folders({ signal })).map((folder) => folder.id);
       const library = config.policy.libraries.find((entry) => entry.id === claim.libraryId);
-      const account = organizationPolicy.accounts.find(
-        (entry) => entry.username === accepted.username,
-      );
+      const account =
+        library &&
+        resolveOrganizationAccountScope({
+          relativeRoot: library.relativeRoot,
+          ownerUsername: accepted.username,
+          sourceKey: claim.sourceKey,
+          targetKey: claim.targetKey,
+          accounts: organizationPolicy.accounts,
+        });
       if (
         user.username !== accepted.username ||
         !library ||
         !account ||
+        account.status !== 'ready' ||
         !folders.includes(library.musicFolderId) ||
         !canEditMetadata(config.policy, accepted.username, claim.libraryId)
       )

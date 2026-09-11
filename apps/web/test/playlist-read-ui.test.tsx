@@ -201,6 +201,7 @@ describe('playlist read UI', () => {
       resolve('apps/web/src/playlists/components/PlaylistOccurrenceActions.module.css'),
       'utf8',
     );
+    const gallery = readFileSync(resolve('apps/web/src/dev/Gallery.tsx'), 'utf8');
 
     expect(rowCss).toMatch(
       /\.rowMain\[data-layout='tile'\][^{]*\{[^}]*grid-template-areas:\s*'details'\s*'controls'/,
@@ -211,8 +212,20 @@ describe('playlist read UI', () => {
     expect(occurrenceCss).toMatch(
       /\.actions\[data-layout='tile'\][^{]*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/,
     );
+    expect(rowCss).toMatch(
+      /\.rowMain\[data-layout='tile'\] \.controls > \.play[^{]*\{[^}]*justify-self:\s*center/,
+    );
+    expect(rowCss).toMatch(
+      /\.rowMain\[data-layout='tile'\] \.controls > \.play,[^{]*\.rowActions > :not\(\[data-layout='tile'\]\) > button\s*\{[^}]*width:\s*var\(--control-size\)[^}]*height:\s*var\(--control-size\)/,
+    );
+    expect(occurrenceCss).toMatch(
+      /\.actions\[data-layout='tile'\] > button\s*\{[^}]*width:\s*var\(--control-size\)[^}]*height:\s*var\(--control-size\)[^}]*justify-self:\s*center/,
+    );
     expect(occurrenceCss).not.toMatch(
       /@media \(max-width: 30rem\)[\s\S]*grid-template-columns:\s*repeat\(2, var\(--control-size\)\)/,
+    );
+    expect(gallery).toMatch(
+      /<MusicRow[^>]*layout="tile"[\s\S]*?<PlaylistOccurrenceActions[\s\S]*?layout="tile"/,
     );
   });
 

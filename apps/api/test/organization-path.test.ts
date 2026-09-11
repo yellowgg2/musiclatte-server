@@ -2,7 +2,10 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { planOrganizationPath } from '../src/metadata/organization-path.js';
+import {
+  planOrganizationPath,
+  resolveOrganizationAccountScope,
+} from '../src/metadata/organization-path.js';
 
 const roots: string[] = [];
 afterEach(() => {
@@ -48,6 +51,51 @@ describe('id3-managed-v1 organization path planning', () => {
     expect(() =>
       mkdirSync(join(input.musicRoot, 'jojo-music/account/ID3-managed'), { recursive: false }),
     ).not.toThrow();
+  });
+
+  /** A configured operator keeps another configured source account as the destination owner. */
+  it('should organize a shared-library song inside its source account directory', () => {
+    const input = fixture('jojo-music/admin/Legacy/source.mp3');
+    const result = planOrganizationPath({
+      ...input,
+      ownerUsername: 'listener',
+      accounts: [
+        { username: 'listener', accountDirectory: 'yellowgg2' },
+        { username: 'admin', accountDirectory: 'admin' },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: 'ready',
+      currentKey: input.sourceKey,
+      targetKey: 'jojo-music/admin/ID3-managed/アルバム作家/앨범/10 - 노래 - 東京 - Song.mp3',
+    });
+  });
+
+  /** The shared admission and worker guard rejects any cross-account destination. */
+  it('should reject rehoming a configured source account into another account', () => {
+    const accounts = [
+      { username: 'listener', accountDirectory: 'yellowgg2' },
+      { username: 'admin', accountDirectory: 'admin' },
+    ];
+    expect(
+      resolveOrganizationAccountScope({
+        relativeRoot: 'jojo-music',
+        ownerUsername: 'listener',
+        sourceKey: 'jojo-music/admin/Legacy/source.mp3',
+        targetKey: 'jojo-music/admin/ID3-managed/Artist/Album/Title.mp3',
+        accounts,
+      }),
+    ).toEqual({ status: 'ready', accountRoot: 'jojo-music/admin' });
+    expect(
+      resolveOrganizationAccountScope({
+        relativeRoot: 'jojo-music',
+        ownerUsername: 'listener',
+        sourceKey: 'jojo-music/admin/Legacy/source.mp3',
+        targetKey: 'jojo-music/yellowgg2/ID3-managed/Artist/Album/Title.mp3',
+        accounts,
+      }),
+    ).toEqual({ status: 'error', code: 'source_outside_account' });
   });
 
   it('falls back to artist and omits a missing track prefix', () => {

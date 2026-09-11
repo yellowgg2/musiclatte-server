@@ -31,6 +31,36 @@ export interface OrganizationPathInput {
   };
 }
 
+export type OrganizationAccountScope =
+  | { status: 'ready'; accountRoot: string }
+  | { status: 'error'; code: 'account_unmapped' | 'source_outside_account' };
+
+/** Resolves the source-owned account root and optionally guards a managed destination. */
+export function resolveOrganizationAccountScope(
+  input: Pick<
+    OrganizationPathInput,
+    'relativeRoot' | 'ownerUsername' | 'sourceKey' | 'accounts'
+  > & { targetKey?: string },
+): OrganizationAccountScope {
+  if (!input.accounts.some((item) => item.username === input.ownerUsername))
+    return { status: 'error', code: 'account_unmapped' };
+  try {
+    validateRelativeKey(input.relativeRoot);
+    validateRelativeKey(input.sourceKey);
+    if (input.targetKey !== undefined) validateRelativeKey(input.targetKey);
+  } catch {
+    return { status: 'error', code: 'source_outside_account' };
+  }
+  const sourceAccount = input.accounts.find((item) =>
+    input.sourceKey.startsWith(`${input.relativeRoot}/${item.accountDirectory}/`),
+  );
+  if (!sourceAccount) return { status: 'error', code: 'source_outside_account' };
+  const accountRoot = `${input.relativeRoot}/${sourceAccount.accountDirectory}`;
+  if (input.targetKey !== undefined && !input.targetKey.startsWith(`${accountRoot}/ID3-managed/`))
+    return { status: 'error', code: 'source_outside_account' };
+  return { status: 'ready', accountRoot };
+}
+
 export type OrganizationPathPlan =
   | {
       status: 'ready' | 'no_op';
@@ -102,17 +132,10 @@ function first(values: readonly string[]): string | undefined {
 
 /** Computes and inspects an organization destination without creating or moving anything. */
 export function planOrganizationPath(input: OrganizationPathInput): OrganizationPathPlan {
-  const account = input.accounts.find((item) => item.username === input.ownerUsername);
-  if (!account) return error(input, 'account_unmapped');
   if (!input.allowedLibraryIds.includes(input.libraryId)) return error(input, 'library_denied');
-  try {
-    validateRelativeKey(input.relativeRoot);
-    validateRelativeKey(input.sourceKey);
-  } catch {
-    return error(input, 'source_outside_account');
-  }
-  const accountRoot = `${input.relativeRoot}/${account.accountDirectory}`;
-  if (!input.sourceKey.startsWith(`${accountRoot}/`)) return error(input, 'source_outside_account');
+  const account = resolveOrganizationAccountScope(input);
+  if (account.status === 'error') return error(input, account.code);
+  const accountRoot = account.accountRoot;
 
   const musicRoot = safeMusicRoot(input.musicRoot);
   if (!musicRoot) return error(input, 'unsafe_source');

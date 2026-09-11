@@ -49,6 +49,7 @@ it('ships a credential-free explicit account organization mapping example', () =
   const value = JSON.parse(raw) as Record<string, unknown>;
   expect(value).toMatchObject({
     schemaVersion: 1,
+    maxTokenAgeMs: 30 * 86400000,
     organization: {
       policyVersion: 'id3-managed-v1',
       accounts: [{ username: 'example-user', accountDirectory: 'example-account' }],

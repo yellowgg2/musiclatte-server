@@ -16,3 +16,13 @@
 
 Final gates: project formatting, focused tests, typecheck, build, `format:check`, and
 `git diff --check`.
+
+## Source-account boundary follow-up — 2026-09-12
+
+- A configured PAT operator may organize a song stored below another configured account directory
+  in the same allowed library.
+- The planner derives the destination account from the source key, so an `admin/...` source remains
+  below `admin/ID3-managed/...` even when a `yellowgg2` operator submits it.
+- The API planner and metadata worker reuse the same account-scope guard; a target under the
+  operator's different account is rejected before filesystem work.
+- Deployment was intentionally excluded.

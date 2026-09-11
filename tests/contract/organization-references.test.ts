@@ -33,4 +33,14 @@ describe('organization reference migration contract', () => {
     expect(runtime.indexOf('referenceOnly: true')).toBeGreaterThan(-1);
     expect(runtime.indexOf('referenceOnly: true')).toBeLessThan(runtime.indexOf('fileOnly: true'));
   });
+
+  /** The worker rechecks that organization cannot rehome a song across account directories. */
+  it('should enforce the shared source-account boundary before filesystem work', async () => {
+    const runtime = await readFile(resolve('apps/api/src/metadata-worker-runtime.ts'), 'utf8');
+
+    expect(runtime).toContain('resolveOrganizationAccountScope');
+    expect(runtime).toMatch(
+      /resolveOrganizationAccountScope[\s\S]*claim\.sourceKey[\s\S]*claim\.targetKey/,
+    );
+  });
 });

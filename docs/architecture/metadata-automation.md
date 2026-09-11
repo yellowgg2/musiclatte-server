@@ -7,7 +7,7 @@ Automation is opt-in. The default installation does not issue personal access to
 Set `AUTOMATION_ENABLED=true` and `AUTOMATION_CONFIG_PATH` to an absolute path to an operator-owned JSON file with no group/other permissions. Metadata must already be enabled with its validated policy. Example values below are synthetic deployment choices, not retention guarantees:
 
 ```json
-{ "schemaVersion": 1, "maxTokenAgeMs": 3600000 }
+{ "schemaVersion": 1, "maxTokenAgeMs": 2592000000 }
 ```
 
 The configuration file and credentials stay outside Git and Docker build contexts. The supplied name `automation-config.json` is ignored by both. Never pass credentials through URLs, source fixtures, command output or logs.
@@ -17,6 +17,9 @@ The configuration file and credentials stay outside Git and Docker build context
 - `POST /api/v1/access-tokens`: existing session only; JSON `{name,scopes,libraryIds,expiresAt}`. Returns 201 `{schemaVersion:1,token,accessToken}` with `Cache-Control: no-store`. The original secret is returned only here. There is no issuance replay that returns a prior secret.
 - `GET /api/v1/access-tokens?limit=25&cursor=...`: current owner only; returns metadata, total and authenticated next cursor. Limit is 1–100. Revoked/expired entries remain visible for audit. Tampered or cross-owner cursors return 400.
 - `DELETE /api/v1/access-tokens/:id`: owner only; returns 204, including repeated revocation. Other owners receive 404. Browser mutations require exact Origin, web client intent, JSON and session-bound CSRF. Native bearer DELETE may omit its body.
+
+The shipped deployment example permits expiry choices up to 30 days; the settings UI offers 1 hour,
+1 day, 7 days, and 30 days without exceeding the deployed `maxTokenAgeMs` policy.
 
 Name is trimmed and restricted to 1–120 code points without controls. Scopes are `metadata:read`,
 `metadata:write`, `lyrics:write`, `curation:write`, and `media:organize`; every write requires read,

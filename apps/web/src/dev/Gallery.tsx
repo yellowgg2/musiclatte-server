@@ -361,8 +361,40 @@ export function Gallery() {
           </ul>
           <h3 className={styles.variantHeading}>{t['songView.tiles']}</h3>
           <ul className={styles.musicTiles} data-gallery-layout="tiles">
-            {librarySongs.slice(0, 2).map((song) => (
-              <MusicRow key={song.id} song={song} locale={locale} layout="tile" />
+            {librarySongs.slice(0, 2).map((song, position) => (
+              <MusicRow
+                key={song.id}
+                song={song}
+                songs={librarySongs}
+                locale={locale}
+                layout="tile"
+                {...(position === 0
+                  ? {
+                      onActivate: respond,
+                      actions: (
+                        <>
+                          <div>
+                            <IconAction label={`${t['metadata.options']}: ${song.title}`}>
+                              ⋮
+                            </IconAction>
+                          </div>
+                          <div>
+                            <IconAction label={t['gallery.favorite']}>★</IconAction>
+                          </div>
+                          <PlaylistOccurrenceActions
+                            entry={{ position, song }}
+                            count={librarySongs.length}
+                            locale={locale}
+                            pending={false}
+                            layout="tile"
+                            onMove={respond}
+                            onRemove={respond}
+                          />
+                        </>
+                      ),
+                    }
+                  : {})}
+              />
             ))}
           </ul>
         </section>

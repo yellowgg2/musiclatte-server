@@ -13,8 +13,8 @@
   padding: 0;
 }
 .actions[data-layout='tile'] > button {
-  width: 100%;
-  max-width: var(--control-size);
+  width: var(--control-size);
+  height: var(--control-size);
   justify-self: center;
 }
 

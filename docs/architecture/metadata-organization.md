@@ -1,6 +1,8 @@
 # Metadata organization
 
-Metadata organization is an opt-in, account-scoped operation. Step 02 introduces only the
+Metadata organization is an opt-in, account-scoped operation. The authenticated PAT account is the
+operator, while the configured account directory containing the source file remains the path owner.
+Step 02 introduces only the
 mutation-free `id3-managed-v1` path planner; file movement, durable jobs, gonic rebinding, and
 reference migration are separate later boundaries.
 
@@ -26,9 +28,12 @@ and 160-byte media-name sanitizer.
 ## Preview boundary
 
 The caller supplies identity, library authorization, current source key, and the current metadata
-snapshot—not arbitrary destination segments. The planner requires the source below the mapped
-`relativeRoot/accountDirectory`, validates the source as a real regular file beneath the canonical
-music root, and inspects the destination without creating directories or moving bytes.
+snapshot—not arbitrary destination segments. The PAT operator must have an explicit account
+mapping, and the source must be below any configured `relativeRoot/accountDirectory`. The planner
+derives the destination account from that source directory, never from the operator's directory.
+It validates the source as a real regular file beneath the canonical music root and inspects the
+destination without creating directories or moving bytes. A target under another account is
+rejected, including when that other account belongs to the operator.
 
 The result distinguishes `ready`, an exact already-managed `no_op`, and typed errors for missing
 metadata, account/library violations, unsafe source or target components, Unicode/case-equivalent
@@ -70,7 +75,8 @@ media bytes, cover bytes, lyrics text, passwords, or raw tokens enter the manage
 ## Atomic move checkpoint
 
 The metadata worker gives organization filesystem work one bounded turn per scheduler cycle.
-Before rename it revalidates the accepted account grant and current gonic user/library access,
+Before rename it revalidates the accepted operator grant, current gonic user/library access, and
+the source-derived account boundary for both the immutable source and target keys,
 captures that account's star and playlist baseline, and durably records a v24 move preimage. A
 crash after baseline capture resumes from `references_captured` without recapturing a possibly
 changed post-move view.

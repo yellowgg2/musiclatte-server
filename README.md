@@ -121,7 +121,7 @@ worker-only. Without this overlay, automation remains disabled.
 ```json
 {
   "schemaVersion": 1,
-  "maxTokenAgeMs": 86400000,
+  "maxTokenAgeMs": 2592000000,
   "curation": {
     "policyVersion": "required-v1",
     "limits": {
