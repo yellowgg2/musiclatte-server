@@ -452,6 +452,10 @@ describe('private ID3 organization batch journal', () => {
       trackId: 'A',
       occurrenceCount: 2,
     });
+    module.checkpointId3OrganizationBatch(stateFile, 'A', {
+      kind: 'cover',
+      uploadId: 'cover-upload-before-required-step',
+    });
     const requiredManifest = {
       schemaVersion: 1 as const,
       metadata: { title: 'Verified title' },
@@ -473,6 +477,10 @@ describe('private ID3 organization batch journal', () => {
           fields: ['album' as const],
         },
       ],
+      cover: {
+        path: '/private/verified-cover.jpg',
+        usageBasis: 'Verified private-library artwork use',
+      },
     };
     await runId3OrganizeCommand({
       ...common,
@@ -487,6 +495,7 @@ describe('private ID3 organization batch journal', () => {
       trackId: 'A',
       revision: 'revision-2',
       manifest: optionalManifest,
+      coverUploadId: 'cover-upload-before-required-step',
     });
     await runId3OrganizeCommand({
       ...common,
@@ -494,6 +503,7 @@ describe('private ID3 organization batch journal', () => {
       trackId: 'A',
       revision: 'revision-2',
       manifest: optionalManifest,
+      coverUploadId: 'cover-upload-before-required-step',
     });
     const metadataBodies = calls
       .filter(({ path }) => path.endsWith('/metadata-jobs'))

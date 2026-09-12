@@ -435,7 +435,8 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       (!['researching', 'metadata_accepted'].includes(binding.state) ||
         (options.operationId !== undefined &&
           options.operationId !== metadataBinding?.operationId) ||
-        (binding.coverUploadId !== null && binding.coverUploadId !== options.coverUploadId))
+        (options.manifest.cover !== undefined &&
+          (binding.coverUploadId === null || binding.coverUploadId !== options.coverUploadId)))
     )
       fail('journal_binding');
     if (

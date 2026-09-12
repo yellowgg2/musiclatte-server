@@ -18,6 +18,8 @@
 
 - `tests/contract/id3-organize-batch.test.ts`: 22 passed.
 - `tests/contract/id3-organize-client.test.ts`: 6 passed.
+- a pre-uploaded cover does not contaminate the required title/artist claim; cover binding is
+  enforced only for the optional manifest that actually contains the cover.
 - v1 accepted metadata maps to the optional step and preserves its stable operation/job checkpoint.
 - the required operation is derived deterministically for v1 journals, so repeated read-only commands do not change it.
 - a completed v1 item without a retained metadata result revision remains readable because its organization success is terminal; unfinished v2 organization still requires a successful final metadata job and revision.
