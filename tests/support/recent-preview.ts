@@ -8,16 +8,30 @@ import {
 } from '@musiclatte/contracts';
 import { createTestContext } from './auth-harness.js';
 import { createTestContext as createStorage } from './session-storage-harness.js';
+const port = Number(process.env.PORT);
+const webPort = Number(process.env.WEB_PORT);
+if (![port, webPort].every((value) => Number.isInteger(value) && value > 1024 && value < 65536))
+  throw new Error('Explicit preview ports required');
 const storage = await createStorage();
 storage.setNow(Date.now());
 const context = await createTestContext({
   sessions: storage.sessionsFor(storage.db, 3600000),
   instances: storage.instances,
   playlistOperations: storage.playlistOperations,
-  origin: 'http://127.0.0.1:5173',
+  origin: `http://127.0.0.1:${webPort}`,
   secureCookies: false,
 });
 const app = Fastify({ logger: false });
+const mobilePreview = (width: number) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Recent downloads ${width}px preview</title>
+<style>html,body{margin:0;min-height:100%;background:#dedbe4}body{display:grid;place-items:start center;padding:24px}iframe{width:${width}px;height:844px;border:1px solid #777;border-radius:20px;background:white;box-shadow:0 12px 40px #29263333}</style>
+</head><body><iframe title="Musiclatte ${width}px recent downloads preview" src="http://127.0.0.1:${webPort}/music/recent"></iframe></body></html>`;
+app.get('/__preview/mobile', async (_request, reply) =>
+  reply.type('text/html').send(mobilePreview(390)),
+);
+app.get('/__preview/narrow', async (_request, reply) =>
+  reply.type('text/html').send(mobilePreview(320)),
+);
 let mode = '';
 let generation = 0;
 let appendRequests = 0;
@@ -79,6 +93,12 @@ app.get('/api/v1/capabilities', async (request, reply) => {
     fields: [...metadataFields],
     formats: ['mp3'],
   };
+  value.features['metadata.write'] = {
+    ...available,
+    fields: [...metadataFields],
+    formats: ['mp3'],
+  };
+  value.features['favorites.songs'] = available;
   value.features['library.recentDownloads'] = {
     supported: mode !== 'unsupported',
     permission: mode === 'denied' ? 'denied' : 'allowed',
@@ -167,8 +187,8 @@ app.setNotFoundHandler(async (request, reply) => {
     if (value !== undefined) reply.header(key, value);
   return reply.code(result.statusCode).send(result.rawPayload);
 });
-await app.listen({ host: '127.0.0.1', port: 3000 });
-console.info('Synthetic recent preview ready on 127.0.0.1:3000');
+await app.listen({ host: '127.0.0.1', port });
+console.info(`Synthetic recent preview ready on 127.0.0.1:${port}`);
 async function cleanup() {
   await app.close();
   await context.cleanup();

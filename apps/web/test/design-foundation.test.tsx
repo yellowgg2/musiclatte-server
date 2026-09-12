@@ -207,6 +207,9 @@ describe('design foundation', () => {
     );
     expect(listCss).toMatch(/\.tools[^{]*\{[^}]*flex-wrap:\s*nowrap[^}]*max-width:\s*100%/);
     expect(listCss).toMatch(/\.list[^{]*\{[^}]*padding:\s*0[^}]*list-style:\s*none/);
+    expect(listCss).toMatch(
+      /@media \(max-width: 22rem\)[\s\S]*\.tiles\[data-view='tiles'\][^{]*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/,
+    );
     expect(rowCss).not.toMatch(/\.row\[data-layout='tile'\][^{]*\{[^}]*background:/);
     expect(rowCss).toMatch(
       /\.rowMain\[data-layout='tile'\][^{]*\{[^}]*border:\s*1px solid var\(--color-border\)[^}]*background:\s*var\(--color-surface\)/,

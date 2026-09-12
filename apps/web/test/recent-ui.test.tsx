@@ -51,7 +51,13 @@ function createTestContext() {
             'playlists.write',
             'library.recentDownloads',
             ...(state.fullNavigation
-              ? ['listening.history', 'mixes.saved', 'metadata.curation', 'favorites.songs']
+              ? [
+                  'listening.history',
+                  'mixes.saved',
+                  'metadata.curation',
+                  'metadata.write',
+                  'favorites.songs',
+                ]
               : []),
           ].map((key) => [
             key,
@@ -164,6 +170,48 @@ describe('recent route', () => {
     expect(css).toMatch(
       /\.moreTarget\s*\{[^}]*scroll-margin-block-end:\s*var\(--selection-content-clearance\)/,
     );
+  });
+
+  /** The compact filter keeps boundary semantics available and moves row metadata out of actions. */
+  it('should present the compact range and shared ready-song context and actions', async () => {
+    const context = createTestContext();
+    context.state.fullNavigation = true;
+    makeSUT(context);
+
+    await screen.findByText('Song 1');
+    expect(screen.getByLabelText('Period').closest('div')?.getAttribute('data-period-field')).toBe(
+      'true',
+    );
+    expect(screen.getByText(/ – /).getAttribute('aria-describedby')).toBe('recent-range-help');
+    expect(
+      screen.getByText('This range ends immediately before Sep 7, 2026, 9:00 PM.').className,
+    ).toContain('srOnly');
+    expect(screen.queryByText(/^As of /)).toBeNull();
+
+    const row = screen.getByText('Song 1').closest('li')!;
+    const contextRegion = row.querySelector('[data-song-context]')!;
+    const downloadedAt = contextRegion.querySelector('time')!;
+    expect(downloadedAt.dateTime).toBe('2026-09-07T11:00:00.000Z');
+    const play = within(row).getByRole('button', { name: 'Play Song 1' });
+    const metadata = within(row).getByRole('button', { name: 'Music information: Song 1' });
+    const favorite = within(row).getByRole('button', { name: 'Add Song 1 to favorites' });
+    expect(play.compareDocumentPosition(metadata) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(metadata.compareDocumentPosition(favorite) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
+
+    const source = readFileSync(
+      resolve('apps/web/src/pages/music/RecentDownloadsPage.tsx'),
+      'utf8',
+    );
+    const css = readFileSync(
+      resolve('apps/web/src/pages/music/RecentDownloads.module.css'),
+      'utf8',
+    );
+    expect(source).toContain("const source = `recent:${data?.asOf ?? ''}`");
+    expect(source).not.toContain("copy['recent.snapshot']");
+    expect(css).toMatch(/\.period > div:not\(\.periodField\)\s*\{[^}]*flex:\s*0 1 clamp\(/);
+    expect(css).not.toMatch(/\.period\[data-custom='true'\]\s*\{[^}]*grid-column/);
   });
 
   /** Direct reload focuses the mounted product heading after capabilities resolve. */

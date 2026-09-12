@@ -32,3 +32,7 @@ Repeat at `/__preview/narrow` (320px), in KO, and with keyboard focus on the res
 ## Phase 11 S01 selection surface
 
 On folder and search-song collections, verify the single `Select songs` action is inside the shared heading tools immediately before List/Tiles. Artist and album detail routes keep their existing non-selection scope. After entering selection, measure the fixed bar at 1440×900, 1024×768, 390×844, and 320×844 before and after starting playback. It must stay inside the content gutter, remain separated from player/navigation, have no internal clipping, and leave the last song above the bar when scrolled to the end.
+
+## Phase 11 S03 collection parity
+
+Use the same built frontend to compare folder/search/album song collections with Recent listening, Frequently played, Recent downloads, and Favorites. Switching List/Tiles on All music must persist across the requested destinations. For tile consumers, verify the collection frame has no surface fill, individual cards keep the shared border/radius/surface, context stays outside the card, and available actions retain 44px alignment. Folder/search selection headings use one shared entry; artist/album detail routes keep their intentional non-selection scope.

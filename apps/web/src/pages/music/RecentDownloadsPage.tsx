@@ -12,6 +12,7 @@ import { Artwork } from '../../design/components/Artwork';
 import { TextField } from '../../design/components/TextField';
 import { StatusSurface } from '../../design/components/StatusSurface';
 import { formatCount, messages, type Locale } from '../../i18n';
+import { FavoriteAction } from '../../favorites/components/FavoriteAction';
 import { MusicRow } from '../../music/components/MusicRow';
 import {
   SongList,
@@ -278,13 +279,16 @@ export function RecentDownloadsPage({
           onApply={(filter) => void request('period', filter)}
         />
         {data && (
-          <p className={styles.scope}>
+          <p className={styles.scope} aria-describedby="recent-range-help">
             {copy['recent.range']
               .replace('{from}', date(data.filter.from))
               .replace('{to}', date(data.filter.to))}
-            <br />
-            {copy['recent.snapshot'].replace('{date}', date(data.asOf))}
           </p>
+        )}
+        {data && (
+          <span id="recent-range-help" className={styles.srOnly}>
+            {copy['recent.rangeHelp'].replace('{to}', date(data.filter.to))}
+          </span>
         )}
         <div className={styles.actions}>
           <Action
@@ -401,6 +405,11 @@ export function RecentDownloadsPage({
                     : {})}
                   onPause={player.pause}
                   onResume={player.resume}
+                  context={
+                    <time className={styles.date} dateTime={item.downloadCompletedAt}>
+                      {date(item.downloadCompletedAt)}
+                    </time>
+                  }
                   {...(selection.state.active
                     ? {
                         selected: selection.state.items.some((i) => i.id === song.id),
@@ -414,9 +423,7 @@ export function RecentDownloadsPage({
                   actions={
                     <>
                       <MetadataAction song={song} />
-                      <time className={styles.date} dateTime={item.downloadCompletedAt}>
-                        {date(item.downloadCompletedAt)}
-                      </time>
+                      <FavoriteAction song={song} locale={locale} compact />
                     </>
                   }
                 />
@@ -463,6 +470,7 @@ function RecentPeriodControl({
   return (
     <form
       className={styles.period}
+      data-custom={period === 'custom' || undefined}
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
@@ -476,7 +484,7 @@ function RecentPeriodControl({
         }
       }}
     >
-      <div className={fields.field}>
+      <div className={`${fields.field} ${styles.periodField}`} data-period-field="true">
         <label className={fields.label} htmlFor="recent-period">
           {copy['recent.period']}
         </label>
@@ -522,7 +530,7 @@ function RecentPeriodControl({
             disabled={busy}
             {...(invalid && from ? { error: copy['recent.invalid'] } : {})}
           />
-          <Action type="submit" busy={busy}>
+          <Action className={styles.apply} type="submit" busy={busy}>
             {copy['recent.apply']}
           </Action>
         </>

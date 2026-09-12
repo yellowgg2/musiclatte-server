@@ -18,3 +18,7 @@ Run the real favorite BFF against the deterministic synthetic upstream on ports 
 ## Phase 11 S01 selection surface
 
 Verify `Select songs` appears once in the Favorite songs heading immediately before List/Tiles, while Play favorites and Refresh favorites remain in the top action panel. Reuse the shared fixed-bar matrix from the library scenario and confirm selection survives player creation without horizontal overflow.
+
+## Phase 11 S03 collection parity
+
+From the shared Phase 11 browser session, enter Favorites after Recent downloads with Tiles already selected. Confirm the preference persists, the outer collection remains transparent, each song owns its card surface, and each available tile keeps Play → Music information → Favorite in aligned 44px cells. The common heading must retain one selection entry before List/Tiles and the feature-level Play favorites/Refresh favorites controls must not migrate into it.

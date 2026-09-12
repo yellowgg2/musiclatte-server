@@ -55,3 +55,8 @@
     gap: var(--space-3);
   }
 }
+@media (max-width: 22rem) {
+  .tiles[data-view='tiles'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
