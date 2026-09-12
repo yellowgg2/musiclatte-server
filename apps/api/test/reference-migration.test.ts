@@ -79,6 +79,7 @@ function setup(
     repository: {
       readBaseline: () => referenceBaseline,
       transition: (input) => transitions.push(input.stage),
+      completeVerifiedReferences: () => transitions.push('verified:succeeded'),
       resumeRecovery: (input) => transitions.push(`resume:${input.stage}`),
       referenceCheckpoints: () =>
         [...completed].map((key) => {
@@ -153,7 +154,7 @@ it('restores scan-removed occurrences, reconciles already desired work, and veri
     'star',
     'complete:star:star',
   ]);
-  expect(s.transitions).toEqual(['migrating_references', 'verifying', 'succeeded']);
+  expect(s.transitions).toEqual(['migrating_references', 'verifying', 'verified:succeeded']);
 });
 
 it('refuses an unrelated concurrent playlist edit without writing it', async () => {
@@ -167,7 +168,7 @@ it('reconciles an uncertain playlist write from exact readback', async () => {
   const s = setup(['B'], { throwAfterPlaylistWrite: true });
   await s.migration.process(claim);
   expect(s.playlists.get('playlist-a')!.songIds).toEqual([newId, 'B', newId]);
-  expect(s.transitions).toEqual(['migrating_references', 'verifying', 'succeeded']);
+  expect(s.transitions).toEqual(['migrating_references', 'verifying', 'verified:succeeded']);
 });
 
 it('records recovery without touching references when accepted authority is no longer valid', async () => {
@@ -190,5 +191,5 @@ it('verifies an unstarred baseline with zero playlists without adding a star', a
   });
   await s.migration.process(claim);
   expect(s.writes).toEqual(['checkpoint:star:star', 'complete:star:star']);
-  expect(s.transitions).toEqual(['migrating_references', 'verifying', 'succeeded']);
+  expect(s.transitions).toEqual(['migrating_references', 'verifying', 'verified:succeeded']);
 });

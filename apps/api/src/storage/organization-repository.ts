@@ -177,6 +177,30 @@ export function createOrganizationRepository(options: {
         'INSERT INTO organization_events(item_id,kind,payload_json,created_at) VALUES(?,?,?,?)',
       )
       .run(itemId, kind, JSON.stringify(payload), now());
+  const publishIdentityResolution = (
+    itemId: string,
+    mediaLinkId: string,
+    resolution: 'replacement_pending' | 'replacement_verified',
+  ) => {
+    const timestamp = now();
+    const marker = db
+      .prepare(
+        'INSERT OR IGNORE INTO organization_identity_publications(item_id,resolution,created_at) VALUES(?,?,?)',
+      )
+      .run(itemId, resolution, timestamp);
+    if (marker.changes === 0) return;
+    db.prepare(
+      `INSERT INTO metadata_changes(
+        item_id,media_link_id,identity_key,library_id,old_revision,new_revision,
+        related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at
+      )
+      SELECT item_id,media_link_id,identity_key,library_id,old_revision,new_revision,
+        related_ids_json,cover_generation,changed_fields_json,reflection_result,?
+      FROM metadata_changes
+      WHERE sequence=(SELECT MAX(sequence) FROM metadata_changes WHERE media_link_id=?)
+      ON CONFLICT(item_id) DO UPDATE SET sequence=excluded.sequence,created_at=excluded.created_at`,
+    ).run(timestamp, mediaLinkId);
+  };
   const rowFor = (itemId: string) =>
     db.prepare('SELECT * FROM organization_items WHERE id=?').get(itemId) as Row | undefined;
   const owned = (claim: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'>) => {
@@ -500,6 +524,7 @@ export function createOrganizationRepository(options: {
     ) {
       return atomic(() => {
         const row = owned(input);
+        if (input.stage === 'succeeded') throw new Error('invalid_transition');
         const current = { stage: row.stage as OrganizationStage };
         const state =
           input.stage === 'recovery_required' && current.stage === 'recovery_required'
@@ -542,6 +567,37 @@ export function createOrganizationRepository(options: {
           errorCode: state.errorCode ?? null,
           nextOwner: state.nextOwner ?? null,
         });
+        return decodeItem(rowFor(input.itemId)!);
+      });
+    },
+    completeVerifiedReferences(
+      input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'>,
+    ) {
+      return atomic(() => {
+        const row = owned(input);
+        if (
+          row.stage !== 'verifying' ||
+          row.new_track_id === null ||
+          db
+            .prepare(
+              "SELECT 1 FROM organization_reference_checkpoints WHERE item_id=? AND status<>'completed' LIMIT 1",
+            )
+            .get(input.itemId)
+        )
+          throw new Error('conflict');
+        const timestamp = now();
+        db.prepare(
+          "UPDATE organization_items SET stage='succeeded',error_code=NULL,next_owner=NULL,stage_changed_at=?,lease_owner=NULL,lease_expires_at=NULL,encrypted_job_grant=NULL,grant_epoch=NULL WHERE id=?",
+        ).run(timestamp, input.itemId);
+        db.prepare(
+          'UPDATE organization_attempts SET finished_at=?,error_code=NULL WHERE item_id=? AND generation=?',
+        ).run(timestamp, input.itemId, input.generation);
+        event(input.itemId, 'stage_changed', {
+          stage: 'succeeded',
+          errorCode: null,
+          nextOwner: null,
+        });
+        publishIdentityResolution(input.itemId, text(row.media_link_id), 'replacement_verified');
         return decodeItem(rowFor(input.itemId)!);
       });
     },
@@ -703,6 +759,10 @@ export function createOrganizationRepository(options: {
           input.newTrackId,
           mediaLinkId,
         );
+        db.prepare('UPDATE organization_items SET new_track_id=? WHERE id=?').run(
+          input.newTrackId,
+          input.itemId,
+        );
         const curation = db
           .prepare('SELECT id FROM curation_tracks WHERE media_link_id=?')
           .all(mediaLinkId);
@@ -728,6 +788,7 @@ export function createOrganizationRepository(options: {
           `organization:${input.itemId}:rebound`,
           now(),
         );
+        publishIdentityResolution(input.itemId, mediaLinkId, 'replacement_pending');
         return { trackRef };
       });
     },

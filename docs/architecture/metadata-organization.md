@@ -126,6 +126,27 @@ playlist ID set, metadata, full ordered occurrence lists, and star state with th
 Only that exact result advances to `succeeded` and clears the accepted grant. Reference migration
 does not call recent, scrobble, bookmark, listening-history, import, tag, or filesystem APIs.
 
+## Metadata identity proof
+
+Schema v25 keeps metadata reflection and organization identity replacement as independent audit
+axes. Rebinding stores the item's new opaque song ID and records one durable
+`replacement_pending` publication marker in the same transaction that updates the stable MediaLink
+and every metadata current binding. Exact playlist/star verification uses a dedicated completion
+operation; generic stage transitions cannot mark an item succeeded. That operation records
+`succeeded` and one `replacement_verified` marker atomically.
+
+Each first pending or verified marker reissues the latest existing `metadata_changes` row for the
+same MediaLink with a fresh monotonic sequence. Revision, related IDs, cover generation, changed
+fields, and the original reflection result are preserved. No metadata history means no synthetic
+change row; a later normal snapshot derives identity status from the organization ledger.
+
+Identity proof follows only organization edges for the same stable MediaLink. A unique chain of
+succeeded `old_track_id → new_track_id` edges from the metadata item's original ID to its current
+ID is verified. A succeeded prefix followed by one exact scanning/rebound/migrating/verifying edge
+is pending. Missing evidence, failed/recovery-only edges, cycles, ambiguous succeeded branches, or
+chains beyond 32 hops fail closed as unresolved. Organization success never rewrites the historical
+metadata `reflection_result`.
+
 ## Public admission and status
 
 The public boundary is a dedicated PAT-only candidate, preview, submit, status, and retry API.

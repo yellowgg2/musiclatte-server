@@ -100,7 +100,7 @@ async function setup() {
 describe('organization storage', () => {
   it('migrates through the organization schemas and keeps immutable intent idempotent', async () => {
     const s = await setup();
-    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 24 });
+    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 25 });
     const first = s.repository.createOrReplay(s.input);
     expect(
       s.repository.createOrReplay({ ...s.input, id: 'discarded', itemId: 'discarded-item' }),
@@ -324,9 +324,18 @@ describe('organization storage', () => {
     });
   });
 
+  /** Rebinding publishes one durable pending delta while preserving the original audit payload. */
   it('atomically rebinds the stable media link and every current projection', async () => {
     const s = await setup();
     s.repository.createOrReplay(s.input);
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO metadata_changes(item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at) VALUES('metadata-item','media-1',?,'library-1','revision-1','revision-2','{\"albumId\":\"album-1\"}','cover-1','[\"title\"]','reflection_mismatch',900)",
+      )
+      .run('1'.repeat(64));
+    const originalChange = s.c.db.connection
+      .prepare("SELECT * FROM metadata_changes WHERE item_id='metadata-item'")
+      .get()!;
     s.c.imports.createJob({
       id: 'source-job',
       identityKey: '8'.repeat(64),
@@ -381,6 +390,30 @@ describe('organization storage', () => {
         targetFileIdentity: '5'.repeat(64),
       }),
     ).toEqual({ trackRef });
+    const pendingChange = s.c.db.connection
+      .prepare("SELECT * FROM metadata_changes WHERE item_id='metadata-item'")
+      .get()!;
+    expect(Number(pendingChange.sequence)).toBeGreaterThan(Number(originalChange.sequence));
+    expect({
+      ...pendingChange,
+      sequence: originalChange.sequence,
+      created_at: originalChange.created_at,
+    }).toEqual(originalChange);
+    expect(
+      s.c.db.connection
+        .prepare('SELECT item_id,resolution FROM organization_identity_publications')
+        .all(),
+    ).toEqual([{ item_id: 'organization-item', resolution: 'replacement_pending' }]);
+    s.repository.rebindCurrent({
+      ...registration,
+      newTrackId: 'song-2',
+      targetFileIdentity: '5'.repeat(64),
+    });
+    expect(
+      s.c.db.connection
+        .prepare("SELECT sequence FROM metadata_changes WHERE item_id='metadata-item'")
+        .get(),
+    ).toEqual({ sequence: pendingChange.sequence });
     expect(s.c.mediaLinks.get('media-1')).toMatchObject({
       id: 'media-1',
       relativeFileKey: s.input.targetKey,
@@ -427,5 +460,130 @@ describe('organization storage', () => {
       stage: 'rebound',
       newTrackId: 'song-2',
     });
+    const references = s.repository.claimNext({
+      workerId: 'references',
+      leaseDurationMs: 100,
+    })!;
+    s.repository.transition({ ...references, stage: 'migrating_references' });
+    s.repository.putReferenceCheckpoint({
+      ...references,
+      kind: 'star',
+      referenceId: 'star',
+      baseline: false,
+      desired: false,
+    });
+    s.repository.completeReferenceCheckpoint({
+      ...references,
+      kind: 'star',
+      referenceId: 'star',
+    });
+    s.repository.transition({ ...references, stage: 'verifying' });
+    const beforeVerified = s.c.db.connection
+      .prepare("SELECT * FROM metadata_changes WHERE item_id='metadata-item'")
+      .get()!;
+    expect(() => s.repository.transition({ ...references, stage: 'succeeded' })).toThrow(
+      'invalid_transition',
+    );
+    expect(s.repository.completeVerifiedReferences(references)).toMatchObject({
+      stage: 'succeeded',
+      newTrackId: 'song-2',
+    });
+    const verifiedChange = s.c.db.connection
+      .prepare("SELECT * FROM metadata_changes WHERE item_id='metadata-item'")
+      .get()!;
+    expect(Number(verifiedChange.sequence)).toBeGreaterThan(Number(beforeVerified.sequence));
+    expect({
+      ...verifiedChange,
+      sequence: beforeVerified.sequence,
+      created_at: beforeVerified.created_at,
+    }).toEqual(beforeVerified);
+    expect(
+      s.c.db.connection
+        .prepare(
+          'SELECT item_id,resolution FROM organization_identity_publications ORDER BY resolution',
+        )
+        .all(),
+    ).toEqual([
+      { item_id: 'organization-item', resolution: 'replacement_pending' },
+      { item_id: 'organization-item', resolution: 'replacement_verified' },
+    ]);
+    expect(
+      s.c.db.connection.prepare('SELECT count(*) AS count FROM listening_events').get(),
+    ).toEqual({ count: 0 });
+    expect(
+      s.c.db.connection.prepare('SELECT count(*) AS count FROM listening_deliveries').get(),
+    ).toEqual({ count: 0 });
+  });
+
+  /** Publication failure rolls back the binding, durable marker, and sequence together. */
+  it('rolls back every rebind effect when pending publication fails', async () => {
+    const s = await setup();
+    s.repository.createOrReplay(s.input);
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO metadata_changes(item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at) VALUES('metadata-item','media-1',?,'library-1','revision-1','revision-2','{}','cover-1','[]','verified',900)",
+      )
+      .run('1'.repeat(64));
+    s.c.db.connection
+      .prepare(
+        "UPDATE organization_items SET stage='scanning',generation=1,lease_owner='worker',lease_expires_at=1100 WHERE id='organization-item'",
+      )
+      .run();
+    s.c.db.connection.exec(
+      "CREATE TRIGGER reject_identity_delta BEFORE UPDATE OF sequence ON metadata_changes BEGIN SELECT RAISE(ABORT,'reject identity delta'); END;",
+    );
+
+    expect(() =>
+      s.repository.rebindCurrent({
+        itemId: 'organization-item',
+        workerId: 'worker',
+        generation: 1,
+        newTrackId: 'song-2',
+        targetFileIdentity: '5'.repeat(64),
+      }),
+    ).toThrow('reject identity delta');
+    expect(s.c.mediaLinks.get('media-1')).toMatchObject({
+      relativeFileKey: s.input.sourceKey,
+      gonicSongId: 'song-1',
+      revision: 1,
+    });
+    expect(
+      s.c.db.connection
+        .prepare("SELECT current_track_id FROM metadata_items WHERE id='metadata-item'")
+        .get(),
+    ).toEqual({ current_track_id: 'song-1' });
+    expect(
+      s.c.db.connection
+        .prepare("SELECT new_track_id FROM organization_items WHERE id='organization-item'")
+        .get(),
+    ).toEqual({ new_track_id: null });
+    expect(
+      s.c.db.connection.prepare('SELECT * FROM organization_identity_publications').all(),
+    ).toEqual([]);
+  });
+
+  /** Organization completion without metadata history records proof but creates no synthetic change. */
+  it('does not create a metadata change when verified references have no change row', async () => {
+    const s = await setup();
+    s.repository.createOrReplay(s.input);
+    s.c.db.connection
+      .prepare(
+        "UPDATE organization_items SET stage='verifying',new_track_id='song-2',generation=1,lease_owner='worker',lease_expires_at=1100 WHERE id='organization-item'",
+      )
+      .run();
+
+    expect(
+      s.repository.completeVerifiedReferences({
+        itemId: 'organization-item',
+        workerId: 'worker',
+        generation: 1,
+      }),
+    ).toMatchObject({ stage: 'succeeded' });
+    expect(s.c.db.connection.prepare('SELECT * FROM metadata_changes').all()).toEqual([]);
+    expect(
+      s.c.db.connection
+        .prepare('SELECT item_id,resolution FROM organization_identity_publications')
+        .all(),
+    ).toEqual([{ item_id: 'organization-item', resolution: 'replacement_verified' }]);
   });
 });

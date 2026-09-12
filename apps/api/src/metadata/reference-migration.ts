@@ -16,9 +16,12 @@ interface ReferenceRepositoryPort {
   readBaseline(claim: OrganizationClaim): MetadataReferences;
   transition(
     input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
-      stage: 'migrating_references' | 'verifying' | 'succeeded' | 'recovery_required';
+      stage: 'migrating_references' | 'verifying' | 'recovery_required';
       errorCode?: string;
     },
+  ): unknown;
+  completeVerifiedReferences(
+    input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'>,
   ): unknown;
   resumeRecovery(
     input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
@@ -209,7 +212,7 @@ export function createReferenceMigration(options: {
         );
         if (starred !== baseline.starred || JSON.stringify(actual) !== JSON.stringify(expected))
           throw new Error('reference_conflict');
-        options.repository.transition({ ...fence(claim), stage: 'succeeded' });
+        options.repository.completeVerifiedReferences(fence(claim));
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : 'reference_conflict';
         options.repository.transition({
