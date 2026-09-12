@@ -737,6 +737,18 @@ export function id3OrganizationFinalMetadataBinding(item: Id3OrganizationBatchIt
   return target;
 }
 
+export function id3OrganizationPendingMetadataBinding(item: Id3OrganizationBatchItem) {
+  for (const step of ['required', 'optional'] as const) {
+    const target = item.metadataSteps[step];
+    if (
+      target.jobId !== null &&
+      (target.serverStage !== 'succeeded' || target.resultRevision === null)
+    )
+      return { step, target };
+  }
+  failure('journal_binding');
+}
+
 export function verifyId3OrganizationBatchContext(
   path: string,
   api: string,

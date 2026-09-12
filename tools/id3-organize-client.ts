@@ -28,6 +28,7 @@ import {
   id3OrganizationBatchBinding,
   id3OrganizationFinalMetadataBinding,
   id3OrganizationMetadataBinding,
+  id3OrganizationPendingMetadataBinding,
   id3OrganizationBatchStatus,
   nextId3OrganizationBatchItem,
   recordId3OrganizationBatchFailure,
@@ -63,6 +64,7 @@ export interface Id3OrganizeCommandOptions {
     | 'metadata-preview'
     | 'cover-upload'
     | 'metadata-submit'
+    | 'metadata-status'
     | 'organization-preview'
     | 'organization-submit'
     | 'status'
@@ -501,6 +503,29 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         true,
       );
     }
+  }
+  if (options.command === 'metadata-status') {
+    const binding = batchBinding();
+    if (!binding || binding.state !== 'metadata_accepted') fail('journal_binding');
+    const pending = id3OrganizationPendingMetadataBinding(binding);
+    const response = await call('/metadata-jobs/' + encodeURIComponent(pending.target.jobId!));
+    if (
+      !object(response) ||
+      !exact(response, ['schemaVersion', 'job']) ||
+      response.schemaVersion !== 1
+    )
+      fail('response');
+    const job = decodeMetadataJob(response.job);
+    const result = job.items.find((item) => item.originalTrackId === binding.trackId);
+    if (!result) fail('response');
+    checkpointId3OrganizationBatch(options.stateFile!, binding.trackId, {
+      kind: 'metadata',
+      step: pending.step,
+      jobId: job.id,
+      resultRevision: result.resultRevision,
+      serverStage: result.stage,
+    });
+    return { schemaVersion: 1 as const, job };
   }
   if (options.command === 'organization-submit') {
     const binding = batchBinding();

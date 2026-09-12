@@ -399,6 +399,34 @@ describe('private ID3 organization batch journal', () => {
           generation: 1,
           results: [{ trackId: 'A', status: 'granted' }],
         });
+      if (path.endsWith('/metadata-jobs/metadata-job-required'))
+        return Response.json({
+          schemaVersion: 1,
+          job: {
+            id: 'metadata-job-required',
+            libraryId: 'music',
+            createdAt: Date.now(),
+            status: 'succeeded',
+            kind: 'edit',
+            parentJobId: null,
+            items: [
+              {
+                itemId: 'item-1',
+                originalTrackId: 'A',
+                currentTrackId: 'A',
+                stage: 'succeeded',
+                fileSavedAt: 1,
+                reflectedAt: 2,
+                previousRevision: 'revision-1',
+                resultRevision: 'revision-2',
+                changedFields: ['title'],
+                errorCode: null,
+                recoveryActions: [],
+                restoreAvailable: true,
+              },
+            ],
+          },
+        });
       if (path.endsWith('/metadata-jobs')) {
         const required = Object.hasOwn(body.patch, 'title');
         return Response.json(
@@ -408,7 +436,7 @@ describe('private ID3 organization batch journal', () => {
               id: required ? 'metadata-job-required' : 'metadata-job-optional',
               libraryId: 'music',
               createdAt: Date.now(),
-              status: 'succeeded',
+              status: required ? 'queued' : 'succeeded',
               kind: 'edit',
               parentJobId: null,
               items: [
@@ -416,15 +444,15 @@ describe('private ID3 organization batch journal', () => {
                   itemId: 'item-1',
                   originalTrackId: 'A',
                   currentTrackId: 'A',
-                  stage: 'succeeded',
-                  fileSavedAt: 1,
-                  reflectedAt: 2,
+                  stage: required ? 'queued' : 'succeeded',
+                  fileSavedAt: required ? null : 1,
+                  reflectedAt: required ? null : 2,
                   previousRevision: required ? 'revision-1' : 'revision-2',
-                  resultRevision: required ? 'revision-2' : 'revision-3',
+                  resultRevision: required ? null : 'revision-3',
                   changedFields: [required ? 'title' : 'album'],
                   errorCode: null,
                   recoveryActions: [],
-                  restoreAvailable: true,
+                  restoreAvailable: !required,
                 },
               ],
             },
@@ -488,6 +516,11 @@ describe('private ID3 organization batch journal', () => {
       trackId: 'A',
       revision: 'revision-1',
       manifest: requiredManifest,
+    });
+    await runId3OrganizeCommand({
+      ...common,
+      command: 'metadata-status',
+      trackId: 'A',
     });
     await runId3OrganizeCommand({
       ...common,

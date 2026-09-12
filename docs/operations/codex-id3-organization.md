@@ -53,6 +53,7 @@ npm run id3:organize -- inspect --api https://service.example/api/v1 --token-fil
 npm run id3:organize -- metadata-preview --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision REVISION
 npm run id3:organize -- cover-upload --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --library-id LIBRARY_ID
 npm run id3:organize -- metadata-submit --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision REVISION --cover-upload-id UPLOAD_ID --operation-id STABLE_OPERATION_ID
+npm run id3:organize -- metadata-status --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID
 npm run id3:organize -- organization-preview --api https://service.example/api/v1 --token-file /absolute/private/token --track-id TRACK_ID --revision RESULT_REVISION
 npm run id3:organize -- organization-submit --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision RESULT_REVISION --metadata-job-id METADATA_JOB_ID --operation-id STABLE_OPERATION_ID --poll-attempts 180 --poll-interval-ms 1000 --recovery-retries 1
 ```
@@ -124,6 +125,11 @@ different stable operation/checkpoint for each metadata purpose; organization mu
 successful metadata job and revision. Existing schema-version-1 journals are normalized on read and
 atomically upgraded on their next checkpoint, preserving their prior metadata operation as the
 optional step. Do not edit or recreate a live journal to perform this upgrade.
+
+If an accepted metadata submit returns before its item succeeds, use `metadata-status` with the
+same state file and track. It reads the journal-owned job ID and checkpoints the server's current
+stage/result revision without acquiring a new claim or replaying the mutation. Continue to the next
+metadata step only after that checkpoint reports a successful nonempty result revision.
 
 For a new-session resume, reuse the same API, token file, and state file, then call `batch-next`.
 Resume the returned accepted job/revision checkpoint exactly; never research or mutate a succeeded
