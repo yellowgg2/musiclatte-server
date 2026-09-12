@@ -167,6 +167,101 @@ async function setup({
 }
 
 describe('metadata organization PAT API', () => {
+  /** A scoped PAT freezes and restores only its own references for a recorded successor. */
+  it('preserves duplicate playlist occurrences and a favorite across another account move', async () => {
+    const s = await setup();
+    s.c.state.favoriteSongIdsByUsername.set(password.username, [s.trackId]);
+    s.c.state.playlistEntryIds = [s.trackId, 'tr-B', s.trackId];
+    const snapshot = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/reference-snapshots',
+      headers: s.headers,
+      payload: { trackId: s.trackId },
+    });
+    expect(snapshot.statusCode, snapshot.body).toBe(200);
+    expect(snapshot.json()).toEqual({
+      schemaVersion: 1,
+      trackId: s.trackId,
+      starred: true,
+      playlists: [
+        {
+          id: 'pl-1',
+          name: 'Synthetic List',
+          owner: password.username,
+          songIds: [s.trackId, 'tr-B', s.trackId],
+        },
+      ],
+    });
+
+    const db = s.c.storage.db.connection;
+    const mediaLinkId = String(
+      db.prepare("SELECT media_link_id FROM metadata_items WHERE id='completed-item'").get()!
+        .media_link_id,
+    );
+    db.prepare(
+      "INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES('shared-job',?,'music',?,?,?,1,'id3-managed-v1','completed-metadata','revision','[]',?)",
+    ).run('7'.repeat(64), '8'.repeat(64), '9'.repeat(64), s.accessTokenId, recentNow);
+    db.prepare(
+      "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('shared-item','shared-job',?,'imports/account/Legacy/source.mp3','imports/account/Managed/source.mp3',?,'replacement-track',?,?,'succeeded',?)",
+    ).run(mediaLinkId, s.trackId, 'a'.repeat(64), 'b'.repeat(64), recentNow);
+    db.prepare('UPDATE media_links SET gonic_song_id=?,revision=revision+1 WHERE id=?').run(
+      'replacement-track',
+      mediaLinkId,
+    );
+    s.c.songs.push({
+      id: 'replacement-track',
+      title: 'Original synthetic',
+      artist: 'Original artist',
+      album: 'Original album',
+      isDir: false,
+      path: 'imports/account/Legacy/source.mp3',
+    });
+    s.c.state.favoriteSongIdsByUsername.set(password.username, []);
+    s.c.state.playlistEntryIds = ['tr-B'];
+    const restored = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/reference-restores',
+      headers: s.headers,
+      payload: {
+        trackId: snapshot.json().trackId,
+        newTrackId: 'replacement-track',
+        starred: snapshot.json().starred,
+        playlists: snapshot.json().playlists,
+      },
+    });
+    expect(restored.statusCode, restored.body).toBe(200);
+    expect(restored.json()).toEqual({
+      schemaVersion: 1,
+      trackId: s.trackId,
+      newTrackId: 'replacement-track',
+      starred: true,
+      playlistsRestored: 1,
+    });
+    expect(s.c.state.favoriteSongIdsByUsername.get(password.username)).toEqual([
+      'replacement-track',
+    ]);
+    expect(s.c.state.playlistEntryIds).toEqual(['replacement-track', 'tr-B', 'replacement-track']);
+  });
+
+  /** Restore cannot mutate collections without an exact successful organization relation. */
+  it('rejects an unrecorded successor without collection writes', async () => {
+    const s = await setup();
+    const response = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/reference-restores',
+      headers: s.headers,
+      payload: {
+        trackId: s.trackId,
+        newTrackId: 'unrecorded',
+        starred: true,
+        playlists: [],
+      },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(s.c.state.favoriteWriteObserved).toBe(false);
+    expect(s.c.state.mutationWriteCount).toBe(0);
+  });
+
   /** PAT collection reads freeze favorites and owned playlist duplicates without creating jobs. */
   it('should select favorites and an owned playlist as private frozen snapshots', async () => {
     const s = await setup();

@@ -80,6 +80,24 @@ npm run id3:organize -- batch-next --api https://service.example/api/v1 --token-
 npm run id3:organize -- batch-status --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json
 ```
 
+When more than one account can reference the same Gonic song, create one private reference snapshot
+per account before organization. After the organization job returns the successor track, restore
+and verify every account before advancing either batch:
+
+```sh
+npm run id3:organize -- references-snapshot --api https://service.example/api/v1 --token-file /absolute/private/account-token --track-id TRACK_ID --reference-file /absolute/private/account-track-references.json
+npm run id3:organize -- references-restore --api https://service.example/api/v1 --token-file /absolute/private/account-token --track-id TRACK_ID --new-track-id NEW_TRACK_ID --reference-file /absolute/private/account-track-references.json
+npm run id3:organize -- batch-adopt-successor --api https://service.example/api/v1 --token-file /absolute/private/other-account-token --state-file /absolute/private/other-account-batch.json --track-id TRACK_ID --new-track-id NEW_TRACK_ID --manifest /absolute/private/combined-verified-manifest.json
+```
+
+`references-snapshot` records only the authenticated account's favorite bit and owned playlists
+containing the old track. `references-restore` requires a successful server-recorded old-to-new
+organization relation, accepts only the exact baseline or post-scan state, restores duplicate
+occurrences and order idempotently, and verifies authenticated readback. A concurrent playlist edit
+is a conflict. `batch-adopt-successor` is only for an untouched frozen favorites item; it verifies
+the unique successor candidate, manifest fields, front JPEG, and server-restored favorite before
+recording success without a second file move.
+
 `batch-next` returns the first unfinished unique track and its occurrence count. Run the existing
 cover, metadata, organization submit, and status commands with both `--state-file` and that exact
 `--track-id`. The journal creates all stable operation IDs before mutation, reuses them after a

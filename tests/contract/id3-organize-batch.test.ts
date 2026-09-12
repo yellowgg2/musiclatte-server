@@ -377,6 +377,28 @@ describe('private ID3 organization batch journal', () => {
     expect(module.id3OrganizationBatchStatus(stopped.stateFile).stopped).toBe(false);
   });
 
+  it('completes an untouched frozen favorite through a verified shared successor', async () => {
+    const module = await batchModule();
+    expect(module).toHaveProperty('completeId3OrganizationBatchSharedItem');
+    if (!('completeId3OrganizationBatchSharedItem' in module)) return;
+    const { stateFile } = paths();
+    module.createId3OrganizationBatchJournal({
+      path: stateFile,
+      api: 'https://music.example/api/v1',
+      token: 'mlpat_' + 'x'.repeat(48),
+      selection: { ...selection, source: { kind: 'favorites' } },
+    });
+    module.nextId3OrganizationBatchItem(stateFile);
+    module.completeId3OrganizationBatchSharedItem(stateFile, 'A', 'A2');
+    expect(module.readId3OrganizationBatchJournal(stateFile).items[0]).toMatchObject({
+      state: 'succeeded',
+      organizationJobId: null,
+      newTrackId: 'A2',
+      serverStage: 'succeeded',
+    });
+    expect(module.nextId3OrganizationBatchItem(stateFile)).toMatchObject({ trackId: 'B' });
+  });
+
   /** Keeps distinct stable operations while chaining required metadata into optional metadata. */
   it('checkpoints required and optional metadata stages with distinct stable operation IDs', async () => {
     const module = await batchModule();

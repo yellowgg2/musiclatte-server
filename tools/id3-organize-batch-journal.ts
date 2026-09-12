@@ -177,8 +177,12 @@ function decodeItemV2(value: unknown): Id3OrganizationBatchItem {
   if (
     (['pending', 'researching', 'skipped'].includes(state) &&
       (hasMetadata || value.organizationJobId !== null)) ||
-    (['metadata_accepted', 'organization_accepted', 'succeeded'].includes(state) && !hasMetadata) ||
-    (['organization_accepted', 'succeeded'].includes(state) && value.organizationJobId === null) ||
+    (['metadata_accepted', 'organization_accepted'].includes(state) && !hasMetadata) ||
+    (state === 'succeeded' &&
+      !hasMetadata &&
+      (value.organizationJobId !== null || value.newTrackId === null)) ||
+    (state === 'succeeded' && hasMetadata && value.organizationJobId === null) ||
+    (state === 'organization_accepted' && value.organizationJobId === null) ||
     (optional.jobId !== null &&
       required.jobId !== null &&
       (required.serverStage !== 'succeeded' || required.resultRevision === null)) ||
@@ -617,6 +621,33 @@ export function skipId3OrganizationBatchItem(
       failure('journal_transition');
     item.state = 'skipped';
     item.errorCode = reason;
+  });
+}
+
+export function completeId3OrganizationBatchSharedItem(
+  path: string,
+  trackId: string,
+  newTrackId: string,
+) {
+  if (!opaque(newTrackId) || newTrackId === trackId) failure('journal_binding');
+  return updateJournal(path, (journal) => {
+    if (journal.stopped || journal.source.kind !== 'favorites') failure('journal_binding');
+    const item = journal.items.find((candidate) => candidate.trackId === trackId);
+    const current = journal.items.find(
+      (candidate) => !['succeeded', 'skipped', 'blocked'].includes(candidate.state),
+    );
+    if (
+      !item ||
+      current?.trackId !== trackId ||
+      item.state !== 'researching' ||
+      item.coverUploadId !== null ||
+      Object.values(item.metadataSteps).some(({ jobId }) => jobId !== null) ||
+      item.organizationJobId !== null
+    )
+      failure('journal_transition');
+    item.state = 'succeeded';
+    item.newTrackId = newTrackId;
+    item.serverStage = 'succeeded';
   });
 }
 

@@ -29,7 +29,7 @@ export function decodeMetadataReferences(value: unknown): MetadataReferences {
 }
 /** Scope is the authenticated account's visible playlists only. No foreign-account claim. */
 export async function captureMetadataReferences(
-  client: SubsonicClient,
+  client: Pick<SubsonicClient, 'getPlaylists' | 'getPlaylist' | 'getStarred2'>,
   trackId: string,
   signal?: AbortSignal,
 ): Promise<MetadataReferences> {

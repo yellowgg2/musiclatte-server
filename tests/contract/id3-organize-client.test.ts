@@ -7,6 +7,10 @@ import {
   readPrivateToken,
   runId3OrganizeCommand,
 } from '../../tools/id3-organize-client.js';
+import {
+  createId3OrganizationBatchJournal,
+  nextId3OrganizationBatchItem,
+} from '../../tools/id3-organize-batch-journal.js';
 
 const privateFile = (name: string, value: string) => {
   const root = mkdtempSync(join(tmpdir(), 'musiclatte-id3-client-'));
@@ -223,6 +227,186 @@ it('replays lost submits and bounds server-owned recovery retries', async () => 
   expect(submits).toBe(2);
   expect(retries).toBe(1);
   expect(status).toBe(3);
+});
+
+it('snapshots and restores current-account favorite and duplicate playlist references', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-reference-client-'));
+  const tokenFile = join(directory, 'token');
+  const referenceFile = join(directory, 'references.json');
+  writeFileSync(tokenFile, 'mlpat_' + 'g'.repeat(48), { mode: 0o600 });
+  let favoriteIds = ['old'];
+  let playlistIds = ['old', 'B', 'old'];
+  const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith('/metadata-organization/reference-snapshots'))
+      return Response.json({
+        schemaVersion: 1,
+        trackId: 'old',
+        starred: true,
+        playlists: [{ id: 'owned', name: 'Owned', owner: 'listener', songIds: [...playlistIds] }],
+      });
+    if (url.pathname.endsWith('/metadata-organization/reference-restores')) {
+      const body = JSON.parse(String(init?.body));
+      favoriteIds = ['new'];
+      playlistIds = body.playlists[0].songIds.map((id: string) => (id === 'old' ? 'new' : id));
+      return Response.json({
+        schemaVersion: 1,
+        trackId: 'old',
+        newTrackId: 'new',
+        starred: true,
+        playlistsRestored: 1,
+      });
+    }
+    throw new Error(`unexpected ${init?.method ?? 'GET'} ${url.pathname}`);
+  });
+  const common = {
+    api: 'https://music.example/api/v1',
+    tokenFile,
+    referenceFile,
+    trackId: 'old',
+    fetch: fetcher,
+  };
+  await runId3OrganizeCommand({ ...common, command: 'references-snapshot' });
+  playlistIds = ['B'];
+  favoriteIds = [];
+  const restored = await runId3OrganizeCommand({
+    ...common,
+    command: 'references-restore',
+    newTrackId: 'new',
+  });
+  expect(restored).toEqual({ schemaVersion: 1, favoriteRestored: true, playlistsRestored: 1 });
+  expect(favoriteIds).toEqual(['new']);
+  expect(playlistIds).toEqual(['new', 'B', 'new']);
+  for (const [input, init] of fetcher.mock.calls) {
+    expect(String(input)).not.toContain('mlpat_');
+    expect(String(init?.body ?? '')).not.toContain('mlpat_');
+  }
+});
+
+it('restores and adopts a verified successor for an untouched frozen favorite', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-shared-successor-'));
+  const token = 'mlpat_' + 'h'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const stateFile = join(directory, 'batch.json');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  createId3OrganizationBatchJournal({
+    path: stateFile,
+    api: 'https://music.example/api/v1',
+    token,
+    selection: {
+      schemaVersion: 1,
+      capturedAt: 1,
+      source: { kind: 'favorites' },
+      selectionRevision: 'a'.repeat(64),
+      occurrenceCount: 1,
+      uniqueTrackCount: 1,
+      items: [
+        {
+          trackId: 'old',
+          title: 'Exact title',
+          artist: 'Artist',
+          album: 'Unknown Album',
+          occurrenceIndexes: [0],
+        },
+      ],
+    },
+  });
+  nextId3OrganizationBatchItem(stateFile);
+  const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith('/metadata-organization/candidates'))
+      return Response.json({
+        schemaVersion: 1,
+        candidates: [
+          {
+            trackId: 'new',
+            libraryId: 'music',
+            title: 'Exact title',
+            artist: ['Artist'],
+            album: 'Album',
+            currentRevision: 'revision-new',
+            importSourceId: null,
+          },
+        ],
+        total: 1,
+      });
+    if (url.pathname.endsWith('/tracks/new/metadata'))
+      return Response.json({
+        schemaVersion: 1,
+        trackId: 'new',
+        editable: true,
+        reason: null,
+        format: 'mp3',
+        supportedFields: [
+          'title',
+          'artist',
+          'album',
+          'albumArtist',
+          'trackNumber',
+          'year',
+          'genre',
+          'cover',
+          'lyrics',
+        ],
+        fileRevision: 'revision-new',
+        values: {
+          title: 'Exact title',
+          artist: ['Artist'],
+          album: 'Album',
+          albumArtist: ['Artist'],
+          trackNumber: '1/1',
+          year: '2024',
+          genre: ['Pop'],
+        },
+        coverFrames: [
+          {
+            frameId: 'cover',
+            pictureType: 3,
+            description: '',
+            mimeType: 'image/jpeg',
+            previewUrl: '/api/v1/cover',
+          },
+        ],
+        lyricsFrames: [],
+        lastVerifiedAt: 1,
+      });
+    if (url.pathname.endsWith('/metadata-organization/reference-restores')) {
+      return Response.json({
+        schemaVersion: 1,
+        trackId: 'old',
+        newTrackId: 'new',
+        starred: true,
+        playlistsRestored: 0,
+      });
+    }
+    throw new Error('unexpected request');
+  });
+  const result = await runId3OrganizeCommand({
+    api: 'https://music.example/api/v1',
+    tokenFile,
+    stateFile,
+    fetch: fetcher,
+    command: 'batch-adopt-successor',
+    trackId: 'old',
+    newTrackId: 'new',
+    manifest: {
+      schemaVersion: 1,
+      metadata: {
+        title: 'Exact title',
+        artist: ['Artist'],
+        album: 'Album',
+        albumArtist: ['Artist'],
+        trackNumber: '1/1',
+        year: '2024',
+        genre: ['Pop'],
+      },
+      sourceEvidence: [
+        { url: 'https://artist.example/release', kind: 'official_artist', fields: ['title'] },
+      ],
+      cover: { path: '/private/cover.jpg', usageBasis: 'Private library' },
+    },
+  });
+  expect(result).toEqual({ schemaVersion: 1, status: 'succeeded', favoriteRestored: true });
 });
 
 /** Releases the short-lived curation reservation as soon as the metadata job is accepted. */

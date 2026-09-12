@@ -111,6 +111,31 @@ export interface OrganizationSelection {
   uniqueTrackCount: number;
   items: OrganizationSelectionItem[];
 }
+export interface OrganizationReferencePlaylist {
+  id: string;
+  name: string;
+  owner: string;
+  songIds: string[];
+}
+export interface OrganizationReferenceSnapshot {
+  schemaVersion: 1;
+  trackId: string;
+  starred: boolean;
+  playlists: OrganizationReferencePlaylist[];
+}
+export interface OrganizationReferenceRestoreRequest {
+  trackId: string;
+  newTrackId: string;
+  starred: boolean;
+  playlists: OrganizationReferencePlaylist[];
+}
+export interface OrganizationReferenceRestore {
+  schemaVersion: 1;
+  trackId: string;
+  newTrackId: string;
+  starred: boolean;
+  playlistsRestored: number;
+}
 
 const text = { type: 'string', minLength: 1, maxLength: 4096 } as const;
 const id = { type: 'string', minLength: 1, maxLength: 2048 } as const;
@@ -192,6 +217,17 @@ const selectionItem = {
     },
   },
 } as const;
+const referencePlaylist = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'name', 'owner', 'songIds'],
+  properties: {
+    id,
+    name: text,
+    owner: id,
+    songIds: { type: 'array', maxItems: 100000, items: id },
+  },
+} as const;
 const job = {
   type: 'object',
   additionalProperties: false,
@@ -226,6 +262,23 @@ export const organizationRequestSchemas = {
     additionalProperties: false,
     required: ['source'],
     properties: { source: selectionSourceRequest },
+  },
+  referenceSnapshot: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['trackId'],
+    properties: { trackId: id },
+  },
+  referenceRestore: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['trackId', 'newTrackId', 'starred', 'playlists'],
+    properties: {
+      trackId: id,
+      newTrackId: id,
+      starred: { type: 'boolean' },
+      playlists: { type: 'array', maxItems: 1000, items: referencePlaylist },
+    },
   },
   candidates: {
     type: 'object',
@@ -283,6 +336,29 @@ export const organizationResponseSchemas = {
       occurrenceCount: { type: 'integer', minimum: 0, maximum: 1000 },
       uniqueTrackCount: { type: 'integer', minimum: 0, maximum: 1000 },
       items: { type: 'array', maxItems: 1000, items: selectionItem },
+    },
+  },
+  referenceSnapshot: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schemaVersion', 'trackId', 'starred', 'playlists'],
+    properties: {
+      schemaVersion: { const: 1 },
+      trackId: id,
+      starred: { type: 'boolean' },
+      playlists: { type: 'array', maxItems: 1000, items: referencePlaylist },
+    },
+  },
+  referenceRestore: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schemaVersion', 'trackId', 'newTrackId', 'starred', 'playlistsRestored'],
+    properties: {
+      schemaVersion: { const: 1 },
+      trackId: id,
+      newTrackId: id,
+      starred: { type: 'boolean' },
+      playlistsRestored: { type: 'integer', minimum: 0, maximum: 1000 },
     },
   },
   candidates: {

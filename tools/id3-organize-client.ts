@@ -23,6 +23,7 @@ import {
 } from '@musiclatte/contracts';
 import {
   checkpointId3OrganizationBatch,
+  completeId3OrganizationBatchSharedItem,
   createId3OrganizationBatchJournal,
   id3OrganizationBatchBinding,
   id3OrganizationFinalMetadataBinding,
@@ -34,6 +35,11 @@ import {
   skipId3OrganizationBatchItem,
   verifyId3OrganizationBatchContext,
 } from './id3-organize-batch-journal.js';
+import {
+  checkpointId3ReferenceRestore,
+  createId3ReferenceSnapshot,
+  verifyId3ReferenceContext,
+} from './id3-organize-reference-guard.js';
 
 type MetadataValues = Partial<{
   title: string;
@@ -71,7 +77,10 @@ export interface Id3OrganizeCommandOptions {
     | 'batch-start'
     | 'batch-next'
     | 'batch-skip'
-    | 'batch-status';
+    | 'batch-status'
+    | 'references-snapshot'
+    | 'references-restore'
+    | 'batch-adopt-successor';
   title?: string;
   libraryId?: string;
   trackId?: string;
@@ -86,6 +95,8 @@ export interface Id3OrganizeCommandOptions {
   source?: 'favorites' | 'playlist';
   playlistId?: string;
   skipReason?: string;
+  referenceFile?: string;
+  newTrackId?: string;
   poll?: PollOptions;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -344,6 +355,122 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const stateFile = required(options.stateFile, 'state_file');
     verifyId3OrganizationBatchContext(stateFile, base, token);
     return id3OrganizationBatchStatus(stateFile);
+  }
+  if (options.command === 'batch-adopt-successor') {
+    if (!options.manifest) fail('manifest');
+    const stateFile = required(options.stateFile, 'state_file');
+    const oldTrackId = required(options.trackId, 'target');
+    const newTrackId = required(options.newTrackId, 'target');
+    const journal = verifyId3OrganizationBatchContext(stateFile, base, token);
+    if (journal.source.kind !== 'favorites') fail('journal_binding');
+    const binding = id3OrganizationBatchBinding(stateFile, oldTrackId);
+    if (
+      binding.state !== 'researching' ||
+      binding.coverUploadId !== null ||
+      Object.values(binding.metadataSteps).some(({ jobId }) => jobId !== null) ||
+      binding.organizationJobId !== null
+    )
+      fail('journal_binding');
+    const expectedTitle = options.manifest.metadata.title ?? binding.title;
+    const query = new URLSearchParams({ title: expectedTitle });
+    const candidates = decodeOrganizationCandidates(
+      await call('/metadata-organization/candidates?' + query.toString()),
+    );
+    if (candidates.candidates.filter((candidate) => candidate.trackId === newTrackId).length !== 1)
+      fail('shared_successor');
+    const inspected = decodeMetadataSnapshot(
+      await call('/tracks/' + encodeURIComponent(newTrackId) + '/metadata'),
+    );
+    for (const [field, expected] of Object.entries(options.manifest.metadata)) {
+      const actual = inspected.values[field as keyof typeof inspected.values];
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) fail('shared_successor');
+    }
+    if (
+      options.manifest.cover &&
+      inspected.coverFrames.filter(
+        (frame) => frame.pictureType === 3 && frame.mimeType === 'image/jpeg',
+      ).length !== 1
+    )
+      fail('shared_successor');
+    const restored = decodeReferenceRestore(
+      await jsonPost(
+        '/metadata-organization/reference-restores',
+        { trackId: oldTrackId, newTrackId, starred: true, playlists: [] },
+        [200],
+      ),
+    );
+    if (
+      restored.trackId !== oldTrackId ||
+      restored.newTrackId !== newTrackId ||
+      !restored.starred ||
+      restored.playlistsRestored !== 0
+    )
+      fail('reference_conflict');
+    completeId3OrganizationBatchSharedItem(stateFile, oldTrackId, newTrackId);
+    return { schemaVersion: 1 as const, status: 'succeeded' as const, favoriteRestored: true };
+  }
+  if (options.command === 'references-snapshot') {
+    const referenceFile = required(options.referenceFile, 'reference_file');
+    const trackId = required(options.trackId, 'target');
+    const references = decodeReferenceSnapshot(
+      await jsonPost('/metadata-organization/reference-snapshots', { trackId }, [200]),
+    );
+    const snapshot = createId3ReferenceSnapshot({
+      path: referenceFile,
+      api: base,
+      token,
+      trackId,
+      starred: references.starred,
+      playlists: references.playlists,
+    });
+    return {
+      schemaVersion: 1 as const,
+      starred: snapshot.starred,
+      playlistCount: snapshot.playlists.length,
+    };
+  }
+  if (options.command === 'references-restore') {
+    const referenceFile = required(options.referenceFile, 'reference_file');
+    const newTrackId = required(options.newTrackId, 'target');
+    const snapshot = verifyId3ReferenceContext(referenceFile, base, token);
+    if (options.trackId !== undefined && options.trackId !== snapshot.trackId)
+      fail('reference_context');
+    const restored = decodeReferenceRestore(
+      await jsonPost(
+        '/metadata-organization/reference-restores',
+        {
+          trackId: snapshot.trackId,
+          newTrackId,
+          starred: snapshot.starred,
+          playlists: snapshot.playlists.map(({ id, name, owner, songIds }) => ({
+            id,
+            name,
+            owner,
+            songIds,
+          })),
+        },
+        [200],
+      ),
+    );
+    if (
+      restored.trackId !== snapshot.trackId ||
+      restored.newTrackId !== newTrackId ||
+      restored.starred !== snapshot.starred ||
+      restored.playlistsRestored !== snapshot.playlists.length
+    )
+      fail('reference_conflict');
+    checkpointId3ReferenceRestore(referenceFile, { kind: 'favorite', newTrackId });
+    for (const saved of snapshot.playlists)
+      checkpointId3ReferenceRestore(referenceFile, {
+        kind: 'playlist',
+        playlistId: saved.id,
+        newTrackId,
+      });
+    return {
+      schemaVersion: 1 as const,
+      favoriteRestored: snapshot.starred,
+      playlistsRestored: snapshot.playlists.length,
+    };
   }
 
   const batchBinding = () => {
@@ -645,6 +772,61 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
   }
 }
 
+function decodeReferenceSnapshot(response: unknown) {
+  if (
+    !object(response) ||
+    !exact(response, ['schemaVersion', 'trackId', 'starred', 'playlists']) ||
+    response.schemaVersion !== 1 ||
+    !text(response.trackId, 2048) ||
+    typeof response.starred !== 'boolean' ||
+    !Array.isArray(response.playlists) ||
+    response.playlists.length > 1000
+  )
+    fail('response');
+  const playlists = response.playlists.map((entry) => {
+    if (
+      !object(entry) ||
+      !exact(entry, ['id', 'name', 'owner', 'songIds']) ||
+      !text(entry.id, 2048) ||
+      !text(entry.name, 4096) ||
+      !text(entry.owner, 2048) ||
+      !Array.isArray(entry.songIds) ||
+      entry.songIds.length > 100000 ||
+      entry.songIds.some((id) => !text(id, 2048))
+    )
+      fail('response');
+    return entry as unknown as { id: string; name: string; owner: string; songIds: string[] };
+  });
+  return {
+    schemaVersion: 1 as const,
+    trackId: response.trackId,
+    starred: response.starred,
+    playlists,
+  };
+}
+
+function decodeReferenceRestore(response: unknown) {
+  if (
+    !object(response) ||
+    !exact(response, ['schemaVersion', 'trackId', 'newTrackId', 'starred', 'playlistsRestored']) ||
+    response.schemaVersion !== 1 ||
+    !text(response.trackId, 2048) ||
+    !text(response.newTrackId, 2048) ||
+    typeof response.starred !== 'boolean' ||
+    !Number.isSafeInteger(response.playlistsRestored) ||
+    Number(response.playlistsRestored) < 0 ||
+    Number(response.playlistsRestored) > 1000
+  )
+    fail('response');
+  return response as unknown as {
+    schemaVersion: 1;
+    trackId: string;
+    newTrackId: string;
+    starred: boolean;
+    playlistsRestored: number;
+  };
+}
+
 function parseArgs(argv: string[]) {
   const command = argv[0] as Id3OrganizeCommandOptions['command'];
   const values = new Map<string, string>();
@@ -674,6 +856,8 @@ function parseArgs(argv: string[]) {
     ['state-file', 'stateFile'],
     ['playlist-id', 'playlistId'],
     ['skip-reason', 'skipReason'],
+    ['reference-file', 'referenceFile'],
+    ['new-track-id', 'newTrackId'],
   ] as const;
   for (const [flag, property] of optional) {
     const value = values.get(flag);

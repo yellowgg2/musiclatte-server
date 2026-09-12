@@ -7,6 +7,7 @@ import {
   type OrganizationPreviewRequest,
   type OrganizationSelectionRequest,
   type OrganizationSelectionSource,
+  type OrganizationReferenceRestoreRequest,
 } from '@musiclatte/contracts';
 import { ApiError, type SessionService } from '../auth/session-service.js';
 import {
@@ -24,6 +25,8 @@ import { createOrganizationCandidates } from './organization-candidates.js';
 import { rejectMetadataUpstream } from '../auth/metadata-principal.js';
 import { isOrganizationAlbumProjectionPending } from './organization-album-projection.js';
 import { createOrganizationSelection } from './organization-selection.js';
+import { captureMetadataReferences, decodeMetadataReferences } from './reference-check.js';
+import { restoreMetadataReferencesForSuccessor } from './reference-restoration.js';
 
 type Principal = Awaited<ReturnType<typeof verifyAccessTokenPrincipal>>;
 
@@ -113,6 +116,77 @@ export function createOrganizationService(service: SessionService) {
     return { file, snapshot, plan };
   };
   return {
+    async referenceSnapshot(principal: Principal, body: { trackId: string }, signal?: AbortSignal) {
+      available();
+      await provider.resolver.resolve(principal, body.trackId, 'read');
+      try {
+        const references = await captureMetadataReferences(
+          principal.upstream,
+          body.trackId,
+          signal,
+        );
+        await revalidateMetadataPrincipal(service, principal);
+        return { schemaVersion: 1 as const, ...references };
+      } catch (error) {
+        if (error instanceof ApiError) throw error;
+        return rejectMetadataUpstream(service, principal, error);
+      }
+    },
+    async restoreReferences(
+      principal: Principal,
+      body: OrganizationReferenceRestoreRequest,
+      signal?: AbortSignal,
+    ) {
+      available();
+      if (body.trackId === body.newTrackId) throw new ApiError(422, 'invalid_request');
+      let baseline;
+      try {
+        baseline = decodeMetadataReferences({
+          trackId: body.trackId,
+          starred: body.starred,
+          playlists: body.playlists,
+        });
+      } catch {
+        throw new ApiError(422, 'invalid_request');
+      }
+      const successor = db
+        .prepare(
+          "SELECT j.library_id AS libraryId,i.media_link_id AS mediaLinkId FROM organization_items i JOIN organization_jobs j ON j.id=i.job_id WHERE i.old_track_id=? AND i.new_track_id=? AND i.stage='succeeded' ORDER BY i.stage_changed_at DESC LIMIT 1",
+        )
+        .get(body.trackId, body.newTrackId) as
+        { libraryId: string; mediaLinkId: string } | undefined;
+      if (!successor || !principal.allowedLibraries.includes(successor.libraryId))
+        throw new ApiError(422, 'invalid_request');
+      const resolved = await provider.resolver.resolve(principal, body.newTrackId, 'read');
+      if (
+        resolved.libraryId !== successor.libraryId ||
+        resolved.mediaLinkId !== successor.mediaLinkId
+      )
+        throw new ApiError(409, 'conflict');
+      await revalidateMetadataPrincipal(service, principal);
+      try {
+        const restored = await restoreMetadataReferencesForSuccessor({
+          client: principal.upstream,
+          username: principal.identity.username,
+          baseline,
+          newTrackId: body.newTrackId,
+          ...(signal ? { signal } : {}),
+        });
+        await revalidateMetadataPrincipal(service, principal);
+        return {
+          schemaVersion: 1 as const,
+          trackId: body.trackId,
+          newTrackId: body.newTrackId,
+          starred: restored.starred,
+          playlistsRestored: restored.playlists.length,
+        };
+      } catch (error) {
+        if (error instanceof ApiError) throw error;
+        if (error instanceof Error && error.message === 'reference_conflict')
+          throw new ApiError(409, 'conflict');
+        return rejectMetadataUpstream(service, principal, error);
+      }
+    },
     async selection(
       principal: Principal,
       body: OrganizationSelectionRequest,

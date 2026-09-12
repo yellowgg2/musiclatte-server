@@ -5,6 +5,7 @@ import {
   type OrganizationJobRequest,
   type OrganizationPreviewRequest,
   type OrganizationSelectionRequest,
+  type OrganizationReferenceRestoreRequest,
   type AccessTokenScope,
 } from '@musiclatte/contracts';
 import { requiredCredentials } from '../auth/guards.js';
@@ -70,6 +71,41 @@ export function registerMetadataOrganizationRoutes(
         request,
         { json: true, scopes: ['metadata:read', 'collections:read'] },
         (principal, signal) => getService().selection(principal, request.body, signal),
+      ),
+  );
+  app.post<{ Body: { trackId: string } }>(
+    '/api/v1/metadata-organization/reference-snapshots',
+    {
+      attachValidation: true,
+      schema: {
+        querystring: requests.empty,
+        body: requests.referenceSnapshot,
+        response: { 200: responses.referenceSnapshot },
+      },
+    },
+    (request) =>
+      boundary(
+        request,
+        { json: true, scopes: ['collections:read', 'media:organize'] },
+        (principal, signal) => getService().referenceSnapshot(principal, request.body, signal),
+      ),
+  );
+  app.post<{ Body: OrganizationReferenceRestoreRequest }>(
+    '/api/v1/metadata-organization/reference-restores',
+    {
+      attachValidation: true,
+      bodyLimit: 4 * 1024 * 1024,
+      schema: {
+        querystring: requests.empty,
+        body: requests.referenceRestore,
+        response: { 200: responses.referenceRestore },
+      },
+    },
+    (request) =>
+      boundary(
+        request,
+        { json: true, scopes: ['collections:read', 'media:organize'] },
+        (principal, signal) => getService().restoreReferences(principal, request.body, signal),
       ),
   );
   app.get<{ Querystring: { title: string; libraryId?: string; limit?: string } }>(
