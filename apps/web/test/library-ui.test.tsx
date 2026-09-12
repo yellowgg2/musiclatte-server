@@ -681,6 +681,10 @@ describe('library regression boundaries', () => {
     expect(
       gallery.querySelectorAll('[data-gallery-layout="tiles"] li[data-layout="tile"]'),
     ).toHaveLength(2);
+    expect(gallery.querySelectorAll('ul[data-view="list"]')).toHaveLength(1);
+    expect(gallery.querySelectorAll('ul[data-view="tiles"]')).toHaveLength(1);
+    expect(within(gallery).getByRole('button', { name: '곡 선택' })).toBeTruthy();
+    expect(within(gallery).getByText('방금 전').closest('[data-song-context]')).not.toBeNull();
     const play = within(gallery).getAllByRole('button', { name: /재생$/ })[0]!;
     await userEvent.setup().click(play);
     expect(within(gallery).getAllByRole('button', { name: /일시 정지$/ })).toHaveLength(1);

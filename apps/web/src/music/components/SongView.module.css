@@ -13,6 +13,16 @@
   flex-wrap: wrap;
   gap: var(--space-3);
 }
+.tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+  margin-inline-start: auto;
+}
 .action {
   min-height: var(--control-size);
 }
@@ -20,19 +30,27 @@
   background: var(--color-selection);
   color: var(--color-text);
 }
-.tiles {
+.list {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tiles[data-view='tiles'] {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
   align-items: stretch;
   gap: var(--space-4);
   border: 0;
   background: transparent;
+  box-shadow: none;
+  padding: 0;
 }
-.tiles > :not([data-layout='tile']) {
+.tiles[data-view='tiles'] > :not([data-layout='tile']) {
   grid-column: 1 / -1;
 }
 @media (max-width: 30rem) {
-  .tiles {
+  .tiles[data-view='tiles'] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-3);
   }

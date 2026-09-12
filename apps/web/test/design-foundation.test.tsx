@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MusicRow } from '../src/music/components/MusicRow';
+import { SongList, SongViewHeading } from '../src/music/components/SongView';
 
 afterEach(cleanup);
 async function makeSUT(name: string): Promise<ComponentType<Record<string, unknown>>> {
@@ -144,6 +145,74 @@ describe('design foundation', () => {
     );
     expect(screen.getByRole('button', { name: 'Edit First song' }).closest('li')).toBe(
       view.container.querySelector('li'),
+    );
+  });
+
+  /** Shared collection tools keep feature actions before the accessible view toggle. */
+  it('should order song collection actions before the shared view toggle', () => {
+    render(
+      <SongViewHeading
+        locale="en"
+        view="list"
+        onChange={() => {}}
+        actions={<button>Select songs</button>}
+      >
+        Songs (2)
+      </SongViewHeading>,
+    );
+
+    const heading = screen.getByRole('heading', { name: 'Songs (2)' });
+    const tools = heading.nextElementSibling;
+    expect(tools?.getAttribute('data-song-view-tools')).toBe('true');
+    expect(
+      Array.from(tools?.querySelectorAll('button') ?? []).map((button) => button.textContent),
+    ).toEqual(['Select songs', 'List', 'Tiles']);
+    expect(screen.getByRole('group', { name: 'Song view' }).parentElement).toBe(tools);
+  });
+
+  /** Optional context stays outside the tile card without changing list semantics. */
+  it('should render music row context before its tile card body', () => {
+    render(
+      <SongList view="tiles" aria-label="Songs">
+        <MusicRow
+          song={{ id: 'song-a', title: 'First song', isDir: false }}
+          locale="en"
+          layout="tile"
+          context={<time dateTime="2026-09-12T00:00:00Z">Just now</time>}
+        />
+      </SongList>,
+    );
+
+    const list = screen.getByRole('list', { name: 'Songs' });
+    const context = screen.getByText('Just now');
+    const row = context.closest('li');
+    expect(list.getAttribute('data-view')).toBe('tiles');
+    expect(row?.firstElementChild).toBe(context.parentElement);
+    expect(context.parentElement?.nextElementSibling?.getAttribute('data-layout')).toBe('tile');
+  });
+
+  /** Tile framing belongs to the shared list state and individual card body. */
+  it('should own transparent tile framing and card surfaces in shared components', () => {
+    const listCss = readFileSync(
+      resolve('apps/web/src/music/components/SongView.module.css'),
+      'utf8',
+    );
+    const rowCss = readFileSync(
+      resolve('apps/web/src/music/components/MusicRow.module.css'),
+      'utf8',
+    );
+
+    expect(listCss).toMatch(
+      /\.tiles\[data-view='tiles'\][^{]*\{[^}]*border:\s*0[^}]*background:\s*transparent[^}]*box-shadow:\s*none/,
+    );
+    expect(listCss).toMatch(/\.tools[^{]*\{[^}]*flex-wrap:\s*nowrap[^}]*max-width:\s*100%/);
+    expect(listCss).toMatch(/\.list[^{]*\{[^}]*padding:\s*0[^}]*list-style:\s*none/);
+    expect(rowCss).not.toMatch(/\.row\[data-layout='tile'\][^{]*\{[^}]*background:/);
+    expect(rowCss).toMatch(
+      /\.rowMain\[data-layout='tile'\][^{]*\{[^}]*border:\s*1px solid var\(--color-border\)[^}]*background:\s*var\(--color-surface\)/,
+    );
+    expect(rowCss).toMatch(
+      /@media \(max-width: 30rem\)[\s\S]*\.rowMain:not\(\[data-layout='tile'\]\)\[data-selectable='true'\][^{]*\{[^}]*grid-template-columns:\s*var\(--control-size\) minmax\(0, 1fr\) var\(--control-size\)/,
     );
   });
 

@@ -126,11 +126,7 @@
   color: var(--color-secondary);
 }
 .musicTiles {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 12rem));
-  gap: var(--space-4);
-  list-style: none;
-  padding: 0;
+  max-width: 26rem;
 }
 .foundationGrid {
   display: grid;

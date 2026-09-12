@@ -49,17 +49,22 @@ export function SongViewHeading({
   locale,
   view,
   onChange,
+  actions,
   children,
 }: {
   locale: Locale;
   view: SongView;
   onChange: (view: SongView) => void;
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className={styles.heading}>
       <h2>{children}</h2>
-      <SongViewToggle locale={locale} view={view} onChange={onChange} />
+      <div className={styles.tools} data-song-view-tools="true">
+        {actions}
+        <SongViewToggle locale={locale} view={view} onChange={onChange} />
+      </div>
     </div>
   );
 }
@@ -77,7 +82,9 @@ export function SongList({
   return (
     <ul
       {...props}
-      className={[className, view === 'tiles' ? styles.tiles : ''].filter(Boolean).join(' ')}
+      className={[className, styles.list, view === 'tiles' ? styles.tiles : '']
+        .filter(Boolean)
+        .join(' ')}
       data-view={view}
     >
       {children}

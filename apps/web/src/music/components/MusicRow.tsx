@@ -23,6 +23,7 @@ export function MusicRow({
   coverUrl,
   selected,
   onSelect,
+  context,
   actions,
   layout = 'list',
 }: {
@@ -39,6 +40,7 @@ export function MusicRow({
   coverUrl?: (id: string) => string;
   selected?: boolean;
   onSelect?: (selected: boolean) => void;
+  context?: ReactNode;
   actions?: ReactNode;
   layout?: 'list' | 'tile';
 }) {
@@ -47,6 +49,11 @@ export function MusicRow({
   const seconds = song.duration === undefined ? null : Math.floor(song.duration);
   return (
     <li className={styles.row} data-layout={layout}>
+      {context && (
+        <div className={styles.context} data-song-context>
+          {context}
+        </div>
+      )}
       <div
         className={styles.rowMain}
         data-layout={layout}

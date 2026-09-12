@@ -1,4 +1,5 @@
 import { MusicRow } from '../music/components/MusicRow';
+import { SongList, SongViewHeading, type SongView } from '../music/components/SongView';
 import { PlaylistOccurrenceActions } from '../playlists/components/PlaylistOccurrenceActions';
 import { librarySongs } from './library-fixtures';
 import { useEffect, useState } from 'react';
@@ -27,6 +28,7 @@ export function Gallery() {
   const [previewSongId, setPreviewSongId] = useState<string | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [selectedSongIds, setSelectedSongIds] = useState<string[]>([]);
+  const [gallerySongView, setGallerySongView] = useState<SongView>('list');
   const t = messages[locale];
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -318,8 +320,19 @@ export function Gallery() {
           </div>
         </section>
         <section id="music-row" className={styles.section}>
-          <h2>{t['music.songs']}</h2>
-          <ul style={{ listStyle: 'none', padding: 0 }}>
+          <SongViewHeading
+            locale={locale}
+            view={gallerySongView}
+            onChange={setGallerySongView}
+            actions={
+              <Action variant="quiet" onClick={respond}>
+                {t['selection.enter']}
+              </Action>
+            }
+          >
+            {t['music.songs']}
+          </SongViewHeading>
+          <SongList view="list" aria-label={t['music.songs']}>
             {librarySongs.map((song, position) => (
               <MusicRow
                 key={song.id}
@@ -358,9 +371,14 @@ export function Gallery() {
                   : {})}
               />
             ))}
-          </ul>
+          </SongList>
           <h3 className={styles.variantHeading}>{t['songView.tiles']}</h3>
-          <ul className={styles.musicTiles} data-gallery-layout="tiles">
+          <SongList
+            className={styles.musicTiles}
+            data-gallery-layout="tiles"
+            view="tiles"
+            aria-label={`${t['music.songs']} · ${t['songView.tiles']}`}
+          >
             {librarySongs.slice(0, 2).map((song, position) => (
               <MusicRow
                 key={song.id}
@@ -370,6 +388,9 @@ export function Gallery() {
                 layout="tile"
                 {...(position === 0
                   ? {
+                      context: (
+                        <time dateTime="2026-09-12T12:00:00Z">{t['gallery.contextTime']}</time>
+                      ),
                       onActivate: respond,
                       actions: (
                         <>
@@ -396,7 +417,7 @@ export function Gallery() {
                   : {})}
               />
             ))}
-          </ul>
+          </SongList>
         </section>
         <footer className={styles.footer}>
           <span>musiclatte</span>

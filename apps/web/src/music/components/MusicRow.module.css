@@ -6,6 +6,23 @@
 }
 .row[data-layout='tile'] {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.context {
+  align-self: flex-start;
+  max-width: 100%;
+  color: var(--color-secondary);
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.row:not([data-layout='tile']) > .context {
+  margin: var(--space-2) var(--space-4) 0;
+}
+.rowMain[data-layout='tile'] {
+  flex: 1;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-surface);
   background: var(--color-surface);
@@ -20,7 +37,6 @@
   grid-template-columns: var(--control-size) minmax(0, 1fr) auto auto;
 }
 .rowMain[data-layout='tile'] {
-  height: 100%;
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
     'details'
@@ -256,6 +272,12 @@
   padding: var(--space-3) 0 0;
 }
 @media (max-width: 30rem) {
+  .rowMain:not([data-layout='tile']) {
+    grid-template-columns: minmax(0, 1fr) var(--control-size);
+  }
+  .rowMain:not([data-layout='tile'])[data-selectable='true'] {
+    grid-template-columns: var(--control-size) minmax(0, 1fr) var(--control-size);
+  }
   .rowActions {
     grid-column: 1 / -1;
     justify-content: flex-end;
