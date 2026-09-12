@@ -120,6 +120,9 @@ function decodeMetadataStep(value: unknown): Id3OrganizationMetadataStep {
   return value as unknown as Id3OrganizationMetadataStep;
 }
 
+const metadataCanOrganize = (step: Id3OrganizationMetadataStep) =>
+  step.resultRevision !== null && ['succeeded', 'reflecting'].includes(step.serverStage ?? '');
+
 function decodeItemV2(value: unknown): Id3OrganizationBatchItem {
   if (
     !object(value) ||
@@ -179,8 +182,7 @@ function decodeItemV2(value: unknown): Id3OrganizationBatchItem {
     (optional.jobId !== null &&
       required.jobId !== null &&
       (required.serverStage !== 'succeeded' || required.resultRevision === null)) ||
-    (state === 'organization_accepted' &&
-      (finalMetadata.serverStage !== 'succeeded' || finalMetadata.resultRevision === null)) ||
+    (state === 'organization_accepted' && !metadataCanOrganize(finalMetadata)) ||
     (state === 'succeeded' && value.serverStage !== 'succeeded') ||
     (['skipped', 'blocked'].includes(state) && value.errorCode === null) ||
     (!['skipped', 'blocked'].includes(state) && value.errorCode !== null)
@@ -732,8 +734,7 @@ export function id3OrganizationFinalMetadataBinding(item: Id3OrganizationBatchIt
     item.metadataSteps.optional.jobId !== null
       ? item.metadataSteps.optional
       : item.metadataSteps.required;
-  if (target.jobId === null || target.resultRevision === null || target.serverStage !== 'succeeded')
-    failure('journal_binding');
+  if (target.jobId === null || !metadataCanOrganize(target)) failure('journal_binding');
   return target;
 }
 

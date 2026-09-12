@@ -8,7 +8,6 @@ import {
   decodeAutomationJobResponse,
   decodeCurationClaimResult,
   decodeMetadataCoverUpload,
-  decodeMetadataJob,
   decodeMetadataPreview,
   decodeMetadataSnapshot,
   decodeOrganizationCandidates,
@@ -509,13 +508,9 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     if (!binding || binding.state !== 'metadata_accepted') fail('journal_binding');
     const pending = id3OrganizationPendingMetadataBinding(binding);
     const response = await call('/metadata-jobs/' + encodeURIComponent(pending.target.jobId!));
-    if (
-      !object(response) ||
-      !exact(response, ['schemaVersion', 'job']) ||
-      response.schemaVersion !== 1
-    )
-      fail('response');
-    const job = decodeMetadataJob(response.job);
+    const accepted = decodeAutomationJobResponse(response);
+    if (!accepted.job) fail('response');
+    const job = accepted.job;
     const result = job.items.find((item) => item.originalTrackId === binding.trackId);
     if (!result) fail('response');
     checkpointId3OrganizationBatch(options.stateFile!, binding.trackId, {

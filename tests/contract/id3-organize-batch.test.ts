@@ -426,6 +426,7 @@ describe('private ID3 organization batch journal', () => {
               },
             ],
           },
+          admissionResults: [{ trackId: 'A', status: 'accepted', jobItemId: 'item-1' }],
         });
       if (path.endsWith('/metadata-jobs')) {
         const required = Object.hasOwn(body.patch, 'title');
@@ -641,6 +642,34 @@ describe('private ID3 organization batch journal', () => {
       state: 'organization_accepted',
       organizationJobId: 'organization-job-1',
       serverStage: 'queued',
+    });
+  });
+
+  /** Defers the narrow directory-album projection decision to the server organization preview. */
+  it('allows a reflected file revision to reach organization preview while projection is pending', async () => {
+    const module = await batchModule();
+    expect(module).toHaveProperty('id3OrganizationFinalMetadataBinding');
+    if (!('id3OrganizationFinalMetadataBinding' in module)) return;
+    const { stateFile } = paths();
+    module.createId3OrganizationBatchJournal({
+      path: stateFile,
+      api: 'https://music.example/api/v1',
+      token: 'mlpat_' + 'p'.repeat(48),
+      selection,
+    });
+    module.nextId3OrganizationBatchItem(stateFile);
+    module.checkpointId3OrganizationBatch(stateFile, 'A', {
+      kind: 'metadata',
+      step: 'optional',
+      jobId: 'metadata-job-1',
+      resultRevision: 'revision-2',
+      serverStage: 'reflecting',
+    });
+    const item = module.readId3OrganizationBatchJournal(stateFile).items[0]!;
+    expect(module.id3OrganizationFinalMetadataBinding(item)).toMatchObject({
+      jobId: 'metadata-job-1',
+      resultRevision: 'revision-2',
+      serverStage: 'reflecting',
     });
   });
 

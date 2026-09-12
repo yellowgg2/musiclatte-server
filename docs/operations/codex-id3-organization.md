@@ -131,6 +131,11 @@ same state file and track. It reads the journal-owned job ID and checkpoints the
 stage/result revision without acquiring a new claim or replaying the mutation. Continue to the next
 metadata step only after that checkpoint reports a successful nonempty result revision.
 
+Gonic can temporarily keep the directory-level album projection until the file moves. A final
+metadata checkpoint with a nonempty result revision may therefore remain `reflecting`; pass it only
+to organization preview. Continue solely when the server returns `ready`, since the server verifies
+that album is the only allowed pending projection before accepting organization.
+
 For a new-session resume, reuse the same API, token file, and state file, then call `batch-next`.
 Resume the returned accepted job/revision checkpoint exactly; never research or mutate a succeeded
 item again. Final output contains total/succeeded/skipped/blocked counts and only public song display
