@@ -3,9 +3,14 @@
   justify-content: flex-end;
 }
 .bar {
-  position: sticky;
-  bottom: calc(var(--space-4) + 6rem);
-  z-index: 2;
+  position: fixed;
+  inset-inline-start: var(--selection-inline-start);
+  inset-inline-end: var(--selection-inline-end);
+  bottom: var(--selection-bottom);
+  z-index: 3;
+  max-block-size: var(--selection-bar-block-size);
+  overflow-y: auto;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -102,17 +107,8 @@
 .error {
   color: var(--color-error);
 }
-@media (max-width: 80rem) and (min-width: 48.001rem) {
-  .bar {
-    bottom: 11rem;
-  }
-}
 @media (max-width: 48rem) {
   .bar {
-    position: fixed;
-    left: var(--space-3);
-    right: var(--space-3);
-    bottom: calc(var(--space-3) + 8.5rem);
     flex-direction: column;
     align-items: stretch;
   }
@@ -135,13 +131,6 @@
   }
 }
 @media (max-width: 22rem) {
-  .actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .actions > * {
-    width: 100%;
-  }
   .pickerHeading,
   .targetScroller button {
     align-items: stretch;

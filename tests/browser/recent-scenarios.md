@@ -21,3 +21,7 @@ Normal entry: `/music`, synthetic login from `tests/support/auth-harness.ts`, th
 | Visual           | KO/EN; 1800×863, 390×844, 320×844, actual Chrome 200% zoom, reduced motion              | No horizontal scroll/clipping, named controls, last row/action reachable, keyboard overlay Escape/return focus                                   |
 
 `PREVIEW_CONTROL` is a local file containing one mode; it never reaches product HTML or source. `new` creates a later synthetic snapshot; cursors pin their snapshot/range. Custom range filters the synthetic ledger. API trace may contain `/recent-downloads`, selected media and playlist requests; no full library/folder/tag scan is required for recent reads. Real worker/import/iPhone validation belongs to Phase 3 Step 14.
+
+## Phase 11 S01 selection surface
+
+Verify the control panel contains Refresh/Play but no duplicate selection trigger. The single `Select songs` action belongs to the Download order heading before List/Tiles. At 320px, load another page while selection remains active: focus must remain on Load more and its bottom edge must stay above the fixed bar. Open the playlist picker, press Escape, and verify focus returns to Add to playlist without clearing selection.

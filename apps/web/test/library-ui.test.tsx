@@ -203,6 +203,13 @@ describe('library UI', () => {
     await screen.findByRole('heading', { name: 'Daylight folder' });
 
     const view = screen.getByRole('group', { name: 'Song view' });
+    const selectionEntry = screen.getByRole('button', { name: 'Select songs' });
+    const tools = view.closest('[data-song-view-tools="true"]');
+    expect(screen.getAllByRole('button', { name: 'Select songs' })).toHaveLength(1);
+    expect(tools?.contains(selectionEntry)).toBe(true);
+    expect(
+      selectionEntry.compareDocumentPosition(view) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
     await user.click(within(view).getByRole('button', { name: 'Tiles' }));
 
     const songs = screen.getByRole('list', { name: 'Folder contents' });
@@ -502,11 +509,16 @@ describe('library UI', () => {
       undefined,
       '/latte/',
     );
+    const searchView = await screen.findByRole('group', { name: 'Song view' });
+    const searchEntry = screen.getByRole('button', { name: 'Select songs' });
+    expect(searchView.closest('[data-song-view-tools="true"]')?.contains(searchEntry)).toBe(true);
     await user.click(await screen.findByRole('link', { name: 'Daylight' }));
     expect(await screen.findByRole('heading', { name: 'Daylight' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Select songs' })).toBeNull();
     await user.click(screen.getByRole('link', { name: 'Small hours' }));
     expect(await screen.findByRole('heading', { name: 'Small hours' })).toBeTruthy();
     expect(screen.getAllByText(song.title)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Select songs' })).toBeNull();
     const path = window.location.pathname + window.location.search;
     view.unmount();
     makeSUT(path, context, '/latte/');

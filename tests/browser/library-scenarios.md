@@ -28,3 +28,7 @@ Stop only owned processes, remove the owned control file, reset viewport/zoom/mo
 Use the same harness with `search-pages` in the owned control file. Start from `/music/folders/folder-3?musicFolderId=0`, submit a search, and verify the `Searched folder` breadcrumb and `Reset search` secondary action return to that exact scoped folder. Re-submit a different query and follow `Next songs`; the single canonical `returnTo` must survive both changes while offsets reset for the new query, and BFF `/music/search` requests must never include `returnTo`.
 
 Repeat at `/__preview/narrow` (320px), in KO, and with keyboard focus on the reset action. Confirm the field and wrapped actions remain inside the frame, `검색한 폴더`/`검색 초기화` are visible, focus indication is clear, and there is no horizontal scrolling. Unit coverage owns reload/auth restoration, opaque folder IDs, invalid nested origins, duplicate/unknown parameters, encoded traversal, and scoped fallback.
+
+## Phase 11 S01 selection surface
+
+On folder and search-song collections, verify the single `Select songs` action is inside the shared heading tools immediately before List/Tiles. Artist and album detail routes keep their existing non-selection scope. After entering selection, measure the fixed bar at 1440×900, 1024×768, 390×844, and 320×844 before and after starting playback. It must stay inside the content gutter, remain separated from player/navigation, have no internal clipping, and leave the last song above the bar when scrolled to the end.

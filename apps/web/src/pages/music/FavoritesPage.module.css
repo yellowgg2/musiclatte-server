@@ -22,9 +22,6 @@
   border-radius: var(--radius-surface);
   background: var(--color-surface);
 }
-.headingActions > :last-child:not(button) {
-  margin-inline-start: auto;
-}
 .recoveryLink {
   display: inline-flex;
   align-items: center;
@@ -50,14 +47,7 @@
   display: grid;
   gap: var(--space-3);
 }
-.sectionHeading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-.sectionHeading h2 {
+.section h2 {
   display: flex;
   align-items: baseline;
   gap: var(--space-3);
@@ -82,9 +72,5 @@
   }
   .headingActions {
     justify-content: flex-start;
-  }
-  .headingActions > :last-child:not(button) {
-    width: 100%;
-    margin-inline-start: 0;
   }
 }

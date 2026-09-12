@@ -6,7 +6,12 @@ import { FavoriteAction } from '../../favorites/components/FavoriteAction';
 import { useFavorites } from '../../favorites/FavoritesProvider';
 import { formatCount, messages, type Locale } from '../../i18n';
 import { MusicRow } from '../../music/components/MusicRow';
-import { SongList, SongViewToggle, songLayout, useSongView } from '../../music/components/SongView';
+import {
+  SongList,
+  SongViewHeading,
+  songLayout,
+  useSongView,
+} from '../../music/components/SongView';
 import { usePlayer } from '../../player/PlayerProvider';
 import { useSelection } from '../../selection/SelectionProvider';
 import { useMetadataSelectionRebase } from '../../metadata/selection';
@@ -63,6 +68,20 @@ export function FavoritesPage({
     return () => selection.dispatch({ type: 'leave', key: selectionKey });
   }, [selection.dispatch, selectionKey]);
 
+  const selectionBar =
+    state.songs.length > 0 || selection.state.active ? (
+      <SelectionBar
+        locale={locale}
+        scopeLabel={copy['selection.scope.favorites']}
+        pageItems={state.songs.map((song, order) => ({ id: song.id, order }))}
+        fetcher={fetcher}
+        apiOrigin={apiOrigin}
+        csrfToken={csrfToken}
+        canWrite={canWritePlaylists}
+        onUnauthenticated={onUnauthenticated}
+      />
+    ) : undefined;
+
   return (
     <div className={styles.page}>
       <div className={styles.topline}>
@@ -88,18 +107,6 @@ export function FavoritesPage({
         <Action variant="secondary" busy={state.loading} onClick={() => void store.refresh()}>
           {copy['favorites.refresh']}
         </Action>
-        {(state.songs.length > 0 || selection.state.active) && (
-          <SelectionBar
-            locale={locale}
-            scopeLabel={copy['selection.scope.favorites']}
-            pageItems={state.songs.map((song, order) => ({ id: song.id, order }))}
-            fetcher={fetcher}
-            apiOrigin={apiOrigin}
-            csrfToken={csrfToken}
-            canWrite={canWritePlaylists}
-            onUnauthenticated={onUnauthenticated}
-          />
-        )}
       </section>
       {state.loading && !state.loaded && (
         <StatusSurface
@@ -134,13 +141,10 @@ export function FavoritesPage({
       )}
       {state.songs.length > 0 && (
         <section className={styles.section}>
-          <div className={styles.sectionHeading}>
-            <h2>
-              {copy['favorites.songs']}{' '}
-              <span className={styles.count}>{formatCount(state.songs.length, locale)}</span>
-            </h2>
-            <SongViewToggle locale={locale} view={view} onChange={setView} />
-          </div>
+          <SongViewHeading locale={locale} view={view} onChange={setView} actions={selectionBar}>
+            {copy['favorites.songs']}{' '}
+            <span className={styles.count}>{formatCount(state.songs.length, locale)}</span>
+          </SongViewHeading>
           <SongList className={styles.list} aria-label={copy['favorites.songs']} view={view}>
             {state.songs.map((song, position) => (
               <MusicRow

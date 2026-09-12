@@ -246,6 +246,19 @@ export function RecentDownloadsPage({
       new Date(value),
     );
   const blocked = error === 'forbidden' || error === 'not_found';
+  const selectionBar =
+    !blocked && (songs.length > 0 || selection.state.active) ? (
+      <SelectionBar
+        locale={locale}
+        scopeLabel={copy['recent.selection']}
+        pageItems={songs.map((song, order) => ({ id: song.id, order }))}
+        fetcher={fetcher}
+        apiOrigin={apiOrigin}
+        csrfToken={csrfToken}
+        canWrite={canWritePlaylists && !unavailable}
+        onUnauthenticated={onUnauthenticated}
+      />
+    ) : undefined;
   return (
     <div className={styles.page} ref={pageTarget}>
       <div className={styles.topline}>
@@ -281,11 +294,6 @@ export function RecentDownloadsPage({
           >
             {copy['recent.refresh']}
           </Action>
-          {songs.length > 0 && !blocked && !selection.state.active && (
-            <Action variant="secondary" onClick={() => selection.dispatch({ type: 'enter' })}>
-              {copy['selection.enter']}
-            </Action>
-          )}
           {songs.length > 0 && canStream && !blocked && (
             <Action
               onClick={() => player.activate({ song: songs[0]!, songs, source, position: 0 })}
@@ -337,7 +345,12 @@ export function RecentDownloadsPage({
       )}
       {data && !blocked && data.items.length > 0 && (
         <section className={styles.section}>
-          <SongViewHeading locale={locale} view={songView} onChange={setSongView}>
+          <SongViewHeading
+            locale={locale}
+            view={songView}
+            onChange={setSongView}
+            actions={selectionBar}
+          >
             {copy['recent.order']} <span>{formatCount(data.items.length, locale)}</span>
           </SongViewHeading>
           <SongList className={styles.list} aria-label={copy['recent.order']} view={songView}>
@@ -410,7 +423,7 @@ export function RecentDownloadsPage({
               );
             })}
           </SongList>
-          <div ref={moreTarget}>
+          <div ref={moreTarget} className={styles.moreTarget}>
             <Action
               variant="secondary"
               aria-disabled={loading || !data.nextCursor}
@@ -428,18 +441,6 @@ export function RecentDownloadsPage({
             )}
           </div>
         </section>
-      )}
-      {!blocked && selection.state.active && (
-        <SelectionBar
-          locale={locale}
-          scopeLabel={copy['recent.selection']}
-          pageItems={songs.map((song, order) => ({ id: song.id, order }))}
-          fetcher={fetcher}
-          apiOrigin={apiOrigin}
-          csrfToken={csrfToken}
-          canWrite={canWritePlaylists && !unavailable}
-          onUnauthenticated={onUnauthenticated}
-        />
       )}
     </div>
   );

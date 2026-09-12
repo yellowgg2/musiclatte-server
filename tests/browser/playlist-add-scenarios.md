@@ -27,3 +27,7 @@ Use only the local harness account and keep its values and opaque song IDs out o
 
 Finish with focused and full unit/contract suites, typecheck, build, format check, locale key and
 placeholder parity, production Gallery exclusion, and `git diff --check`.
+
+## Phase 11 S01 fixed-bar regression
+
+Playlist detail keeps its existing standalone inactive entry. Once active, it consumes the same AppShell-owned fixed inline/bottom insets and content clearance as Music, Favorites, and Recent. Repeat picker Escape/focus return and partial retry with and without a persistent player; the target scroller remains the only scrolling picker region.

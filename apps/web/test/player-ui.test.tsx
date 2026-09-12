@@ -446,6 +446,43 @@ describe('persistent player UI', () => {
     );
   });
 
+  /** Selection clearance follows the shell's player and navigation geometry at every breakpoint. */
+  it('should keep the selection bar fixed through shell-owned responsive insets', () => {
+    const selectionCss = readFileSync(
+      resolve('apps/web/src/selection/components/SelectionBar.module.css'),
+      'utf8',
+    );
+    const shellCss = readFileSync(resolve('apps/web/src/app/Shell.module.css'), 'utf8');
+    const bar = selectionCss.match(/^\.bar\s*\{([^}]*)\}/m)?.[1];
+
+    expect(bar).toContain('position: fixed');
+    expect(bar).toContain('inset-inline-start: var(--selection-inline-start)');
+    expect(bar).toContain('inset-inline-end: var(--selection-inline-end)');
+    expect(bar).toContain('bottom: var(--selection-bottom)');
+    for (const variable of [
+      '--selection-inline-start',
+      '--selection-inline-end',
+      '--selection-bottom',
+      '--selection-bar-block-size',
+      '--selection-content-clearance',
+    ]) {
+      expect(shellCss).toContain(variable);
+    }
+    expect(shellCss).toMatch(
+      /\.shell:has\(\[data-persistent-player\]\)\s*\{[^}]*--selection-bottom:/,
+    );
+    expect(shellCss).toMatch(
+      /\.shell:has\(\[data-selection-bar\]\) \.content\s*\{[^}]*var\(--selection-content-clearance\)/,
+    );
+    const mid = shellCss.slice(
+      shellCss.indexOf('@media (max-width: 80rem)'),
+      shellCss.indexOf('@media (max-width: 48rem)'),
+    );
+    expect(mid.lastIndexOf('[data-selection-bar]')).toBeGreaterThan(
+      mid.lastIndexOf('[data-persistent-player] .content'),
+    );
+  });
+
   /** A definite mobile sheet height gives its single scroll body a real clipping boundary. */
   it('should constrain the expanded player to a definite mobile height', () => {
     const css = readFileSync(resolve('apps/web/src/player/Player.module.css'), 'utf8');

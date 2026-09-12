@@ -84,8 +84,19 @@
   background: var(--color-selection);
 }
 .shell {
+  --selection-inline-start: calc(15rem + var(--space-6));
+  --selection-inline-end: var(--space-6);
+  --selection-bottom: var(--space-4);
+  --selection-bar-block-size: 4.75rem;
+  --selection-content-clearance: calc(
+    var(--selection-bottom) + var(--selection-bar-block-size) + var(--space-4)
+  );
+
   min-height: 100dvh;
   padding-left: 15rem;
+}
+.shell:has([data-persistent-player]) {
+  --selection-bottom: calc(6.5rem + var(--space-5));
 }
 .sidebar {
   position: fixed;
@@ -128,7 +139,8 @@
   padding-bottom: calc(var(--space-7) + 7rem);
 }
 .shell:has([data-selection-bar]) .content {
-  padding-bottom: calc(var(--space-7) + 13rem);
+  padding-bottom: calc(var(--space-6) + var(--selection-content-clearance));
+  scroll-padding-bottom: var(--selection-content-clearance);
 }
 .settings {
   max-width: 46rem;
@@ -205,11 +217,17 @@
   gap: var(--space-5);
 }
 @media (max-width: 80rem) and (min-width: 48.001rem) {
+  .shell {
+    --selection-bar-block-size: 7rem;
+  }
+  .shell:has([data-persistent-player]) {
+    --selection-bottom: 11rem;
+  }
   .shell:has([data-persistent-player]) .content {
     padding-bottom: 11rem;
   }
   .shell:has([data-selection-bar]) .content {
-    padding-bottom: 17rem;
+    padding-bottom: calc(var(--space-6) + var(--selection-content-clearance));
   }
 }
 @media (max-width: 48rem) {
@@ -223,9 +241,17 @@
     padding: var(--space-5);
   }
   .shell {
+    --selection-inline-start: var(--space-3);
+    --selection-inline-end: var(--space-3);
+    --selection-bottom: calc(4.6rem + var(--space-3) + env(safe-area-inset-bottom));
+    --selection-bar-block-size: 14rem;
+
     display: flex;
     flex-direction: column;
     padding-left: 0;
+  }
+  .shell:has([data-persistent-player]) {
+    --selection-bottom: calc(4.6rem + 4.25rem + var(--space-4) + env(safe-area-inset-bottom));
   }
   .sidebar {
     position: static;
@@ -245,7 +271,7 @@
     padding-bottom: calc(10rem + env(safe-area-inset-bottom));
   }
   .shell:has([data-selection-bar]) .content {
-    padding-bottom: calc(22rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--space-5) + var(--selection-content-clearance));
   }
   .navigation {
     display: flex;

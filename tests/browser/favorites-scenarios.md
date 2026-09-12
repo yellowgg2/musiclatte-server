@@ -14,3 +14,7 @@ Run the real favorite BFF against the deterministic synthetic upstream on ports 
    reflow, reduced-motion, touch targets, long error copy, and player/navigation overlap.
 6. Confirm no fatal browser errors, stop only owned preview/Vite processes, and remove the owned
    control file.
+
+## Phase 11 S01 selection surface
+
+Verify `Select songs` appears once in the Favorite songs heading immediately before List/Tiles, while Play favorites and Refresh favorites remain in the top action panel. Reuse the shared fixed-bar matrix from the library scenario and confirm selection survives player creation without horizontal overflow.

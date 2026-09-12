@@ -303,6 +303,26 @@ export function MusicPage({
     id: song.id,
     order: selectionOffset + index,
   }));
+  const selectionBar =
+    selectionKey && (selectableSongs.length > 0 || selection.state.active) ? (
+      <SelectionBar
+        locale={locale}
+        scopeLabel={
+          data?.kind === 'search'
+            ? copy['selection.scope.search'].replace('{query}', q)
+            : copy['selection.scope.folder'].replace(
+                '{name}',
+                data?.kind === 'folder' ? data.directory.name : '',
+              )
+        }
+        pageItems={pageSelectionItems}
+        fetcher={fetcher}
+        apiOrigin={apiOrigin}
+        csrfToken={csrfToken}
+        canWrite={canWritePlaylists}
+        onUnauthenticated={onUnauthenticated}
+      />
+    ) : undefined;
   useMetadataSelectionRebase({
     key: location,
     ...(selectionKey ? { scope: selectionKey } : {}),
@@ -456,25 +476,6 @@ export function MusicPage({
           )}
         </div>
       </form>
-      {selectionKey && (selectableSongs.length > 0 || selection.state.active) && (
-        <SelectionBar
-          locale={locale}
-          scopeLabel={
-            data?.kind === 'search'
-              ? copy['selection.scope.search'].replace('{query}', q)
-              : copy['selection.scope.folder'].replace(
-                  '{name}',
-                  data?.kind === 'folder' ? data.directory.name : '',
-                )
-          }
-          pageItems={pageSelectionItems}
-          fetcher={fetcher}
-          apiOrigin={apiOrigin}
-          csrfToken={csrfToken}
-          canWrite={canWritePlaylists}
-          onUnauthenticated={onUnauthenticated}
-        />
-      )}
       {loading && (
         <StatusSurface
           state="loading"
@@ -534,7 +535,12 @@ export function MusicPage({
       )}
       {data?.kind === 'folder' && !empty && (
         <section className={styles.section}>
-          <SongViewHeading locale={locale} view={songView} onChange={setSongView}>
+          <SongViewHeading
+            locale={locale}
+            view={songView}
+            onChange={setSongView}
+            actions={selectionBar}
+          >
             {copy['music.folderContents']}{' '}
             <span className={styles.count}>{formatCount(data.directory.child.length, locale)}</span>
           </SongViewHeading>
@@ -621,7 +627,12 @@ export function MusicPage({
           return (
             <section className={styles.section} key={kind}>
               {kind === 'song' ? (
-                <SongViewHeading locale={locale} view={songView} onChange={setSongView}>
+                <SongViewHeading
+                  locale={locale}
+                  view={songView}
+                  onChange={setSongView}
+                  actions={selectionBar}
+                >
                   {copy[`music.${kind}s`]}{' '}
                   <span className={styles.count}>{formatCount(items.length, locale)}</span>
                 </SongViewHeading>

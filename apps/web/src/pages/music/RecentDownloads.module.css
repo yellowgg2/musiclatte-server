@@ -139,6 +139,9 @@
   width: 2.75rem;
   flex-shrink: 0;
 }
+.moreTarget {
+  scroll-margin-block-end: var(--selection-content-clearance);
+}
 @media (max-width: 48rem) {
   .controlPanel {
     grid-template-columns: 1fr;
@@ -164,15 +167,5 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-}
-@media (max-width: 48rem) {
-  :global(html):has(.page [data-selection-bar]) {
-    scroll-padding-bottom: 26rem;
-  }
-}
-@media (max-width: 48rem) {
-  .page:has([data-selection-bar]) {
-    padding-bottom: 6rem;
   }
 }

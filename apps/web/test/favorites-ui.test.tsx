@@ -195,6 +195,14 @@ describe('favorites UI', () => {
       within(navigation).getByRole('link', { name: 'Favorites' }).getAttribute('aria-current'),
     ).toBe('page');
     expect(screen.getByRole('region', { name: 'Favorite actions' })).toBeTruthy();
+    const view = screen.getByRole('group', { name: 'Song view' });
+    const selectionEntry = screen.getByRole('button', { name: 'Select songs' });
+    const tools = view.closest('[data-song-view-tools="true"]');
+    expect(screen.getAllByRole('button', { name: 'Select songs' })).toHaveLength(1);
+    expect(tools?.contains(selectionEntry)).toBe(true);
+    expect(
+      selectionEntry.compareDocumentPosition(view) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
     await user.click(screen.getByRole('button', { name: 'Play favorites' }));
     expect(audio.src).toContain('/songs/song-b/stream');
     await user.click(screen.getByRole('button', { name: 'Select songs' }));

@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -147,6 +149,23 @@ afterEach(() => {
   localStorage.clear();
 });
 describe('recent route', () => {
+  /** Pagination focus reserves the same shell-owned clearance as the fixed selection bar. */
+  it('should keep the load-more target above contextual chrome', () => {
+    const source = readFileSync(
+      resolve('apps/web/src/pages/music/RecentDownloadsPage.tsx'),
+      'utf8',
+    );
+    const css = readFileSync(
+      resolve('apps/web/src/pages/music/RecentDownloads.module.css'),
+      'utf8',
+    );
+
+    expect(source).toContain('className={styles.moreTarget}');
+    expect(css).toMatch(
+      /\.moreTarget\s*\{[^}]*scroll-margin-block-end:\s*var\(--selection-content-clearance\)/,
+    );
+  });
+
   /** Direct reload focuses the mounted product heading after capabilities resolve. */
   it('should focus the recent heading after direct authentication restore', async () => {
     makeSUT();
@@ -224,7 +243,15 @@ describe('recent route', () => {
   it('should preserve selection and player through pagination, refresh and retry', async () => {
     const c = makeSUT();
     await screen.findByText('Song 1');
-    await c.user.click(screen.getByRole('button', { name: 'Select songs' }));
+    const view = screen.getByRole('group', { name: 'Song view' });
+    const selectionEntry = screen.getByRole('button', { name: 'Select songs' });
+    const tools = view.closest('[data-song-view-tools="true"]');
+    expect(screen.getAllByRole('button', { name: 'Select songs' })).toHaveLength(1);
+    expect(tools?.contains(selectionEntry)).toBe(true);
+    expect(
+      selectionEntry.compareDocumentPosition(view) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    await c.user.click(selectionEntry);
     expect(screen.getAllByRole('checkbox')).toHaveLength(1);
     await c.user.click(screen.getByRole('checkbox', { name: 'Select Song 1' }));
     expect(c.audio.play).not.toHaveBeenCalled();
