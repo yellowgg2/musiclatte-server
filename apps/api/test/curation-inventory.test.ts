@@ -678,3 +678,63 @@ it('retries directory discovery and resolves its failure ledger entry', async ()
     c.cleanup();
   }
 });
+
+/** Adopts pre-migration error rows whose retry checkpoint columns still contain their defaults. */
+it('retries a legacy error row without an explicit next-attempt timestamp', async () => {
+  const { createCurationInventory } = await import('../src/curation/inventory.js');
+  const c = await createTestContext();
+  try {
+    const repo = createCurationRepository({
+      database: c.db,
+      clock: () => 1000,
+      cursorKey: new Uint8Array(32),
+      limits: {
+        claimLeaseMs: 1000,
+        maxTargets: 10,
+        snapshotMaxAgeMs: 1000,
+        snapshotMaxItems: 100,
+        snapshotMaxCount: 10,
+      },
+    });
+    let reconciled = 0;
+    const inventory = createCurationInventory({
+      database: c.db,
+      repository: repo,
+      clock: () => 1000,
+      libraries: [{ id: 'lib', musicFolderId: '0' }],
+      batchSize: 1,
+      itemTimeoutMs: 100,
+      batchTimeMs: 200,
+      retryIntervalMs: 10,
+      maxRetryAttempts: 2,
+      sweepIntervalMs: 1000,
+      maxQueueItems: 100,
+      reconcile: async () => {
+        reconciled++;
+      },
+      source: {
+        inventoryIndexes: async () => ({ roots: [{ id: 'legacy-error', isDir: false }] }),
+        registrationDirectory: async () => {
+          throw new Error('unexpected');
+        },
+      },
+    });
+    await inventory.runBatch();
+    c.db.connection
+      .prepare("UPDATE curation_inventory_queue SET status='error' WHERE opaque_id='legacy-error'")
+      .run();
+
+    await inventory.runBatch();
+
+    expect(reconciled).toBe(1);
+    expect(
+      c.db.connection
+        .prepare(
+          "SELECT status,attempt_count,next_attempt_at,terminal FROM curation_inventory_queue WHERE opaque_id='legacy-error'",
+        )
+        .get(),
+    ).toEqual({ status: 'done', attempt_count: 0, next_attempt_at: null, terminal: 0 });
+  } finally {
+    c.cleanup();
+  }
+});

@@ -187,7 +187,7 @@ export function createCurationInventory(options: CurationInventoryOptions) {
       pending ??
       db
         .prepare(
-          "SELECT q.* FROM curation_inventory_queue q LEFT JOIN curation_tracks t ON q.kind='track' AND t.library_id=q.library_id AND t.track_id=q.opaque_id WHERE q.library_id=? AND q.generation=? AND q.status='error' AND q.terminal=0 AND q.next_attempt_at<=? ORDER BY CASE q.kind WHEN 'track' THEN 0 ELSE 1 END,COALESCE(t.source_sequence,0) DESC,q.opaque_id COLLATE BINARY LIMIT 1",
+          "SELECT q.* FROM curation_inventory_queue q LEFT JOIN curation_tracks t ON q.kind='track' AND t.library_id=q.library_id AND t.track_id=q.opaque_id WHERE q.library_id=? AND q.generation=? AND q.status='error' AND q.terminal=0 AND (q.next_attempt_at<=? OR q.next_attempt_at IS NULL AND q.attempt_count=0) ORDER BY CASE q.kind WHEN 'track' THEN 0 ELSE 1 END,COALESCE(t.source_sequence,0) DESC,q.opaque_id COLLATE BINARY LIMIT 1",
         )
         .get(library.id, generation, clock());
     if (queued) {
