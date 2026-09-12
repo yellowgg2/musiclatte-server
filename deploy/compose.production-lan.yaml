@@ -1,0 +1,23 @@
+# Production HTTPS reverse proxies may reach only this explicitly selected private LAN endpoint.
+# Apply after changing the initial gonic administrator password through the loopback bootstrap port.
+services:
+  production-lan-check:
+    image: node:24.20.0-bookworm-slim
+    user: '65534:65534'
+    restart: 'no'
+    network_mode: none
+    entrypoint: ['sh', '/validate-lan-admin.sh']
+    environment:
+      LAN_BIND_ADDRESS: ${LAN_BIND_ADDRESS:?Set an explicit private LAN address}
+      ADMIN_SETUP_COMPLETE: ${ADMIN_SETUP_COMPLETE:?Confirm completed loopback administrator setup with true}
+    volumes:
+      - ./deploy/validate-lan-admin.sh:/validate-lan-admin.sh:ro
+    read_only: true
+    security_opt: ['no-new-privileges:true']
+    cap_drop: ['ALL']
+  web:
+    ports:
+      - '${LAN_BIND_ADDRESS:?Set an explicit private LAN address}:${PRODUCTION_LAN_PORT:-8082}:8080'
+    depends_on:
+      production-lan-check:
+        condition: service_completed_successfully

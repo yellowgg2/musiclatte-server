@@ -24,6 +24,13 @@ gateway는 `127.0.0.1:8080`, gonic 관리 화면은 `127.0.0.1:4748`에만 bind�
 
 production은 운영자가 구성한 **HTTPS** reverse proxy가 public origin을 loopback gateway로 전달한다. 해당 proxy 로그에서도 credential·query·개인 음악 metadata를 제외하고 관리 port는 전달하지 않는다. `PUBLIC_ORIGIN`은 정확한 HTTPS origin이어야 한다. 이 저장소는 TLS·DNS·운영 서비스를 자동 변경하지 않으며 production Secure cookie를 요구한다.
 
+reverse proxy가 별도 컨테이너에서 실행되어 host loopback에 연결할 수 없다면 먼저 loopback 관리자 초기 설정을 끝낸다. 그다음 `LAN_BIND_ADDRESS`, `PRODUCTION_LAN_PORT`, `ADMIN_SETUP_COMPLETE=true`를 설정하고 `deploy/compose.production-lan.yaml`을 추가한다. 이 overlay는 production mode와 HTTPS public origin을 유지하면서 RFC 1918 host 주소 하나에만 gateway를 게시하며 gonic 관리 화면은 게시하지 않는다.
+
+```sh
+docker compose -f compose.yaml -f deploy/compose.production-lan.yaml config --quiet
+docker compose -f compose.yaml -f deploy/compose.production-lan.yaml up -d --build
+```
+
 격리 local HTTP 시험만 `docker compose -f compose.yaml -f deploy/compose.test.yaml up -d --build`를 사용한다. development cookie와 비어 있는 SPA opt-in을 명시한다. 별도 private LAN 개발 예외는 loopback 비밀번호 변경 완료 후 LAN 변수와 `ADMIN_SETUP_COMPLETE=true`를 설정하고 `docker compose -f compose.yaml -f deploy/compose.lan-development.yaml up -d --build`로 실행한다. flag는 운영자 확인 기록이며 비밀번호를 변경하거나 검사하지 않는다. production에 HTTP 예외를 쓰지 않는다. 기존 Musiclatte profile은 보존하고 gateway origin만 사용한 opt-in profile을 추가한다. `/api`나 admin port를 넣지 않는다.
 
 신뢰할 수 있는 내부 LAN에서만 gonic 계정을 드물게 관리해야 한다면 `GONIC_LAN_ADMIN_PORT`를 설정하고 `deploy/compose.lan-admin.yaml`을 시작 명령에 추가한다. 이 파일은 기존 loopback 관리 port를 보존하면서 `LAN_BIND_ADDRESS` 한 주소에만 두 번째 관리 port를 연다. 기본 설치나 LAN 웹 오버레이만으로는 열리지 않는다. 네트워크 없는 사전 점검이 RFC 1918 IPv4와 정확한 `ADMIN_SETUP_COMPLETE=true`를 확인해야 gonic이 시작된다. 비밀번호 변경 후에만 확인값을 설정하고, 방화벽에서도 해당 사설망으로 제한한다.

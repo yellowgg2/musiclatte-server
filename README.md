@@ -24,6 +24,13 @@ Before exposing **any** gateway through a reverse proxy or LAN, open the loopbac
 
 Production uses an operator-managed **HTTPS** reverse proxy forwarding the public origin to the loopback gateway. Configure its logs to omit credentials, request queries and private music metadata; do not proxy the administration port. `PUBLIC_ORIGIN` must match the exact HTTPS origin. This repository does not alter TLS, DNS or production services. Secure cookies are mandatory in production.
 
+When the reverse proxy runs in a separate container and cannot reach host loopback, finish the loopback administrator bootstrap first, then set `LAN_BIND_ADDRESS`, `PRODUCTION_LAN_PORT`, and `ADMIN_SETUP_COMPLETE=true` and add `deploy/compose.production-lan.yaml`. The overlay preserves production mode and the HTTPS public origin while publishing the gateway on exactly one RFC 1918 host address. It does not publish gonic administration.
+
+```sh
+docker compose -f compose.yaml -f deploy/compose.production-lan.yaml config --quiet
+docker compose -f compose.yaml -f deploy/compose.production-lan.yaml up -d --build
+```
+
 For isolated local HTTP testing only, use `docker compose -f compose.yaml -f deploy/compose.test.yaml up -d --build`; this explicitly uses development cookies and opts into the blank SPA. For a private LAN development exception, finish the loopback password change first, set the documented LAN variables and `ADMIN_SETUP_COMPLETE=true`, then use `docker compose -f compose.yaml -f deploy/compose.lan-development.yaml up -d --build`. The flag records operator confirmation; it does not change or verify a password. Never use this HTTP exception for production. Preserve existing Musiclatte profiles and add a separate opt-in profile using the gateway origin, without `/api` or an admin port.
 
 If infrequent gonic account administration is needed from a trusted internal LAN, set `GONIC_LAN_ADMIN_PORT` and add `deploy/compose.lan-admin.yaml` to the startup command. It preserves the loopback administration port and adds a second port on the single `LAN_BIND_ADDRESS`; neither the base stack nor the LAN web overlay opens it. A network-disabled preflight must verify an RFC 1918 IPv4 address and exact `ADMIN_SETUP_COMPLETE=true` before gonic starts. Set that attestation only after changing the password, and restrict the port to the same private network at the firewall.

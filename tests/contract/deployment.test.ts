@@ -249,6 +249,78 @@ describe('source-only deployment', () => {
     for (const path of ['README.md', 'README.ko.md'])
       expect(read(path)).toContain('deploy/compose.lan-admin.yaml');
   });
+  /** Production proxy traffic binds only one explicit private LAN address after admin setup. */
+  it('should expose the production gateway without weakening HTTPS session policy', () => {
+    read('deploy/compose.production-lan.yaml');
+    const config = JSON.parse(
+      execFileSync(
+        'docker',
+        [
+          'compose',
+          '-f',
+          'compose.yaml',
+          '-f',
+          'deploy/compose.production-lan.yaml',
+          'config',
+          '--format',
+          'json',
+        ],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            MUSIC_PATH: '/tmp/synthetic-music',
+            SESSION_MAX_AGE_SECONDS: '3600',
+            PUBLIC_ORIGIN: 'https://music.example.test',
+            LAN_BIND_ADDRESS: '192.168.50.2',
+            PRODUCTION_LAN_PORT: '18740',
+            ADMIN_SETUP_COMPLETE: 'true',
+          },
+        },
+      ),
+    );
+    expect(config.services.api.environment.NODE_ENV).toBe('production');
+    expect(config.services.api.environment.PUBLIC_ORIGIN).toBe('https://music.example.test');
+    expect(config.services.web.environment.LAN_DEVELOPMENT).toBeUndefined();
+    const ports = config.services.web.ports as {
+      host_ip: string;
+      published: string | number;
+      target: number;
+    }[];
+    expect(ports).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ host_ip: '127.0.0.1', target: 8080 }),
+        expect.objectContaining({
+          host_ip: '192.168.50.2',
+          published: '18740',
+          target: 8080,
+        }),
+      ]),
+    );
+    expect(
+      config.services.gonic.ports.every(
+        (port: { host_ip: string }) => port.host_ip === '127.0.0.1',
+      ),
+    ).toBe(true);
+    expect(config.services.web.depends_on['production-lan-check'].condition).toBe(
+      'service_completed_successfully',
+    );
+    const guard = config.services['production-lan-check'];
+    expect(guard.network_mode).toBe('none');
+    expect(guard.restart).toBe('no');
+    expect(guard.read_only).toBe(true);
+    expect(guard.cap_drop).toEqual(['ALL']);
+    expect(guard.security_opt).toContain('no-new-privileges:true');
+    expect(guard.user).not.toBe('0');
+
+    const overlay = read('deploy/compose.production-lan.yaml');
+    expect(overlay).toContain('${LAN_BIND_ADDRESS:?');
+    expect(overlay).toContain('${ADMIN_SETUP_COMPLETE:?');
+    expect(overlay).not.toContain('0.0.0.0');
+    expect(read('.env.example')).toContain('PRODUCTION_LAN_PORT=8082');
+    for (const path of ['README.md', 'README.ko.md'])
+      expect(read(path)).toContain('deploy/compose.production-lan.yaml');
+  });
   /** Public setup examples hold no account secrets and distinguish bootstrap, TLS and deliberate LAN development. */
   it('should document safe setup and non-destructive backup rollback in both languages', () => {
     const env = read('.env.example');
