@@ -159,9 +159,14 @@ export function createCurationClaimService(service: SessionService) {
           const row = repo.rowFor(id)!;
           if (!canEditMetadata(config.policy, principal.identity.username, String(row.library_id)))
             throw new ApiError(403, 'forbidden');
-          if (!row.file_identity || row.validation !== 'verified' || row.binding_revision === null)
+          if (
+            !row.file_identity ||
+            row.validation !== 'verified' ||
+            row.binding_revision === null
+          ) {
+            repo.requestVerification(id);
             status = 'inventory_pending';
-          else
+          } else
             await fence.withMediaFence(String(row.file_identity), 'verify', async (held) => {
               const publication = publications.begin(held.fileIdentity, held.nonce);
               const active = repo.activeClaim(id);

@@ -14,6 +14,11 @@ export interface CurationInventoryOptions {
   sweepIntervalMs: number;
   maxQueueItems: number;
   reconcile(trackRef: string, signal?: AbortSignal): Promise<void>;
+  reportFailure?(failure: {
+    kind: 'directory' | 'track';
+    code: string;
+    cause: 'batch_timeout' | 'upstream';
+  }): void;
 }
 /** Persistent BFS membership; unfinished items replay after a crash. No separate scan scheduler. */
 export function createCurationInventory(options: CurationInventoryOptions) {
@@ -68,6 +73,7 @@ export function createCurationInventory(options: CurationInventoryOptions) {
   async function step(
     library: { id: string; musicFolderId: string },
     signal: AbortSignal,
+    externalSignal?: AbortSignal,
   ): Promise<boolean> {
     let run = db
       .prepare('SELECT * FROM curation_inventory_runs WHERE library_id=?')
@@ -174,24 +180,27 @@ export function createCurationInventory(options: CurationInventoryOptions) {
           ).run(library.id, generation, pending.opaque_id!);
         }
       } catch (error) {
-        if (signal.aborted) return false;
+        if (signal.aborted && externalSignal?.aborted) return false;
+        const code =
+          error instanceof Error &&
+          [
+            'inventory_capacity',
+            'unsupported_format',
+            'inventory_pending',
+            'file_unavailable',
+            'revision_conflict',
+          ].includes(error.message)
+            ? error.message
+            : 'inventory_upstream';
         db.prepare(
           "UPDATE curation_inventory_queue SET status='error' WHERE library_id=? AND generation=? AND opaque_id=? AND kind=?",
         ).run(library.id, generation, pending.opaque_id!, pending.kind!);
-        markCoverage(
-          library.id,
-          'partial',
-          error instanceof Error &&
-            [
-              'inventory_capacity',
-              'unsupported_format',
-              'inventory_pending',
-              'file_unavailable',
-              'revision_conflict',
-            ].includes(error.message)
-            ? error.message
-            : 'inventory_upstream',
-        );
+        markCoverage(library.id, 'partial', code);
+        options.reportFailure?.({
+          kind: pending.kind === 'directory' ? 'directory' : 'track',
+          code,
+          cause: signal.aborted ? 'batch_timeout' : 'upstream',
+        });
       }
       return true;
     }
@@ -241,7 +250,7 @@ export function createCurationInventory(options: CurationInventoryOptions) {
           idle < options.libraries.length
         ) {
           const library = options.libraries[offset++ % options.libraries.length]!;
-          if (await step(library, controller.signal)) {
+          if (await step(library, controller.signal, signal)) {
             processed++;
             idle = 0;
           } else idle++;

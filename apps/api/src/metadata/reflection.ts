@@ -76,6 +76,19 @@ export interface MetadataReflectorOptions {
   pollMs?: number;
   retryMs?: number;
   wait?(ms: number, signal: AbortSignal): Promise<void>;
+  reportFailure?(failure: {
+    phase:
+      | 'file_snapshot'
+      | 'references'
+      | 'account'
+      | 'scan'
+      | 'lookup'
+      | 'song'
+      | 'cover_cache'
+      | 'cover_compare'
+      | 'record';
+    code: string;
+  }): void;
 }
 export function createMetadataReflector(options: MetadataReflectorOptions) {
   const timeoutMs = options.timeoutMs ?? 120000;
@@ -127,6 +140,15 @@ export function createMetadataReflector(options: MetadataReflectorOptions) {
       artistIds: [] as string[],
       coverIds: [] as string[],
     };
+    const recordReferenceConflict = (reason: string) => {
+      repo.recordReflection(claim, {
+        status: 'reference_conflict',
+        evidence: { reason },
+        relatedIds,
+      });
+      retry = false;
+      repo.transition({ ...claim, stage: 'conflict', errorCode: 'reference_conflict' });
+    };
     const changedRevision = (digest: string) => {
       const superseded = repo.hasSavedSuccessor(claim, digest);
       repo.transition({
@@ -135,6 +157,8 @@ export function createMetadataReflector(options: MetadataReflectorOptions) {
         errorCode: superseded ? 'revision_conflict' : 'write_uncertain',
       });
     };
+    let phase: Parameters<NonNullable<MetadataReflectorOptions['reportFailure']>>[0]['phase'] =
+      'file_snapshot';
     try {
       owned();
       const snapshot = await options.fileSnapshot(work);
@@ -142,18 +166,17 @@ export function createMetadataReflector(options: MetadataReflectorOptions) {
         changedRevision(snapshot.fullDigest);
         return;
       }
+      phase = 'references';
       const references = repo.readReferences(claim);
       if (!references) {
-        repo.recordReflection(claim, {
-          status: 'reference_conflict',
-          evidence: { reason: 'missing_baseline' },
-          relatedIds,
-        });
+        recordReferenceConflict('missing_baseline');
         return;
       }
+      phase = 'account';
       const client = await options.accountClient(work);
       const library = options.libraries.find((value) => value.id === work.libraryId);
       if (!library) throw new Error('reflection_unavailable');
+      phase = 'scan';
       if (!(await options.scanClient.getScanStatus({ signal })).scanning) {
         owned();
         await options.scanClient.startScan({ signal });
@@ -162,40 +185,37 @@ export function createMetadataReflector(options: MetadataReflectorOptions) {
         owned();
         if (!(await options.scanClient.getScanStatus({ signal })).scanning) {
           try {
+            phase = 'lookup';
             const lookup = createExactPathLookup(options.scanClient, {
               signal,
               assertOwned: owned,
             });
             const id = await lookup(library, work.key);
             if (id !== work.trackId) {
-              repo.recordReflection(claim, {
-                status: 'reference_conflict',
-                evidence: { reason: 'track_id_changed' },
-                relatedIds,
-              });
+              recordReferenceConflict('track_id_changed');
               return;
             }
+            phase = 'song';
             const song = await client.getSong(id, { signal });
+            phase = 'references';
             const afterReferences = await captureMetadataReferences(client, id, signal);
             owned();
             if (!compareMetadataReferences(references, afterReferences)) {
-              repo.recordReflection(claim, {
-                status: 'reference_conflict',
-                evidence: { reason: 'account_references_changed' },
-                relatedIds,
-              });
+              recordReferenceConflict('account_references_changed');
               return;
             }
             if (song.albumId) relatedIds.albumIds.push(song.albumId);
             if (song.artistId) relatedIds.artistIds.push(song.artistId);
             if (song.coverArt) relatedIds.coverIds.push(song.coverArt);
             owned();
+            phase = 'file_snapshot';
             const preRefreshDigest = (await options.fileSnapshot(work)).fullDigest;
             if (preRefreshDigest !== work.resultDigest) {
               changedRevision(preRefreshDigest);
               return;
             }
             owned();
+            phase = 'cover_cache';
             await options.refreshCoverCache?.([
               ...new Set(
                 [work.trackId, song.coverArt, song.albumId].filter((id): id is string =>
@@ -204,21 +224,27 @@ export function createMetadataReflector(options: MetadataReflectorOptions) {
               ),
             ]);
             owned();
+            const requiredFields = Object.keys(work.patch) as MetadataField[];
+            phase = 'cover_compare';
             const evidence = compareMetadataProjection(
               snapshot,
               song,
               {
                 filename: posix.basename(work.key),
-                coverMatches: await options.coverMatches(work, snapshot, song, client),
+                coverMatches: requiredFields.includes('cover')
+                  ? await options.coverMatches(work, snapshot, song, client)
+                  : true,
               },
-              Object.keys(work.patch) as MetadataField[],
+              requiredFields,
             );
+            phase = 'file_snapshot';
             const currentDigest = (await options.fileSnapshot(work)).fullDigest;
             if (currentDigest !== work.resultDigest) {
               changedRevision(currentDigest);
               return;
             }
             owned();
+            phase = 'record';
             repo.recordReflection(claim, { status: evidence.status, evidence, relatedIds });
             retry = evidence.status !== 'verified';
             return;
@@ -229,8 +255,22 @@ export function createMetadataReflector(options: MetadataReflectorOptions) {
         await wait(Math.min(pollMs, Math.max(1, deadline - options.clock())), signal);
       }
       throw new Error('reflection_unavailable');
-    } catch {
+    } catch (error) {
+      options.reportFailure?.({
+        phase,
+        code:
+          error instanceof ExactPathFailure
+            ? error.code
+            : error instanceof Error && /^[a-z][a-z0-9_]{0,63}$/.test(error.message)
+              ? error.message
+              : 'unavailable',
+      });
       repo.assertClaim(claim);
+      if (error instanceof Error && error.message === 'permission_changed') {
+        retry = false;
+        repo.transition({ ...claim, stage: 'recovery_required', errorCode: 'permission_changed' });
+        return;
+      }
       if (repo.readWork(claim).stage === 'reflecting')
         repo.recordReflection(claim, {
           status: 'reflection_unavailable',

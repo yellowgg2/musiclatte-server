@@ -203,6 +203,134 @@ it('cancels a slow source at the batch budget and leaves its checkpoint replayab
   }
 });
 
+/** Prevents one internally timed-out track from starving every later inventory item. */
+it('records an internally timed-out track as an error and continues with the next item', async () => {
+  const { createCurationInventory } = await import('../src/curation/inventory.js');
+  const c = await createTestContext();
+  try {
+    const repo = createCurationRepository({
+      database: c.db,
+      clock: () => 1000,
+      cursorKey: new Uint8Array(32),
+      limits: {
+        claimLeaseMs: 1000,
+        maxTargets: 10,
+        snapshotMaxAgeMs: 1000,
+        snapshotMaxItems: 100,
+        snapshotMaxCount: 10,
+      },
+    });
+    const reconciled: string[] = [];
+    const failures: Array<{ kind: string; code: string; cause: string }> = [];
+    const inventory = createCurationInventory({
+      database: c.db,
+      repository: repo,
+      clock: () => 1000,
+      libraries: [{ id: 'lib', musicFolderId: '0' }],
+      batchSize: 1,
+      batchTimeMs: 20,
+      sweepIntervalMs: 1000,
+      maxQueueItems: 100,
+      reportFailure: (failure) => failures.push(failure),
+      reconcile: async (trackRef, signal) => {
+        const trackId = String(
+          c.db.connection.prepare('SELECT track_id FROM curation_tracks WHERE id=?').get(trackRef)
+            ?.track_id,
+        );
+        if (trackId === 'a-slow')
+          return new Promise((_, reject) =>
+            signal!.addEventListener('abort', () => reject(new Error('cancelled')), {
+              once: true,
+            }),
+          );
+        reconciled.push(trackId);
+      },
+      source: {
+        inventoryIndexes: async () => ({
+          roots: [
+            { id: 'a-slow', isDir: false },
+            { id: 'b-next', isDir: false },
+          ],
+        }),
+        registrationDirectory: async () => {
+          throw new Error('unexpected');
+        },
+      },
+    });
+
+    await inventory.runBatch();
+    await inventory.runBatch();
+
+    expect(
+      c.db.connection
+        .prepare("SELECT status FROM curation_inventory_queue WHERE opaque_id='a-slow'")
+        .get()?.status,
+    ).toBe('error');
+    expect(repo.coverage(['lib'])[0]?.lastErrorCode).toBe('inventory_upstream');
+    expect(failures).toEqual([
+      { kind: 'track', code: 'inventory_upstream', cause: 'batch_timeout' },
+    ]);
+
+    await inventory.runBatch();
+
+    expect(reconciled).toEqual(['b-next']);
+  } finally {
+    c.cleanup();
+  }
+});
+
+/** Keeps an in-flight track replayable when the worker itself is shutting down. */
+it('preserves a pending track when an external abort interrupts reconciliation', async () => {
+  const { createCurationInventory } = await import('../src/curation/inventory.js');
+  const c = await createTestContext();
+  try {
+    const repo = createCurationRepository({
+      database: c.db,
+      clock: () => 1000,
+      cursorKey: new Uint8Array(32),
+      limits: {
+        claimLeaseMs: 1000,
+        maxTargets: 10,
+        snapshotMaxAgeMs: 1000,
+        snapshotMaxItems: 100,
+        snapshotMaxCount: 10,
+      },
+    });
+    const inventory = createCurationInventory({
+      database: c.db,
+      repository: repo,
+      clock: () => 1000,
+      libraries: [{ id: 'lib', musicFolderId: '0' }],
+      batchSize: 1,
+      batchTimeMs: 1000,
+      sweepIntervalMs: 1000,
+      maxQueueItems: 100,
+      reconcile: async (_trackRef, signal) =>
+        new Promise((_, reject) =>
+          signal!.addEventListener('abort', () => reject(new Error('cancelled')), { once: true }),
+        ),
+      source: {
+        inventoryIndexes: async () => ({ roots: [{ id: 'track', isDir: false }] }),
+        registrationDirectory: async () => {
+          throw new Error('unexpected');
+        },
+      },
+    });
+    await inventory.runBatch();
+    const external = new AbortController();
+    const interrupted = inventory.runBatch(external.signal);
+    external.abort();
+
+    await interrupted;
+
+    expect(
+      c.db.connection.prepare('SELECT status FROM curation_inventory_queue').get()?.status,
+    ).toBe('pending');
+  } finally {
+    c.cleanup();
+  }
+});
+
 it('does not reset an incomplete partial generation at the sweep interval', async () => {
   const { createCurationInventory } = await import('../src/curation/inventory.js');
   const c = await createTestContext();

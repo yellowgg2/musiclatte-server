@@ -9,6 +9,16 @@ import type { ManagementDatabase } from '../storage/database.js';
 import type { MetadataOptions } from '../metadata/provider.js';
 import type { SubsonicClient } from '../subsonic/client.js';
 import type { createMetadataHelper } from '../metadata/helper-client.js';
+
+export function curationInventoryFailureLog(failure: {
+  kind: 'directory' | 'track';
+  code: string;
+  cause: 'batch_timeout' | 'upstream';
+}): string | null {
+  if (['unsupported_format', 'inventory_pending'].includes(failure.code)) return null;
+  return `curation_inventory_item_failed kind=${failure.kind} code=${failure.code} cause=${failure.cause}\n`;
+}
+
 export function configuredMediaFence(
   env: Record<string, string | undefined>,
   runtime: { python: string; helperPath: string; musicRoot: string; timeoutMs: number },
@@ -84,6 +94,10 @@ export function createCurationScheduler(options: {
     ...options.policy.inventory,
     repository,
     reconcile: (id, signal) => reconciler.reconcile(id, signal),
+    reportFailure: (failure) => {
+      const message = curationInventoryFailureLog(failure);
+      if (message) process.stderr.write(message);
+    },
   });
   return {
     repository,

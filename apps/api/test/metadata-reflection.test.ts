@@ -141,6 +141,8 @@ const reflectionScenarios = [
   'lost-scan-lease',
   'refreshed-cover',
   'cache-failure',
+  'unrelated-cover-failure',
+  'account-failure',
   'lease-during-snapshot',
 ];
 /** Refresh is fenced by file revision and scan ownership; failed refresh cannot succeed. */
@@ -252,13 +254,17 @@ it.each(reflectionScenarios)(
         getStarred2: async () => [],
       } as SubsonicClient;
       let coverRefreshed = false;
+      const reportedFailures: Array<{ phase: string; code: string }> = [];
       let reads = 0;
       const reflector = createMetadataReflector({
         database: c.db,
         repository: repo,
         scanClient: client,
         libraries: [{ id: 'library', relativeRoot: 'channel', musicFolderId: '0' }],
-        accountClient: async () => client,
+        accountClient: async () => {
+          if (scenario === 'account-failure') throw new Error('permission_changed');
+          return client;
+        },
         fileSnapshot: async () => {
           if (++reads === 2 && scenario === 'lease-during-snapshot')
             c.db.connection.prepare("UPDATE registration_cycle SET owner='new-owner'").run();
@@ -271,8 +277,11 @@ it.each(reflectionScenarios)(
           if (scenario === 'cache-failure') throw new Error('cache unavailable');
           coverRefreshed = true;
         },
-        coverMatches: async () =>
-          scenario === 'refreshed-cover' ? coverRefreshed : scenario !== 'stale-cover',
+        coverMatches: async () => {
+          if (scenario === 'unrelated-cover-failure') throw new Error('cover unavailable');
+          return scenario === 'refreshed-cover' ? coverRefreshed : scenario !== 'stale-cover';
+        },
+        reportFailure: (failure) => reportedFailures.push(failure),
         clock: () => now,
         timeoutMs: 100,
         pollMs: 10,
@@ -284,13 +293,23 @@ it.each(reflectionScenarios)(
       await reflector.reflect(claim, repo.readWork(claim));
       const item = repo.getJob('job', '1'.repeat(64))!.items[0]!;
       expect(item.stage).toBe(
-        scenario === 'verified' || scenario === 'mixed' || scenario === 'refreshed-cover'
+        scenario === 'verified' ||
+          scenario === 'mixed' ||
+          scenario === 'refreshed-cover' ||
+          scenario === 'unrelated-cover-failure'
           ? 'succeeded'
-          : scenario === 'file-change'
+          : scenario === 'account-failure'
             ? 'recovery_required'
-            : 'reflecting',
+            : scenario === 'file-change'
+              ? 'recovery_required'
+              : scenario === 'id-change'
+                ? 'conflict'
+                : 'reflecting',
       );
       if (scenario === 'cache-failure') expect(item.errorCode).toBe('reflection_unavailable');
+      if (scenario === 'account-failure') expect(item.errorCode).toBe('permission_changed');
+      if (scenario === 'cache-failure')
+        expect(reportedFailures).toEqual([{ phase: 'cover_cache', code: 'unavailable' }]);
       if (
         ['file-change', 'id-change', 'lost-scan-lease', 'lease-during-snapshot'].includes(scenario)
       )
@@ -304,7 +323,7 @@ it.each(reflectionScenarios)(
         expect(c.db.connection.prepare('SELECT owner FROM registration_cycle').get()!.owner).toBe(
           'new-owner',
         );
-      expect(starts).toBe(scenario === 'file-change' ? 0 : 1);
+      expect(starts).toBe(['file-change', 'account-failure'].includes(scenario) ? 0 : 1);
       if (scenario === 'changed-mismatch') {
         expect(
           repo.claimNext({

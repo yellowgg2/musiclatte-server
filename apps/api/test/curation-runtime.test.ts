@@ -71,6 +71,31 @@ it('gives inventory a bounded turn after recovery, file and reflection and propa
   expect(calls).toEqual(['recover', 'file', 'reflect', 'inventory']);
 });
 
+it('logs actionable inventory failures without routine classification noise', async () => {
+  const { curationInventoryFailureLog } = await import('../src/curation/runtime.js');
+  expect(
+    curationInventoryFailureLog({
+      kind: 'track',
+      code: 'inventory_upstream',
+      cause: 'batch_timeout',
+    }),
+  ).toBe('curation_inventory_item_failed kind=track code=inventory_upstream cause=batch_timeout\n');
+  expect(
+    curationInventoryFailureLog({
+      kind: 'track',
+      code: 'unsupported_format',
+      cause: 'upstream',
+    }),
+  ).toBeNull();
+  expect(
+    curationInventoryFailureLog({
+      kind: 'track',
+      code: 'inventory_pending',
+      cause: 'upstream',
+    }),
+  ).toBeNull();
+});
+
 it('resumes inventory checkpoints, re-verifies stale restores immediately and stops in-flight discovery', async () => {
   const { createCurationMutationContext } =
     await import('../../../tests/support/curation-mutation-harness.js');

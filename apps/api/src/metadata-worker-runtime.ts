@@ -66,9 +66,9 @@ export function createMetadataScheduler(tasks: {
         for (const work of [
           tasks.recover,
           ...(tasks.organize ? [tasks.organize] : []),
-          ...(tasks.inventory ? [tasks.inventory] : []),
           tasks.file,
           tasks.reflect,
+          ...(tasks.inventory ? [tasks.inventory] : []),
         ]) {
           if (signal.aborted) break;
           try {
@@ -346,6 +346,8 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
         helper,
         signal,
       }),
+      reportFailure: ({ phase, code }) =>
+        process.stderr.write(`metadata_reflection_failed phase=${phase} code=${code}\n`),
     });
     const worker = createMetadataWorker({
       repository,

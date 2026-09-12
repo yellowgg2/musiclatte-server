@@ -311,6 +311,29 @@ export function createCurationRepository(options: {
         return id;
       });
     },
+    requestVerification(id: string): boolean {
+      return atomic(() => {
+        const row = rowFor(id);
+        if (!row) return false;
+        const run = db
+          .prepare('SELECT generation FROM curation_inventory_runs WHERE library_id=?')
+          .get(row.library_id!);
+        if (!run) return false;
+        db.prepare(
+          "INSERT INTO curation_inventory_queue(library_id,generation,opaque_id,kind,status) VALUES(?,?,?,'track','pending') ON CONFLICT(library_id,generation,kind,opaque_id) DO UPDATE SET status='pending'",
+        ).run(row.library_id!, run.generation!, row.track_id!);
+        db.prepare(
+          "INSERT OR IGNORE INTO curation_source_events(library_id,media_link_id,track_id,kind,source_key,created_at) VALUES(?,?,?,'claim_verification_requested',?,?)",
+        ).run(
+          row.library_id!,
+          row.media_link_id!,
+          row.track_id!,
+          `claim-verification:${id}:${String(run.generation)}`,
+          clock(),
+        );
+        return true;
+      });
+    },
     transition(id: string, input: CurationEvent) {
       return atomic(() => {
         const row = rowFor(id);

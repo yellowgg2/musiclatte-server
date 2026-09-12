@@ -91,9 +91,9 @@ describe('metadata runtime', () => {
       },
     });
     expect(await scheduler.cycle(new AbortController().signal)).toBe(true);
-    expect(calls).toEqual(['recover', 'organize', 'inventory', 'file', 'reflect']);
+    expect(calls).toEqual(['recover', 'organize', 'file', 'reflect', 'inventory']);
   });
-  it('gives inventory a turn before long metadata reflection work', async () => {
+  it('gives inventory a bounded turn after foreground metadata work', async () => {
     const { createMetadataScheduler } = await import('../src/metadata-worker-runtime.js');
     const calls: string[] = [];
     const task = (name: string) => async () => {
@@ -107,7 +107,7 @@ describe('metadata runtime', () => {
       file: task('file'),
       reflect: task('reflect'),
     }).cycle(new AbortController().signal);
-    expect(calls).toEqual(['recover', 'organize', 'inventory', 'file', 'reflect']);
+    expect(calls).toEqual(['recover', 'organize', 'file', 'reflect', 'inventory']);
   });
   /** Health inspection cannot create management storage or execute a helper. */
   it('should report disabled or missing worker state without creating it', async () => {

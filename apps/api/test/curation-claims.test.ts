@@ -3,6 +3,49 @@ import { createApp } from '../src/app.js';
 import { randomUUID } from 'node:crypto';
 import { createCurationMutationContext } from '../../../tests/support/curation-mutation-harness.js';
 
+it('queues stale claim targets for prioritized inventory verification', async () => {
+  const c = await createCurationMutationContext();
+  try {
+    c.storage.db.connection
+      .prepare(
+        "INSERT INTO curation_inventory_runs(library_id,generation,status,last_discovery_at,checkpoint_json) VALUES(?,?,'discovering',?,'{}')",
+      )
+      .run('music', 'generation-1', c.clock());
+    c.storage.db.connection
+      .prepare("UPDATE curation_tracks SET validation='stale' WHERE id=?")
+      .run(c.trackRef);
+    const response = await c.post(
+      'curation-claims',
+      {
+        operationId: randomUUID(),
+        purpose: 'optional_enrichment',
+        fields: ['album'],
+        targets: [
+          { trackId: 'track-1', expectedRevision: c.repository.get(c.trackRef)!.fileRevision! },
+        ],
+      },
+      await c.token(),
+    );
+    expect(response.json().results).toEqual([{ trackId: 'track-1', status: 'inventory_pending' }]);
+    expect(
+      c.storage.db.connection
+        .prepare(
+          "SELECT status FROM curation_inventory_queue WHERE library_id=? AND generation=? AND opaque_id=? AND kind='track'",
+        )
+        .get('music', 'generation-1', 'track-1')?.status,
+    ).toBe('pending');
+    expect(
+      c.storage.db.connection
+        .prepare(
+          'SELECT kind FROM curation_source_events WHERE library_id=? AND track_id=? ORDER BY sequence DESC LIMIT 1',
+        )
+        .get('music', 'track-1')?.kind,
+    ).toBe('claim_verification_requested');
+  } finally {
+    await c.cleanup();
+  }
+});
+
 it('claims with real file revisions, separates token owners and preserves replay before stale checks', async () => {
   const c = await createCurationMutationContext();
   try {
