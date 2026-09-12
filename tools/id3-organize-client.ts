@@ -752,7 +752,12 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       schemaVersion: 1,
       job: await pollOrganization(accepted.job, options.poll),
     };
-    if (binding && options.stateFile)
+    if (
+      binding &&
+      options.stateFile &&
+      (accepted.job.stage !== completed.job.stage ||
+        accepted.job.newTrackId !== completed.job.newTrackId)
+    )
       checkpointId3OrganizationBatch(options.stateFile, binding.trackId, {
         kind: 'organization',
         jobId: completed.job.id,

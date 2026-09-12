@@ -12,6 +12,7 @@ import {
   createId3OrganizationBatchJournal,
   id3OrganizationBatchBinding,
   nextId3OrganizationBatchItem,
+  readId3OrganizationBatchJournal,
 } from '../../tools/id3-organize-batch-journal.js';
 
 const privateFile = (name: string, value: string) => {
@@ -395,6 +396,86 @@ it('replays lost submits and bounds server-owned recovery retries', async () => 
   expect(submits).toBe(2);
   expect(retries).toBe(1);
   expect(status).toBe(3);
+});
+
+/** A replay may already be terminal before the client receives its accepted response. */
+it('checkpoints an already-succeeded organization replay exactly once', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-organization-replay-'));
+  const token = 'mlpat_' + 's'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const stateFile = join(directory, 'batch.json');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  createId3OrganizationBatchJournal({
+    path: stateFile,
+    api: 'https://music.example/api/v1',
+    token,
+    selection: {
+      schemaVersion: 1,
+      capturedAt: 1,
+      source: { kind: 'favorites' },
+      selectionRevision: 'a'.repeat(64),
+      occurrenceCount: 1,
+      uniqueTrackCount: 1,
+      items: [
+        {
+          trackId: 'old',
+          title: 'Title',
+          artist: 'Artist',
+          album: null,
+          occurrenceIndexes: [0],
+        },
+      ],
+    },
+  });
+  nextId3OrganizationBatchItem(stateFile);
+  checkpointId3OrganizationBatch(stateFile, 'old', {
+    kind: 'metadata',
+    step: 'optional',
+    jobId: 'metadata-job',
+    resultRevision: 'metadata-revision',
+    serverStage: 'succeeded',
+  });
+  const fetcher = vi.fn(async () =>
+    Response.json(
+      {
+        schemaVersion: 1,
+        job: {
+          id: 'organization-job',
+          itemId: 'organization-item',
+          libraryId: 'music',
+          trackId: 'old',
+          newTrackId: 'new',
+          stage: 'succeeded',
+          errorCode: null,
+          nextOwner: null,
+        },
+      },
+      { status: 202 },
+    ),
+  );
+  const result = await runId3OrganizeCommand({
+    api: 'https://music.example/api/v1',
+    tokenFile,
+    stateFile,
+    fetch: fetcher,
+    sleep: async () => {},
+    command: 'organization-submit',
+    trackId: 'old',
+    revision: 'metadata-revision',
+    metadataJobId: 'metadata-job',
+    sourceEvidence: [
+      { url: 'https://artist.example/release', kind: 'official_artist', fields: ['title'] },
+    ],
+    poll: { attempts: 1, intervalMs: 0, recoveryRetries: 0 },
+  });
+  expect(result.job).toMatchObject({ stage: 'succeeded', newTrackId: 'new' });
+  expect(readId3OrganizationBatchJournal(stateFile).items[0]).toMatchObject({
+    state: 'succeeded',
+    organizationJobId: 'organization-job',
+    newTrackId: 'new',
+    serverStage: 'succeeded',
+  });
+  expect(fetcher).toHaveBeenCalledTimes(1);
 });
 
 it('snapshots and restores current-account favorite and duplicate playlist references', async () => {
