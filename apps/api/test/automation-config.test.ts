@@ -53,6 +53,51 @@ it('loads explicit username to single-segment organization accounts', () => {
   });
 });
 
+/** Keeps the original four-key inventory policy valid while making its implicit retry behavior explicit. */
+it('normalizes the legacy inventory policy without enabling retries', () => {
+  expect(read(policy)).toMatchObject({
+    enabled: true,
+    curation: {
+      inventory: {
+        ...policy.curation.inventory,
+        itemTimeoutMs: policy.curation.inventory.batchTimeMs,
+        retryIntervalMs: 1,
+        maxRetryAttempts: 0,
+      },
+    },
+  });
+});
+
+/** Accepts only the bounded seven-key inventory policy and enforces timer ownership relationships. */
+it('loads the explicit inventory timeout and retry policy and rejects invalid combinations', () => {
+  const inventory = {
+    batchSize: 10,
+    itemTimeoutMs: 20_000,
+    batchTimeMs: 60_000,
+    retryIntervalMs: 600_000,
+    maxRetryAttempts: 2,
+    sweepIntervalMs: 86_400_000,
+    maxQueueItems: 10_000,
+  };
+  expect(read({ ...policy, curation: { ...policy.curation, inventory } })).toMatchObject({
+    curation: { inventory },
+  });
+
+  for (const invalid of [
+    { ...inventory, itemTimeoutMs: 60_001 },
+    { ...inventory, batchTimeMs: 300_001 },
+    { ...inventory, retryIntervalMs: 0 },
+    { ...inventory, maxRetryAttempts: 11 },
+    { ...inventory, maxRetryAttempts: -1 },
+    { ...inventory, sweepIntervalMs: 59_999 },
+    { ...inventory, unexpected: 1 },
+  ]) {
+    expect(() => read({ ...policy, curation: { ...policy.curation, inventory: invalid } })).toThrow(
+      'Invalid automation configuration',
+    );
+  }
+});
+
 it.each([
   '/absolute',
   'nested/account',

@@ -27,7 +27,10 @@ export interface CurationRuntimePolicy {
   limits: CurationLimits;
   inventory: {
     batchSize: number;
+    itemTimeoutMs: number;
     batchTimeMs: number;
+    retryIntervalMs: number;
+    maxRetryAttempts: number;
     sweepIntervalMs: number;
     maxQueueItems: number;
   };
@@ -100,15 +103,39 @@ export function readAutomationConfig(env: Record<string, string | undefined>):
       'snapshotMaxCount',
     ]) as unknown as CurationLimits;
     createCurationPolicy(limits);
-    const inventory = curationRecord(c.inventory, [
+    if (!c.inventory || typeof c.inventory !== 'object' || Array.isArray(c.inventory))
+      throw new Error();
+    const inventoryKeyCount = Object.keys(c.inventory).length;
+    const legacyInventoryKeys = ['batchSize', 'batchTimeMs', 'sweepIntervalMs', 'maxQueueItems'];
+    const explicitInventoryKeys = [
       'batchSize',
+      'itemTimeoutMs',
       'batchTimeMs',
+      'retryIntervalMs',
+      'maxRetryAttempts',
       'sweepIntervalMs',
       'maxQueueItems',
-    ]);
+    ];
+    const keys =
+      inventoryKeyCount === legacyInventoryKeys.length
+        ? legacyInventoryKeys
+        : explicitInventoryKeys;
+    const decodedInventory = curationRecord(c.inventory, keys);
+    const inventory =
+      keys === legacyInventoryKeys
+        ? {
+            ...decodedInventory,
+            itemTimeoutMs: decodedInventory.batchTimeMs,
+            retryIntervalMs: 1,
+            maxRetryAttempts: 0,
+          }
+        : decodedInventory;
     const max = {
       batchSize: 100,
-      batchTimeMs: 5000,
+      itemTimeoutMs: 120000,
+      batchTimeMs: 300000,
+      retryIntervalMs: 86400000,
+      maxRetryAttempts: 10,
       sweepIntervalMs: 86400000,
       maxQueueItems: 1000000,
     };
@@ -116,10 +143,11 @@ export function readAutomationConfig(env: Record<string, string | undefined>):
       if (
         typeof value !== 'number' ||
         !Number.isSafeInteger(value) ||
-        value < 1 ||
+        value < (key === 'maxRetryAttempts' ? 0 : 1) ||
         value > max[key as keyof typeof max]
       )
         throw new Error();
+    if (Number(inventory.itemTimeoutMs) > Number(inventory.batchTimeMs)) throw new Error();
     if (Number(inventory.sweepIntervalMs) < Number(inventory.batchTimeMs)) throw new Error();
     let organization: OrganizationRuntimePolicy | undefined;
     if (Object.hasOwn(config, 'organization')) {

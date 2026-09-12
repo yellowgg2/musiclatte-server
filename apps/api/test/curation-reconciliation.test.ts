@@ -199,7 +199,7 @@ it('reconciles real MP3 bytes, preserves optional-only receipts and detects chan
       "INSERT INTO curation_inventory_runs(library_id,generation,status,last_discovery_at,checkpoint_json) VALUES('lib','generation','discovering',1000,'{}')",
     );
     c.db.connection.exec(
-      "INSERT INTO curation_inventory_queue VALUES('lib','generation','new-song-id','track','pending')",
+      "INSERT INTO curation_inventory_queue(library_id,generation,opaque_id,kind,status) VALUES('lib','generation','new-song-id','track','pending')",
     );
     await reconciler.reconcile(newId);
     expect(repo.get(newId)?.curationStatus).toBe('unreviewed');

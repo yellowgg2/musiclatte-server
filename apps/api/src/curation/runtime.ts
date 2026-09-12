@@ -13,10 +13,19 @@ import type { createMetadataHelper } from '../metadata/helper-client.js';
 export function curationInventoryFailureLog(failure: {
   kind: 'directory' | 'track';
   code: string;
-  cause: 'batch_timeout' | 'upstream';
+  cause: 'item_timeout' | 'upstream';
 }): string | null {
   if (['unsupported_format', 'inventory_pending'].includes(failure.code)) return null;
   return `curation_inventory_item_failed kind=${failure.kind} code=${failure.code} cause=${failure.cause}\n`;
+}
+
+export function curationInventoryBatchLog(summary: {
+  processed: number;
+  succeeded: number;
+  retryScheduled: number;
+  terminal: number;
+}): string {
+  return `curation_inventory_batch processed=${summary.processed} succeeded=${summary.succeeded} retry_scheduled=${summary.retryScheduled} terminal=${summary.terminal}\n`;
 }
 
 export function configuredMediaFence(

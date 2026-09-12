@@ -139,9 +139,12 @@ worker-only. Without this overlay, automation remains disabled.
       "snapshotMaxCount": 100
     },
     "inventory": {
-      "batchSize": 3,
-      "batchTimeMs": 2000,
-      "sweepIntervalMs": 60000,
+      "batchSize": 10,
+      "itemTimeoutMs": 20000,
+      "batchTimeMs": 60000,
+      "retryIntervalMs": 600000,
+      "maxRetryAttempts": 2,
+      "sweepIntervalMs": 86400000,
       "maxQueueItems": 10000
     }
   }
@@ -149,7 +152,17 @@ worker-only. Without this overlay, automation remains disabled.
 ```
 
 The metadata worker fairly runs recovery, file writes, reflection and bounded inventory batches.
-Checkpointed discovery resumes after restart; restored inventories are reverified immediately.
+`itemTimeoutMs` limits one directory or track operation, while `batchTimeMs` limits the whole
+inventory turn. A batch budget expiry or worker shutdown leaves the current item pending. An item
+timeout or upstream failure is retried only after ordinary pending discovery, at
+`retryIntervalMs`, up to `maxRetryAttempts` additional attempts. Exhausted items keep coverage
+`partial` without blocking other work. Full sweeps are scheduled from the prior reconciliation
+completion time. Checkpointed discovery and retry attempts resume after restart; restored
+inventories are reverified immediately.
+
+The legacy four-key inventory object (`batchSize`, `batchTimeMs`, `sweepIntervalMs`, and
+`maxQueueItems`) remains accepted. It normalizes `itemTimeoutMs` to `batchTimeMs` with no retries.
+Use the seven-key form above for production so item and batch deadlines have distinct ownership.
 The source-only `tools/verification/automation-http-client.ts` uses an owner-only private config
 with `api`, `origin`, `upstream`, `credentialPath`, `libraryId`, and `fixtureTitle`. The credential
 file contains only `username` and `password`; use a dedicated synthetic fixture and never commit

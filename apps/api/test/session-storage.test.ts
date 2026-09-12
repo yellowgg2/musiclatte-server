@@ -25,7 +25,7 @@ describe('session and instance storage', () => {
     c.db.close();
     const reopened = c.open();
     expect(c.createInstanceRepository(reopened, c.vault.keyId).get()).toEqual(instance);
-    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 21 });
+    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 26 });
     const tables = reopened.connection
       .prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
       .all()
@@ -37,6 +37,7 @@ describe('session and instance storage', () => {
       'curation_claims',
       'curation_events',
       'curation_field_states',
+      'curation_inventory_failures',
       'curation_inventory_queue',
       'curation_inventory_runs',
       'curation_operations',
@@ -70,6 +71,13 @@ describe('session and instance storage', () => {
       'metadata_rechecks',
       'metadata_worker_state',
       'mix_operations',
+      'organization_attempts',
+      'organization_events',
+      'organization_identity_publications',
+      'organization_items',
+      'organization_jobs',
+      'organization_reference_checkpoints',
+      'organization_source_locations',
       'playlist_operations',
       'registration_attempts',
       'registration_cycle',
@@ -98,7 +106,7 @@ describe('session and instance storage', () => {
     raw.close();
 
     const migrated = c.open(legacy);
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 21 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 26 });
     expect(
       migrated.connection.prepare('SELECT id,policy_revision,key_id FROM instance').get(),
     ).toEqual({ id: 'legacy-instance', policy_revision: 7, key_id: c.vault.keyId });
@@ -121,6 +129,73 @@ describe('session and instance storage', () => {
       inspected.prepare('SELECT sql FROM sqlite_schema WHERE name=?').get('playlist_operations'),
     ).toMatchObject({ sql: 'CREATE TABLE playlist_operations(value TEXT) STRICT' });
     inspected.close();
+  });
+  /** Upgrades an active inventory queue without losing pending work or inventing retry attempts. */
+  it('should preserve version 25 inventory rows while adding durable retry storage', async () => {
+    const c = await makeSUT();
+    const legacy = join(c.root, 'legacy-25');
+    mkdirSync(legacy);
+    const path = join(legacy, 'management.sqlite');
+    const raw = new DatabaseSync(path);
+    for (let version = 1; version <= 25; version++) {
+      const name = `${String(version).padStart(3, '0')}-${
+        [
+          'session',
+          'playlist-operations',
+          'imports',
+          'import-worker',
+          'registration',
+          'import-api',
+          'engine-lifecycle',
+          'engine-requests',
+          'metadata',
+          'metadata-evidence',
+          'metadata-rechecks',
+          'metadata-backup-previews',
+          'import-account',
+          'scan-schedule',
+          'access-tokens',
+          'metadata-principals',
+          'curation',
+          'media-publications',
+          'curation-inventory',
+          'saved-mixes',
+          'listening-history',
+          'curation-metadata-fields',
+          'metadata-organization',
+          'organization-file-preimage',
+          'organization-identity-publications',
+        ][version - 1]
+      }.sql`;
+      raw.exec(readFileSync(new URL(`../src/storage/migrations/${name}`, import.meta.url), 'utf8'));
+    }
+    raw
+      .prepare(
+        "INSERT INTO curation_inventory_runs(library_id,generation,status,last_discovery_at,checkpoint_json) VALUES('lib','generation','discovering',1000,'{}')",
+      )
+      .run();
+    raw
+      .prepare(
+        "INSERT INTO curation_inventory_queue(library_id,generation,opaque_id,kind,status) VALUES('lib','generation','track','track','pending')",
+      )
+      .run();
+    raw.close();
+
+    const upgraded = c.open(legacy);
+    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 26 });
+    expect(
+      upgraded.connection.prepare('SELECT * FROM curation_inventory_queue').get(),
+    ).toMatchObject({
+      opaque_id: 'track',
+      status: 'pending',
+      attempt_count: 0,
+      next_attempt_at: null,
+      last_error_code: null,
+      terminal: 0,
+    });
+    expect(
+      upgraded.connection.prepare('SELECT count(*) AS n FROM curation_inventory_failures').get()?.n,
+    ).toBe(0);
   });
   /** Persistent sessions contain hashes and encrypted proof, not browser tokens. */
   it('should recover session after restart without storing bearer or plaintext proof', async () => {

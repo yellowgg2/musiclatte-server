@@ -10,28 +10,51 @@ export interface CurationInventoryOptions {
   clock(): number;
   libraries: readonly { id: string; musicFolderId: string }[];
   batchSize: number;
+  itemTimeoutMs?: number;
   batchTimeMs: number;
+  retryIntervalMs?: number;
+  maxRetryAttempts?: number;
   sweepIntervalMs: number;
   maxQueueItems: number;
   reconcile(trackRef: string, signal?: AbortSignal): Promise<void>;
   reportFailure?(failure: {
     kind: 'directory' | 'track';
     code: string;
-    cause: 'batch_timeout' | 'upstream';
+    cause: 'item_timeout' | 'upstream';
   }): void;
+}
+export interface CurationInventoryBatchSummary {
+  processed: number;
+  succeeded: number;
+  retryScheduled: number;
+  terminal: number;
 }
 /** Persistent BFS membership; unfinished items replay after a crash. No separate scan scheduler. */
 export function createCurationInventory(options: CurationInventoryOptions) {
   const { database, repository, source, clock } = options;
   const db = database.connection;
-  for (const value of [
-    options.batchSize,
-    options.batchTimeMs,
-    options.sweepIntervalMs,
-    options.maxQueueItems,
-  ])
-    if (!Number.isSafeInteger(value) || value < 1 || value > 86400000)
+  const itemTimeoutMs = options.itemTimeoutMs ?? options.batchTimeMs;
+  const retryIntervalMs = options.retryIntervalMs ?? 1;
+  const maxRetryAttempts = options.maxRetryAttempts ?? 0;
+  const bounded = {
+    batchSize: [options.batchSize, 100],
+    itemTimeoutMs: [itemTimeoutMs, 120000],
+    batchTimeMs: [options.batchTimeMs, 300000],
+    retryIntervalMs: [retryIntervalMs, 86400000],
+    sweepIntervalMs: [options.sweepIntervalMs, 86400000],
+    maxQueueItems: [options.maxQueueItems, 1000000],
+  } as const;
+  for (const [value, max] of Object.values(bounded))
+    if (!Number.isSafeInteger(value) || value < 1 || value > max)
       throw new Error('invalid_inventory_config');
+  if (
+    !Number.isSafeInteger(maxRetryAttempts) ||
+    maxRetryAttempts < 0 ||
+    maxRetryAttempts > 10 ||
+    itemTimeoutMs > options.batchTimeMs ||
+    options.sweepIntervalMs < options.batchTimeMs
+  )
+    throw new Error('invalid_inventory_config');
   let running = false;
   let offset = 0;
   function enqueue(libraryId: string, generation: string, id: string, isDir: boolean) {
@@ -53,12 +76,9 @@ export function createCurationInventory(options: CurationInventoryOptions) {
       ) >= options.maxQueueItems
     )
       throw new Error('inventory_capacity');
-    db.prepare("INSERT INTO curation_inventory_queue VALUES(?,?,?,?,'pending')").run(
-      libraryId,
-      generation,
-      id,
-      kind,
-    );
+    db.prepare(
+      "INSERT INTO curation_inventory_queue(library_id,generation,opaque_id,kind,status) VALUES(?,?,?,?,'pending')",
+    ).run(libraryId, generation, id, kind);
     if (!isDir) repository.discover({ libraryId, trackId: id, format: 'unsupported' });
   }
   function markCoverage(
@@ -74,6 +94,12 @@ export function createCurationInventory(options: CurationInventoryOptions) {
     library: { id: string; musicFolderId: string },
     signal: AbortSignal,
     externalSignal?: AbortSignal,
+    summary: CurationInventoryBatchSummary = {
+      processed: 0,
+      succeeded: 0,
+      retryScheduled: 0,
+      terminal: 0,
+    },
   ): Promise<boolean> {
     let run = db
       .prepare('SELECT * FROM curation_inventory_runs WHERE library_id=?')
@@ -86,7 +112,8 @@ export function createCurationInventory(options: CurationInventoryOptions) {
       run.status === 'stale' ||
       ((['ready', 'error'].includes(String(run.status)) ||
         (run.status === 'partial' && priorCheckpoint.discoveryComplete === true)) &&
-        clock() - Number(run.last_discovery_at ?? 0) >= options.sweepIntervalMs)
+        clock() - Number(run.last_reconciled_at ?? run.last_discovery_at ?? 0) >=
+          options.sweepIntervalMs)
     ) {
       const generation = randomUUID();
       database.transaction(() => {
@@ -141,7 +168,7 @@ export function createCurationInventory(options: CurationInventoryOptions) {
             'UPDATE curation_tracks SET source_sequence=? WHERE library_id=? AND track_id=? AND source_sequence<?',
           ).run(event.sequence!, library.id, event.track_id!, event.sequence!);
           db.prepare(
-            "UPDATE curation_inventory_queue SET status='pending' WHERE library_id=? AND generation=? AND opaque_id=? AND kind='track'",
+            "UPDATE curation_inventory_queue SET status='pending',attempt_count=0,next_attempt_at=NULL,last_error_code=NULL,terminal=0 WHERE library_id=? AND generation=? AND opaque_id=? AND kind='track'",
           ).run(library.id, generation, event.track_id!);
         }
         db.prepare('UPDATE curation_inventory_runs SET event_sequence=? WHERE library_id=?').run(
@@ -156,31 +183,59 @@ export function createCurationInventory(options: CurationInventoryOptions) {
         "SELECT q.* FROM curation_inventory_queue q LEFT JOIN curation_tracks t ON q.kind='track' AND t.library_id=q.library_id AND t.track_id=q.opaque_id WHERE q.library_id=? AND q.generation=? AND q.status='pending' ORDER BY CASE q.kind WHEN 'track' THEN 0 ELSE 1 END,COALESCE(t.source_sequence,0) DESC,q.opaque_id COLLATE BINARY LIMIT 1",
       )
       .get(library.id, generation);
-    if (pending) {
+    const queued =
+      pending ??
+      db
+        .prepare(
+          "SELECT q.* FROM curation_inventory_queue q LEFT JOIN curation_tracks t ON q.kind='track' AND t.library_id=q.library_id AND t.track_id=q.opaque_id WHERE q.library_id=? AND q.generation=? AND q.status='error' AND q.terminal=0 AND q.next_attempt_at<=? ORDER BY CASE q.kind WHEN 'track' THEN 0 ELSE 1 END,COALESCE(t.source_sequence,0) DESC,q.opaque_id COLLATE BINARY LIMIT 1",
+        )
+        .get(library.id, generation, clock());
+    if (queued) {
+      let abortReason: 'item_timeout' | 'batch_budget' | null = null;
+      const itemController = new AbortController();
+      const abortForBatch = () => {
+        if (!abortReason) abortReason = 'batch_budget';
+        itemController.abort();
+      };
+      signal.addEventListener('abort', abortForBatch, { once: true });
+      const itemTimer = setTimeout(() => {
+        if (!abortReason) abortReason = 'item_timeout';
+        itemController.abort();
+      }, itemTimeoutMs);
       try {
-        if (pending.kind === 'directory') {
-          const directory = await source.registrationDirectory(String(pending.opaque_id), {
-            signal,
+        if (queued.kind === 'directory') {
+          const directory = await source.registrationDirectory(String(queued.opaque_id), {
+            signal: itemController.signal,
           });
-          if (directory.id !== pending.opaque_id) throw new Error('inventory_upstream');
+          if (directory.id !== queued.opaque_id) throw new Error('inventory_upstream');
           database.transaction(() => {
             for (const child of directory.child)
               enqueue(library.id, generation, child.id, child.isDir);
             db.prepare(
               "UPDATE curation_inventory_queue SET status='done' WHERE library_id=? AND generation=? AND opaque_id=? AND kind='directory'",
-            ).run(library.id, generation, pending.opaque_id!);
+            ).run(library.id, generation, queued.opaque_id!);
+            db.prepare(
+              'UPDATE curation_inventory_failures SET resolved_at=? WHERE library_id=? AND kind=? AND opaque_id=?',
+            ).run(clock(), library.id, queued.kind!, queued.opaque_id!);
           });
         } else {
           const track = db
             .prepare('SELECT id FROM curation_tracks WHERE library_id=? AND track_id=?')
-            .get(library.id, pending.opaque_id!)!;
-          await options.reconcile(String(track.id), signal);
-          db.prepare(
-            "UPDATE curation_inventory_queue SET status='done' WHERE library_id=? AND generation=? AND opaque_id=? AND kind='track'",
-          ).run(library.id, generation, pending.opaque_id!);
+            .get(library.id, queued.opaque_id!)!;
+          await options.reconcile(String(track.id), itemController.signal);
+          database.transaction(() => {
+            db.prepare(
+              "UPDATE curation_inventory_queue SET status='done' WHERE library_id=? AND generation=? AND opaque_id=? AND kind='track'",
+            ).run(library.id, generation, queued.opaque_id!);
+            db.prepare(
+              'UPDATE curation_inventory_failures SET resolved_at=? WHERE library_id=? AND kind=? AND opaque_id=?',
+            ).run(clock(), library.id, queued.kind!, queued.opaque_id!);
+          });
         }
+        summary.succeeded++;
       } catch (error) {
-        if (signal.aborted && externalSignal?.aborted) return false;
+        if (abortReason === 'batch_budget' || (signal.aborted && externalSignal?.aborted))
+          return false;
         const code =
           error instanceof Error &&
           [
@@ -192,15 +247,39 @@ export function createCurationInventory(options: CurationInventoryOptions) {
           ].includes(error.message)
             ? error.message
             : 'inventory_upstream';
-        db.prepare(
-          "UPDATE curation_inventory_queue SET status='error' WHERE library_id=? AND generation=? AND opaque_id=? AND kind=?",
-        ).run(library.id, generation, pending.opaque_id!, pending.kind!);
-        markCoverage(library.id, 'partial', code);
-        options.reportFailure?.({
-          kind: pending.kind === 'directory' ? 'directory' : 'track',
-          code,
-          cause: signal.aborted ? 'batch_timeout' : 'upstream',
+        const attemptCount = Number(queued.attempt_count ?? 0) + 1;
+        const terminal = attemptCount > maxRetryAttempts;
+        const cause = abortReason === 'item_timeout' ? 'item_timeout' : 'upstream';
+        database.transaction(() => {
+          db.prepare(
+            "UPDATE curation_inventory_queue SET status='error',attempt_count=?,next_attempt_at=?,last_error_code=?,terminal=? WHERE library_id=? AND generation=? AND opaque_id=? AND kind=?",
+          ).run(
+            attemptCount,
+            terminal ? null : clock() + retryIntervalMs,
+            code,
+            terminal ? 1 : 0,
+            library.id,
+            generation,
+            queued.opaque_id!,
+            queued.kind!,
+          );
+          db.prepare(
+            `INSERT INTO curation_inventory_failures(library_id,kind,opaque_id,failure_count,last_error_code,last_cause,first_failed_at,last_failed_at,resolved_at)
+             VALUES(?,?,?,1,?,?,?,?,NULL)
+             ON CONFLICT(library_id,kind,opaque_id) DO UPDATE SET failure_count=failure_count+1,last_error_code=excluded.last_error_code,last_cause=excluded.last_cause,last_failed_at=excluded.last_failed_at,resolved_at=NULL`,
+          ).run(library.id, queued.kind!, queued.opaque_id!, code, cause, clock(), clock());
+          markCoverage(library.id, 'partial', code);
         });
+        if (terminal) summary.terminal++;
+        else summary.retryScheduled++;
+        options.reportFailure?.({
+          kind: queued.kind === 'directory' ? 'directory' : 'track',
+          code,
+          cause,
+        });
+      } finally {
+        clearTimeout(itemTimer);
+        signal.removeEventListener('abort', abortForBatch);
       }
       return true;
     }
@@ -232,8 +311,14 @@ export function createCurationInventory(options: CurationInventoryOptions) {
   }
   return {
     markCoverage,
-    async runBatch(signal?: AbortSignal): Promise<{ processed: number }> {
-      if (running || signal?.aborted || !options.libraries.length) return { processed: 0 };
+    async runBatch(signal?: AbortSignal): Promise<CurationInventoryBatchSummary> {
+      const summary: CurationInventoryBatchSummary = {
+        processed: 0,
+        succeeded: 0,
+        retryScheduled: 0,
+        terminal: 0,
+      };
+      if (running || signal?.aborted || !options.libraries.length) return summary;
       running = true;
       const deadline = Date.now() + options.batchTimeMs;
       const controller = new AbortController();
@@ -250,12 +335,13 @@ export function createCurationInventory(options: CurationInventoryOptions) {
           idle < options.libraries.length
         ) {
           const library = options.libraries[offset++ % options.libraries.length]!;
-          if (await step(library, controller.signal, signal)) {
+          if (await step(library, controller.signal, signal, summary)) {
             processed++;
+            summary.processed = processed;
             idle = 0;
           } else idle++;
         }
-        return { processed };
+        return summary;
       } finally {
         clearTimeout(timer);
         signal?.removeEventListener('abort', abort);

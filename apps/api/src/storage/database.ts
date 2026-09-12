@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -30,6 +30,7 @@ const MIGRATIONS = [
   new URL('./migrations/023-metadata-organization.sql', import.meta.url),
   new URL('./migrations/024-organization-file-preimage.sql', import.meta.url),
   new URL('./migrations/025-organization-identity-publications.sql', import.meta.url),
+  new URL('./migrations/026-curation-inventory-retries.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -69,6 +70,7 @@ export function validateSchema(db: DatabaseSync): void {
     'curation_operations',
     'curation_inventory_runs',
     'curation_inventory_queue',
+    'curation_inventory_failures',
     'curation_snapshots',
     'curation_snapshot_items',
     'organization_jobs',
@@ -80,6 +82,12 @@ export function validateSchema(db: DatabaseSync): void {
     'organization_identity_publications',
   ])
     db.prepare(`SELECT * FROM ${table} LIMIT 0`);
+  db.prepare(
+    'SELECT attempt_count,next_attempt_at,last_error_code,terminal FROM curation_inventory_queue LIMIT 0',
+  );
+  db.prepare(
+    'SELECT library_id,kind,opaque_id,failure_count,last_error_code,last_cause,first_failed_at,last_failed_at,resolved_at FROM curation_inventory_failures LIMIT 0',
+  );
   const automation = db
     .prepare('SELECT credential_epoch FROM automation_state WHERE singleton=1')
     .get();

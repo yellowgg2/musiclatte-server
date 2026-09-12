@@ -221,7 +221,7 @@ describe('durable curation storage', () => {
             failed.close();
           } else {
             const upgraded = c.open(dir);
-            expect(upgraded.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(22);
+            expect(upgraded.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(26);
             expect(upgraded.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
           }
         }
@@ -278,7 +278,7 @@ describe('durable curation storage', () => {
       db.close();
 
       const upgraded = c.open(dir);
-      expect(upgraded.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(22);
+      expect(upgraded.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(26);
       expect(
         upgraded.connection
           .prepare(

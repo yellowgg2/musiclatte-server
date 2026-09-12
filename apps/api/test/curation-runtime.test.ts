@@ -77,9 +77,9 @@ it('logs actionable inventory failures without routine classification noise', as
     curationInventoryFailureLog({
       kind: 'track',
       code: 'inventory_upstream',
-      cause: 'batch_timeout',
+      cause: 'item_timeout',
     }),
-  ).toBe('curation_inventory_item_failed kind=track code=inventory_upstream cause=batch_timeout\n');
+  ).toBe('curation_inventory_item_failed kind=track code=inventory_upstream cause=item_timeout\n');
   expect(
     curationInventoryFailureLog({
       kind: 'track',
@@ -94,6 +94,21 @@ it('logs actionable inventory failures without routine classification noise', as
       cause: 'upstream',
     }),
   ).toBeNull();
+});
+
+/** Reports only bounded aggregate inventory outcomes and never item identifiers. */
+it('formats an identifier-free inventory batch summary', async () => {
+  const { curationInventoryBatchLog } = await import('../src/curation/runtime.js');
+  const message = curationInventoryBatchLog({
+    processed: 4,
+    succeeded: 2,
+    retryScheduled: 1,
+    terminal: 1,
+  });
+  expect(message).toBe(
+    'curation_inventory_batch processed=4 succeeded=2 retry_scheduled=1 terminal=1\n',
+  );
+  expect(message).not.toMatch(/track|path|title|token|account|opaque/i);
 });
 
 it('resumes inventory checkpoints, re-verifies stale restores immediately and stops in-flight discovery', async () => {

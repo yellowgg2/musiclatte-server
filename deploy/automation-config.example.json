@@ -12,9 +12,12 @@
     },
     "inventory": {
       "batchSize": 10,
-      "batchTimeMs": 1000,
-      "sweepIntervalMs": 60000,
-      "maxQueueItems": 1000
+      "itemTimeoutMs": 20000,
+      "batchTimeMs": 60000,
+      "retryIntervalMs": 600000,
+      "maxRetryAttempts": 2,
+      "sweepIntervalMs": 86400000,
+      "maxQueueItems": 10000
     }
   },
   "organization": {
