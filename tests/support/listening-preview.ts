@@ -12,6 +12,8 @@ const c = await createTestContext();
 c.storage.setNow(Date.now());
 c.state.songDurationOverride = 2;
 c.state.accountIdentityFromProof = true;
+c.state.songIdFromRequest = true;
+c.state.songMissingIds.add('fixture-missing');
 const repository = createListeningRepository({ database: c.storage.db, clock: Date.now });
 const options = {
   ...c.options,
@@ -45,14 +47,21 @@ const timer = setInterval(() => {
       ),
       'base64url',
     ).toString('hex');
-    for (let i = 0; i < 52; i++) {
-      const time = Date.now() - (i % 2 ? 8 : 1) * 86400000;
+    const now = Date.now();
+    const songIds = Array.from({ length: 54 }, (_, index) => `fixture-${index}`);
+    songIds[0] = 'tr-1';
+    songIds[48] = 'fixture-missing';
+    songIds[50] = 'tr-1';
+    songIds[52] = 'tr-1';
+    songIds[53] = 'tr-1';
+    for (let i = 0; i < songIds.length; i++) {
+      const time = now - (i < 27 ? 8 : 1) * 86400000 + i * 60000;
       repository.insert(
         {
           identityKey,
           eventIdHash: i.toString(16).padStart(64, '0'),
           requestHash: 'e'.repeat(64),
-          songId: 'tr-1',
+          songId: songIds[i]!,
           startedAt: time - 2000,
           qualifiedAt: time,
         },

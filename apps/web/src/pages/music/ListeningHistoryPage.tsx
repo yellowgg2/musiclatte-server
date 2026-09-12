@@ -2,14 +2,26 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Action } from '../../design/components/Action';
 import { StatusSurface } from '../../design/components/StatusSurface';
 import { LanguagePicker } from '../../app/LanguagePicker';
+import { FavoriteAction } from '../../favorites/components/FavoriteAction';
+import { MetadataAction } from '../../metadata/components/MetadataAction';
 import { MusicRow } from '../../music/components/MusicRow';
-import { SongList, SongViewToggle, songLayout, useSongView } from '../../music/components/SongView';
+import {
+  SongList,
+  SongViewHeading,
+  songLayout,
+  useSongView,
+} from '../../music/components/SongView';
 import { createMusicClient } from '../../music/client';
 import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
 import { usePlayer } from '../../player/PlayerProvider';
-import { createListeningReader, listeningRange, type ListeningRow } from '../../listening/state';
+import {
+  createListeningReader,
+  listeningRange,
+  visibleListeningRows,
+  type ListeningRow,
+} from '../../listening/state';
 import { errorCode } from '../../auth/client';
-import { messages, type Locale } from '../../i18n';
+import { formatCount, messages, type Locale } from '../../i18n';
 import styles from './Listening.module.css';
 import { MusicSectionNav, type MusicSectionAvailability } from './MusicSectionNav';
 export function ListeningHistoryPage({
@@ -130,7 +142,8 @@ export function ListeningHistoryPage({
       if (!signal.aborted) setMoreLoading(false);
     }
   }
-  const songs = rows.flatMap((row) => (row.song ? [row.song] : []));
+  const visibleRows = useMemo(() => visibleListeningRows(kind, rows), [kind, rows]);
+  const songs = visibleRows.map((row) => row.song);
   const title = copy[kind === 'history' ? 'listening.history' : 'listening.top'];
   const date = (time: string) =>
     new Intl.DateTimeFormat(locale === 'ko' ? 'ko-KR' : 'en-US', {
@@ -151,17 +164,16 @@ export function ListeningHistoryPage({
       <MusicSectionNav base={base} locale={locale} current={kind} available={sections} />
       <div className={styles.controlBar}>
         <div className={styles.filterActions}>
-          <label>
-            {copy['listening.period']}
-            <select
-              value={preset}
-              onChange={(event) => setPreset(event.target.value as 'all' | '7' | '30')}
-            >
-              <option value="all">{copy['listening.all']}</option>
-              <option value="7">{copy['listening.week']}</option>
-              <option value="30">{copy['listening.month']}</option>
-            </select>
-          </label>
+          <label htmlFor="listening-period">{copy['listening.period']}</label>
+          <select
+            id="listening-period"
+            value={preset}
+            onChange={(event) => setPreset(event.target.value as 'all' | '7' | '30')}
+          >
+            <option value="all">{copy['listening.all']}</option>
+            <option value="7">{copy['listening.week']}</option>
+            <option value="30">{copy['listening.month']}</option>
+          </select>
           <Action variant="secondary" onClick={() => setRefresh((n) => n + 1)}>
             {copy['listening.refresh']}
           </Action>
@@ -200,55 +212,51 @@ export function ListeningHistoryPage({
           <p>{copy['listening.error']}</p>
           <Action onClick={() => setRefresh((n) => n + 1)}>{copy['status.retry']}</Action>
         </div>
-      ) : rows.length === 0 ? (
-        <p role="status">{copy['listening.empty']}</p>
+      ) : visibleRows.length === 0 ? (
+        <p role="status">
+          {copy[rows.length > 0 ? 'listening.noAvailableSongs' : 'listening.empty']}
+        </p>
       ) : (
         <>
-          <SongViewToggle locale={locale} view={songView} onChange={setSongView} />
+          <SongViewHeading locale={locale} view={songView} onChange={setSongView}>
+            {copy['music.songs']}{' '}
+            <span className={styles.count}>{formatCount(visibleRows.length, locale)}</span>
+          </SongViewHeading>
           <SongList className={styles.list} aria-label={title} view={songView}>
-            {rows.map((row, index) => (
-              <li
+            {visibleRows.map((row, index) => (
+              <MusicRow
                 key={row.key}
-                data-listening-event={row.key}
-                data-layout={row.song ? songLayout(songView) : 'list'}
-              >
-                <div className={styles.detail}>
-                  <time dateTime={row.time}>{date(row.time)}</time>
-                  {row.count !== undefined && (
-                    <span>{copy['listening.count'].replace('{count}', String(row.count))}</span>
-                  )}
-                </div>
-                {row.song ? (
-                  <ul className={styles.song}>
-                    <MusicRow
-                      song={row.song}
-                      layout={songLayout(songView)}
-                      songs={songs}
-                      locale={locale}
-                      base={base}
-                      coverUrl={player.coverUrl}
-                      current={player.state.current?.id === row.songId}
-                      playbackStatus={player.state.status}
-                      {...(canStream
-                        ? {
-                            onActivate: (activation) =>
-                              player.activate({
-                                ...activation,
-                                position: rows.slice(0, index).filter((item) => item.song).length,
-                              }),
-                          }
-                        : {})}
-                      onPause={player.pause}
-                      onResume={player.resume}
-                    />
-                  </ul>
-                ) : (
-                  <div className={styles.missing}>
-                    <p>{copy['listening.missing']}</p>
-                    <Action disabled>{copy['mix.play']}</Action>
+                song={row.song}
+                layout={songLayout(songView)}
+                songs={songs}
+                locale={locale}
+                base={base}
+                coverUrl={player.coverUrl}
+                current={player.state.current?.id === row.songId}
+                playbackStatus={player.state.status}
+                context={
+                  <div className={styles.detail}>
+                    <time dateTime={row.time}>{date(row.time)}</time>
+                    {row.count !== undefined && (
+                      <span>{copy['listening.count'].replace('{count}', String(row.count))}</span>
+                    )}
                   </div>
-                )}
-              </li>
+                }
+                {...(canStream
+                  ? {
+                      onActivate: (activation) =>
+                        player.activate({ ...activation, position: index }),
+                    }
+                  : {})}
+                onPause={player.pause}
+                onResume={player.resume}
+                actions={
+                  <>
+                    <MetadataAction song={row.song} />
+                    <FavoriteAction song={row.song} locale={locale} />
+                  </>
+                }
+              />
             ))}
           </SongList>
         </>

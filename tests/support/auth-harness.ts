@@ -94,6 +94,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     closedCollectionRequests: 0,
     songResponseGate: undefined as (() => Promise<void>) | undefined,
     songError: 0,
+    songMissingIds: new Set<string>(),
     songBitRateOverride: undefined as number | undefined,
     songStatus: 0,
     scrobbleDrop: false,
@@ -357,30 +358,32 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     const code =
       operation === 'scrobble' && state.scrobbleError
         ? state.scrobbleError
-        : operation === 'getSong' && state.songError
-          ? state.songError
-          : isFavoriteRead && state.favoriteWriteObserved && state.favoritePostwriteError
-            ? state.favoritePostwriteError
-            : isFavoriteRead && state.favoriteReadError
-              ? state.favoriteReadError
-              : isFavoriteWrite && state.favoriteWriteError
-                ? state.favoriteWriteError
-                : isCollectionRead && state.collectionError
-                  ? state.collectionError
-                  : isCollectionWrite && currentMutationError
-                    ? currentMutationError
-                    : isLibrary &&
-                        (state.libraryError ||
-                          (operation === 'getArtistInfo2' && state.artistInfoError))
-                      ? state.libraryError || state.artistInfoError
-                      : !valid
-                        ? 40
-                        : state.error ||
-                          (isRandom
-                            ? state.randomError
-                            : operation === 'startScan'
-                              ? state.scanError
-                              : 0);
+        : operation === 'getSong' && state.songMissingIds.has(url.searchParams.get('id') ?? '')
+          ? 70
+          : operation === 'getSong' && state.songError
+            ? state.songError
+            : isFavoriteRead && state.favoriteWriteObserved && state.favoritePostwriteError
+              ? state.favoritePostwriteError
+              : isFavoriteRead && state.favoriteReadError
+                ? state.favoriteReadError
+                : isFavoriteWrite && state.favoriteWriteError
+                  ? state.favoriteWriteError
+                  : isCollectionRead && state.collectionError
+                    ? state.collectionError
+                    : isCollectionWrite && currentMutationError
+                      ? currentMutationError
+                      : isLibrary &&
+                          (state.libraryError ||
+                            (operation === 'getArtistInfo2' && state.artistInfoError))
+                        ? state.libraryError || state.artistInfoError
+                        : !valid
+                          ? 40
+                          : state.error ||
+                            (isRandom
+                              ? state.randomError
+                              : operation === 'startScan'
+                                ? state.scanError
+                                : 0);
     const body = code
       ? subsonicErrorFixture(code, 'synthetic-secret-upstream-message')
       : operation === 'getUser'

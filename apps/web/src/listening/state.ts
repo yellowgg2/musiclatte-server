@@ -12,6 +12,23 @@ export interface ListeningPage {
   nextCursor: string | null;
   asOf: string;
 }
+export type VisibleListeningRow = Omit<ListeningRow, 'song'> & { song: MusicEntry };
+
+export function visibleListeningRows(
+  kind: 'history' | 'top',
+  rows: readonly ListeningRow[],
+): VisibleListeningRow[] {
+  const seen = new Set<string>();
+  const visible: VisibleListeningRow[] = [];
+  for (const row of rows) {
+    const song = row.song;
+    if (!song || seen.has(row.songId)) continue;
+    seen.add(row.songId);
+    visible.push({ ...row, key: kind === 'top' ? row.songId : row.key, song });
+  }
+  return visible;
+}
+
 export function listeningRange(preset: 'all' | '7' | '30', now = Date.now()) {
   return preset === 'all'
     ? {}

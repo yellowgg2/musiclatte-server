@@ -742,6 +742,7 @@
   "listening.recordError": "Some listening records could not be confirmed. Retries are limited and playback continues.",
   "listening.error": "Could not load listening history.",
   "listening.empty": "No listening recorded in this period.",
+  "listening.noAvailableSongs": "No available songs in these loaded records.",
   "listening.count": "{count} plays",
   "listening.missing": "Song unavailable",
   "listening.cursorError": "This page can no longer be continued. Refresh the history.",

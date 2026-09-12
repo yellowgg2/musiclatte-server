@@ -8,8 +8,7 @@
 .topline,
 .filterActions,
 .playbackActions,
-.detail,
-.missing {
+.detail {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -55,11 +54,10 @@
 }
 .filterActions,
 .playbackActions {
-  align-items: end;
+  align-items: center;
 }
 .filterActions label {
-  display: grid;
-  gap: var(--space-2);
+  font-weight: 650;
 }
 .filterActions select {
   font: inherit;
@@ -69,20 +67,21 @@
   border-radius: var(--radius-control);
   padding: var(--space-3);
   min-height: var(--control-size);
+  width: auto;
+  max-width: 100%;
 }
-.list,
-.song {
+.list {
   list-style: none;
   padding: 0;
   margin: 0;
 }
-.list > li {
-  padding-block: var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-}
 .detail {
   font-size: var(--text-small);
-  margin-bottom: var(--space-2);
+}
+.count {
+  color: var(--color-secondary);
+  font-size: var(--text-small);
+  font-weight: 500;
 }
 .page summary {
   cursor: pointer;
