@@ -337,6 +337,7 @@ export async function startMetadataUIHarness({
                   libraryId: 'music',
                   oldTrackId: 'synthetic-song',
                   newTrackId: 'synthetic-song',
+                  identityResolution: 'unchanged',
                   oldRevision: `revision-${revision - 1}`,
                   newRevision: `revision-${revision}`,
                   coverGeneration: `revision-${revision}`,

@@ -358,7 +358,12 @@ describe('metadata API', () => {
     const feed = await c.get('/api/v1/metadata-changes');
     expect(feed.statusCode).toBe(200);
     expect(feed.json().changes).toMatchObject([
-      { newTrackId: 'track-1', reflection: 'reflection_mismatch', reflectedAt: null },
+      {
+        newTrackId: 'track-1',
+        reflection: 'reflection_mismatch',
+        reflectedAt: null,
+        identityResolution: 'unchanged',
+      },
     ]);
     const body = { operationId: operationId(11), itemIds: [work.itemId] };
     const url = `metadata-jobs/${job.id}/rechecks`;
@@ -382,7 +387,7 @@ describe('metadata API', () => {
       `/api/v1/metadata-changes?cursor=${encodeURIComponent(feed.json().nextCursor)}`,
     );
     expect(delta.json().changes).toMatchObject([
-      { reflection: 'verified', reflectedAt: recentNow },
+      { reflection: 'verified', reflectedAt: recentNow, identityResolution: 'unchanged' },
     ]);
     expect(delta.json().changes).toHaveLength(1);
     const restoreBody = {

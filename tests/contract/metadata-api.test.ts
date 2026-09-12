@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import { describe, expect, it } from 'vitest';
 import {
   metadataRequestSchemas as schemas,
+  metadataResponseSchemas,
   decodeMetadataPreview,
   decodeMetadataCoverUpload,
   decodeMetadataChanges,
@@ -141,14 +142,35 @@ describe('metadata API consumer-independent contract', () => {
       fileSavedAt: 1,
       reflectedAt: null,
       reflection: 'reflection_mismatch',
+      identityResolution: 'replacement_unresolved',
     };
     const page = { schemaVersion: 1, changes: [change], hasMore: false, nextCursor: 'cursor' };
     expect(decodeMetadataChanges(page)).toEqual(page);
+    expect(metadataResponseSchemas.changes.properties.changes.items).toMatchObject({
+      required: expect.arrayContaining(['identityResolution']),
+    });
+    for (const identity of [
+      { oldTrackId: 'same', newTrackId: 'same', identityResolution: 'unchanged' },
+      { identityResolution: 'replacement_pending' },
+      { identityResolution: 'replacement_verified' },
+      { identityResolution: 'replacement_unresolved' },
+    ])
+      expect(
+        decodeMetadataChanges({ ...page, changes: [{ ...change, ...identity }] }).changes[0],
+      ).toMatchObject(identity);
+    const legacyChange = Object.fromEntries(
+      Object.entries(change).filter(([key]) => key !== 'identityResolution'),
+    );
+    expect(() => decodeMetadataChanges({ ...page, changes: [legacyChange] })).toThrow();
     for (const delta of [
       { identityKey: 'private' },
       { reflection: 'verified' },
       { reflectedAt: 0 },
       { changedFields: ['path'] },
+      { identityResolution: 'unknown' },
+      { oldTrackId: 'same', newTrackId: 'same', identityResolution: 'replacement_verified' },
+      { identityResolution: 'unchanged' },
+      { reflection: 'reference_conflict', identityResolution: 'replacement_verified' },
     ])
       expect(() =>
         decodeMetadataChanges({ ...page, changes: [{ ...change, ...delta }] }),

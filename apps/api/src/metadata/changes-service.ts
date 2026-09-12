@@ -3,6 +3,7 @@ import type { SessionService } from '../auth/session-service.js';
 import { ApiError } from '../auth/session-service.js';
 import type { MetadataProvider } from './provider.js';
 import type { VerifiedMetadataSession as Verified } from './resolver.js';
+import { resolveIdentity, type OrganizationIdentityEdge } from './identity-resolution.js';
 
 interface Cursor {
   phase: 'snapshot' | 'delta';
@@ -47,6 +48,25 @@ export function createMetadataChangesService(service: SessionService, p: Metadat
       result[key] = ids as string[];
     }
     return result;
+  };
+  const identityResolution = (row: Record<string, unknown>) => {
+    const organizationEdges = db
+      .prepare(
+        'SELECT media_link_id,old_track_id,new_track_id,stage FROM organization_items WHERE media_link_id=? AND new_track_id IS NOT NULL',
+      )
+      .all(String(row.media_link_id))
+      .map((edge): OrganizationIdentityEdge => ({
+        mediaLinkId: String(edge.media_link_id),
+        oldTrackId: String(edge.old_track_id),
+        newTrackId: String(edge.new_track_id),
+        stage: String(edge.stage) as OrganizationIdentityEdge['stage'],
+      }));
+    return resolveIdentity({
+      mediaLinkId: String(row.media_link_id),
+      originalTrackId: String(row.original_track_id),
+      currentTrackId: String(row.current_track_id),
+      organizationEdges,
+    });
   };
   const selection =
     'SELECT c.*,i.original_track_id,i.current_track_id,i.file_saved_at,i.reflected_at,l.relative_file_key FROM metadata_changes c JOIN metadata_items i ON i.id=c.item_id JOIN media_links l ON l.id=c.media_link_id';
@@ -118,6 +138,7 @@ export function createMetadataChangesService(service: SessionService, p: Metadat
           fileSavedAt: Number(row.file_saved_at),
           reflectedAt: row.reflected_at === null ? null : Number(row.reflected_at),
           reflection: String(row.reflection_result),
+          identityResolution: identityResolution(row),
         });
       }
       const hasMore = rows.length > limit;

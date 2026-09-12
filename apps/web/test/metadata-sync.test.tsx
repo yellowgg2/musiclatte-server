@@ -5,7 +5,7 @@ import { PlayerProvider, usePlayer } from '../src/player/PlayerProvider';
 import { useEffect, useState } from 'react';
 import { MetadataSyncProvider, useMetadataSync } from '../src/metadata/MetadataSyncProvider';
 import type { MetadataChangesPage, MusicEntry } from '@musiclatte/contracts';
-import { SelectionProvider } from '../src/selection/SelectionProvider';
+import { SelectionProvider, useSelection } from '../src/selection/SelectionProvider';
 import { MusicPage } from '../src/pages/music/MusicPage';
 import { Router } from '../src/app/Router';
 
@@ -25,6 +25,7 @@ const page: MetadataChangesPage = {
       libraryId: 'music',
       oldTrackId: 'one',
       newTrackId: 'one',
+      identityResolution: 'unchanged',
       oldRevision: 'revision-0',
       newRevision: 'revision-1',
       coverGeneration: 'revision-1',
@@ -74,6 +75,9 @@ function PlayerProbe() {
       <output data-testid="order">{JSON.stringify(player.state.queue?.order)}</output>
     </>
   );
+}
+function SelectionCountProbe() {
+  return <output data-testid="selection-count">{useSelection().state.items.length}</output>;
 }
 beforeEach(() => {
   vi.useFakeTimers();
@@ -279,6 +283,7 @@ describe('metadata player integration', () => {
           onUnauthenticated={expired}
         >
           <SelectionProvider>
+            <SelectionCountProbe />
             <MusicPage
               location="/music/folders/folder"
               base="/"
@@ -319,7 +324,7 @@ describe('metadata player integration', () => {
     revision = 2;
     await tick(3000);
     await tick();
-    expect(screen.getByText('0 songs selected')).toBeTruthy();
+    expect(screen.getByTestId('selection-count').textContent).toBe('0');
   });
   /** A verified event refreshes actual gonic DTOs while the active HTML audio resource is untouched. */
   it('should update title and cover without calling audio load play or resetting playback', async () => {

@@ -43,6 +43,21 @@ This distinction prevents an old pending reflector from treating the user's succ
 as unexplained external corruption. Public change records contain IDs/revisions/field names,
 not file paths, tag payloads, credentials or private reference snapshots.
 
+Every schema-version-1 metadata change now also includes `identityResolution`. `unchanged` requires
+equal old/new song IDs. For changed IDs, `replacement_pending` means a same-MediaLink organization
+edge has rebound but not completed exact reference verification; `replacement_verified` requires a
+unique succeeded edge chain from the original ID to the current ID; all other changed-ID cases are
+`replacement_unresolved`. The independent `reflection` field is preserved, so an album-only
+`reflection_mismatch` may validly coexist with a verified organization replacement. A
+`reference_conflict` cannot coexist with `replacement_verified`.
+
+The response remains additive `schemaVersion: 1`. Existing clients may ignore the new JSON key. A
+new client reading an older server should derive a missing value as `unchanged` only when old and
+new IDs match, otherwise as `replacement_unresolved`; only explicit `replacement_verified` permits
+automatic changed-ID convergence. Snapshot and cursor delta use the same current MediaLink binding
+and organization ledger projection. Organization job/item IDs, stages, paths, actor tokens,
+evidence, and checkpoints are never serialized.
+
 ## Managed cover cache refresh (2026-09-08 correction)
 
 The opt-in metadata Compose overlay now mounts a dedicated `metadata-gonic-covers` volume at

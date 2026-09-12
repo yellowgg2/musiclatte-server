@@ -9,6 +9,8 @@ import { createRecentContext, recentNow } from '../../../tests/support/recent-ha
 import { createApp } from '../src/app.js';
 import { createSessionService } from '../src/auth/session-service.js';
 import { verifyAccessTokenPrincipal } from '../src/auth/metadata-principal.js';
+import { createOrganizationRepository } from '../src/storage/organization-repository.js';
+import { decodeMetadataChanges } from '../../../packages/contracts/src/metadata.js';
 
 const toolchain = join(homedir(), '.cache/musiclatte-toolchain');
 const helper = {
@@ -734,5 +736,132 @@ describe('metadata organization PAT API', () => {
       s.c.storage.db.connection.prepare('SELECT count(*) AS count FROM organization_jobs').get()!
         .count,
     ).toBe(0);
+  });
+
+  /** Snapshot and cursor delta expose only the public identity resolution across organization completion. */
+  it('publishes unresolved, pending, and verified replacement states without private organization data', async () => {
+    const s = await setup();
+    const previewBody = {
+      trackId: s.trackId,
+      expectedRevision: s.revision,
+      destinationPolicy: 'id3-managed-v1',
+    };
+    const submitted = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization-jobs',
+      headers: s.headers,
+      payload: {
+        ...previewBody,
+        operationId: 'identity_resolution_operation_0001',
+        metadataJobId: 'completed-metadata',
+        sourceEvidence: [
+          {
+            url: 'https://example.invalid/official',
+            kind: 'official_artist',
+            fields: ['title'],
+          },
+        ],
+      },
+    });
+    expect(submitted.statusCode, submitted.body).toBe(202);
+    const itemId = String(submitted.json().job.itemId);
+    const db = s.c.storage.db.connection;
+    const mediaLinkId = String(
+      db.prepare("SELECT media_link_id FROM metadata_items WHERE id='completed-item'").get()!
+        .media_link_id,
+    );
+    const identityKey = String(
+      db.prepare("SELECT identity_key FROM metadata_jobs WHERE id='completed-metadata'").get()!
+        .identity_key,
+    );
+    db.prepare(
+      "UPDATE metadata_items SET current_track_id='replacement-track',stage='reflecting',reflected_at=NULL,error_code='reflection_mismatch' WHERE id='completed-item'",
+    ).run();
+    db.prepare(
+      "INSERT INTO metadata_changes(item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at) VALUES('completed-item',?,?, 'music','before','after','{\"trackIds\":[\"replacement-track\"],\"albumIds\":[],\"artistIds\":[],\"coverIds\":[]}','cover-generation','[\"title\"]','reflection_mismatch',?)",
+    ).run(mediaLinkId, identityKey, recentNow);
+    db.prepare(
+      "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at,validated_at) VALUES('other-media','music','imports/other.mp3','other-track',1,'available',?,?)",
+    ).run(recentNow, recentNow);
+    db.prepare(
+      "INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES('other-job',?,'music',?,?,?,1,'id3-managed-v1','completed-metadata','revision','[]',?)",
+    ).run('7'.repeat(64), '8'.repeat(64), '9'.repeat(64), s.accessTokenId, recentNow);
+    db.prepare(
+      "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('other-item','other-job','other-media','imports/other.mp3','imports/other-new.mp3',?,'replacement-track',?,?,'succeeded',?)",
+    ).run(s.trackId, 'a'.repeat(64), 'b'.repeat(64), recentNow);
+    const replacementSong = {
+      id: 'replacement-track',
+      title: 'Replacement synthetic',
+      isDir: false as const,
+      path: `imports/account/Legacy/source.mp3`,
+    };
+    s.c.songs.push(replacementSong);
+    const browserSessionHeaders = { ...browserHeaders, cookie: cookieOf(s.login) };
+    const unresolved = await s.app.inject({
+      url: '/api/v1/metadata-changes',
+      headers: browserSessionHeaders,
+    });
+    expect(unresolved.statusCode, unresolved.body).toBe(200);
+    expect(decodeMetadataChanges(unresolved.json()).changes).toMatchObject([
+      { identityResolution: 'replacement_unresolved' },
+    ]);
+
+    db.prepare(
+      "UPDATE organization_items SET stage='scanning',generation=1,lease_owner='gonic',lease_expires_at=? WHERE id=?",
+    ).run(recentNow + 10_000, itemId);
+    const targetKey = String(
+      db.prepare('SELECT target_key FROM organization_items WHERE id=?').get(itemId)!.target_key,
+    );
+    const repository = createOrganizationRepository({
+      database: s.c.storage.db,
+      clock: () => recentNow,
+    });
+    const registration = {
+      itemId,
+      workerId: 'gonic',
+      generation: 1,
+    };
+    repository.rebindCurrent({
+      ...registration,
+      newTrackId: replacementSong.id,
+      targetFileIdentity: 'c'.repeat(64),
+    });
+    replacementSong.path = targetKey;
+    const pending = await s.app.inject({
+      url: `/api/v1/metadata-changes?cursor=${encodeURIComponent(unresolved.json().nextCursor)}`,
+      headers: browserSessionHeaders,
+    });
+    expect(decodeMetadataChanges(pending.json()).changes).toMatchObject([
+      { identityResolution: 'replacement_pending', reflection: 'reflection_mismatch' },
+    ]);
+    expect(pending.body).not.toContain(itemId);
+    expect(pending.body).not.toContain(targetKey);
+    expect(pending.body).not.toMatch(/sourceEvidence|actorToken|organizationJob/i);
+
+    repository.completeRegistration({ ...registration, newTrackId: replacementSong.id });
+    const references = repository.claimNext({
+      workerId: 'references',
+      leaseDurationMs: 10_000,
+    })!;
+    repository.transition({ ...references, stage: 'migrating_references' });
+    repository.transition({ ...references, stage: 'verifying' });
+    repository.completeVerifiedReferences(references);
+    const verified = await s.app.inject({
+      url: `/api/v1/metadata-changes?cursor=${encodeURIComponent(pending.json().nextCursor)}`,
+      headers: browserSessionHeaders,
+    });
+    expect(decodeMetadataChanges(verified.json()).changes).toMatchObject([
+      { identityResolution: 'replacement_verified', reflection: 'reflection_mismatch' },
+    ]);
+    expect(Number(verified.json().changes[0].sequence)).toBeGreaterThan(
+      Number(pending.json().changes[0].sequence),
+    );
+    const restarted = await s.app.inject({
+      url: '/api/v1/metadata-changes',
+      headers: browserSessionHeaders,
+    });
+    expect(decodeMetadataChanges(restarted.json()).changes).toMatchObject([
+      { identityResolution: 'replacement_verified' },
+    ]);
   });
 });

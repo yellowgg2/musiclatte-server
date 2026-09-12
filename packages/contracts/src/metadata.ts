@@ -84,7 +84,10 @@ export interface MetadataChange {
   fileSavedAt: number;
   reflectedAt: number | null;
   reflection: 'verified' | 'reflection_mismatch' | 'reference_conflict';
+  identityResolution: IdentityResolution;
 }
+export type IdentityResolution =
+  'unchanged' | 'replacement_pending' | 'replacement_verified' | 'replacement_unresolved';
 export interface MetadataChangesPage {
   schemaVersion: 1;
   changes: MetadataChange[];
@@ -370,6 +373,7 @@ const change = object(
     'fileSavedAt',
     'reflectedAt',
     'reflection',
+    'identityResolution',
   ],
   {
     sequence: { ...instant, minimum: 1 },
@@ -392,6 +396,9 @@ const change = object(
     fileSavedAt: instant,
     reflectedAt: nullable(instant),
     reflection: { enum: ['verified', 'reflection_mismatch', 'reference_conflict'] },
+    identityResolution: {
+      enum: ['unchanged', 'replacement_pending', 'replacement_verified', 'replacement_unresolved'],
+    },
   },
 );
 export const metadataResponseSchemas = {
@@ -785,18 +792,28 @@ export function decodeMetadataChanges(value: unknown): MetadataChangesPage {
         'reflection_mismatch',
         'reference_conflict',
       ]);
+      const identityResolution = member(c.identityResolution, [
+        'unchanged',
+        'replacement_pending',
+        'replacement_verified',
+        'replacement_unresolved',
+      ]);
       const sequence = timestamp(c.sequence);
+      const oldTrackId = trackIdentifier(c.oldTrackId);
+      const newTrackId = trackIdentifier(c.newTrackId);
       if (
         sequence < 1 ||
         (reflectedAt !== null && reflectedAt < fileSavedAt) ||
-        (reflection === 'verified') !== (reflectedAt !== null)
+        (reflection === 'verified') !== (reflectedAt !== null) ||
+        (identityResolution === 'unchanged') !== (oldTrackId === newTrackId) ||
+        (reflection === 'reference_conflict' && identityResolution === 'replacement_verified')
       )
         throw new Error('Invalid metadata response');
       return {
         sequence,
         libraryId: identifier(c.libraryId),
-        oldTrackId: trackIdentifier(c.oldTrackId),
-        newTrackId: trackIdentifier(c.newTrackId),
+        oldTrackId,
+        newTrackId,
         oldRevision: identifier(c.oldRevision),
         newRevision: identifier(c.newRevision),
         coverGeneration: identifier(c.coverGeneration),
@@ -810,6 +827,7 @@ export function decodeMetadataChanges(value: unknown): MetadataChangesPage {
         fileSavedAt,
         reflectedAt,
         reflection,
+        identityResolution,
       };
     },
     100,

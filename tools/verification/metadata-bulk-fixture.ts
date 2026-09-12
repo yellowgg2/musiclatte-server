@@ -155,6 +155,7 @@ export function createBulkMetadataFixture() {
           libraryId: 'music',
           oldTrackId: snapshot.trackId,
           newTrackId: snapshot.trackId,
+          identityResolution: 'unchanged',
           oldRevision: old,
           newRevision: snapshot.fileRevision,
           coverGeneration: snapshot.fileRevision,

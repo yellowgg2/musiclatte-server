@@ -321,6 +321,7 @@ export function createCurationUIFixture(mode: () => string = () => 'normal', aud
                   libraryId: 'music',
                   oldTrackId: 'synthetic-01',
                   newTrackId: 'synthetic-01',
+                  identityResolution: 'unchanged',
                   oldRevision: 'revision-' + (revision - 1),
                   newRevision: 'revision-' + revision,
                   coverGeneration: 'revision-' + revision,
