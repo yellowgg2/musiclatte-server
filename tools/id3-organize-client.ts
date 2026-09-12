@@ -516,9 +516,16 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     if (!(image[0] === 0xff && image[1] === 0xd8 && image.at(-2) === 0xff && image.at(-1) === 0xd9))
       fail('cover');
     const binding = batchBinding();
+    const afterRequired =
+      binding?.state === 'metadata_accepted' &&
+      binding.metadataSteps.required.jobId !== null &&
+      binding.metadataSteps.required.serverStage === 'succeeded' &&
+      binding.metadataSteps.required.resultRevision !== null &&
+      binding.metadataSteps.optional.jobId === null &&
+      binding.organizationJobId === null;
     if (
       binding &&
-      (binding.state !== 'researching' ||
+      ((binding.state !== 'researching' && !afterRequired) ||
         (options.operationId !== undefined && options.operationId !== binding.operations.cover))
     )
       fail('journal_binding');

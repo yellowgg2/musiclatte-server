@@ -692,7 +692,14 @@ export function checkpointId3OrganizationBatch(
     const item = journal.items.find((candidate) => candidate.trackId === trackId);
     if (!item) failure('journal_binding');
     if (checkpoint.kind === 'cover') {
-      if (item.state !== 'researching' || !opaque(checkpoint.uploadId))
+      const afterRequired =
+        item.state === 'metadata_accepted' &&
+        item.metadataSteps.required.jobId !== null &&
+        item.metadataSteps.required.serverStage === 'succeeded' &&
+        item.metadataSteps.required.resultRevision !== null &&
+        item.metadataSteps.optional.jobId === null &&
+        item.organizationJobId === null;
+      if ((item.state !== 'researching' && !afterRequired) || !opaque(checkpoint.uploadId))
         failure('journal_transition');
       item.coverUploadId = checkpoint.uploadId;
       return;

@@ -8,6 +8,7 @@ import {
   runId3OrganizeCommand,
 } from '../../tools/id3-organize-client.js';
 import {
+  checkpointId3OrganizationBatch,
   createId3OrganizationBatchJournal,
   nextId3OrganizationBatchItem,
 } from '../../tools/id3-organize-batch-journal.js';
@@ -62,6 +63,76 @@ it('strictly decodes verified values, evidence, cover usage and rejects unknown 
       sourceEvidence: [{ ...manifest.sourceEvidence[0], url: 'http://artist.example' }],
     }),
   ).toThrow('client_failed:manifest');
+});
+
+it('uploads the optional cover after a successful required metadata step', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-two-step-cover-'));
+  const token = 'mlpat_' + 'z'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const stateFile = join(directory, 'batch.json');
+  const coverPath = join(directory, 'cover.jpg');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  writeFileSync(coverPath, Buffer.from([0xff, 0xd8, 0xff, 0xd9]), { mode: 0o600 });
+  createId3OrganizationBatchJournal({
+    path: stateFile,
+    api: 'https://music.example/api/v1',
+    token,
+    selection: {
+      schemaVersion: 1,
+      capturedAt: 1,
+      source: { kind: 'favorites' },
+      selectionRevision: 'a'.repeat(64),
+      occurrenceCount: 1,
+      uniqueTrackCount: 1,
+      items: [
+        {
+          trackId: 'old',
+          title: 'Old title',
+          artist: 'Artist',
+          album: null,
+          occurrenceIndexes: [0],
+        },
+      ],
+    },
+  });
+  nextId3OrganizationBatchItem(stateFile);
+  checkpointId3OrganizationBatch(stateFile, 'old', {
+    kind: 'metadata',
+    step: 'required',
+    jobId: 'required-job',
+    resultRevision: 'required-revision',
+    serverStage: 'succeeded',
+  });
+  const result = await runId3OrganizeCommand({
+    api: 'https://music.example/api/v1',
+    tokenFile,
+    stateFile,
+    command: 'cover-upload',
+    trackId: 'old',
+    libraryId: 'music',
+    manifest: {
+      schemaVersion: 1,
+      metadata: { album: 'Album' },
+      sourceEvidence: [
+        { url: 'https://artist.example/release', kind: 'official_artist', fields: ['album'] },
+      ],
+      cover: { path: coverPath, usageBasis: 'Private library' },
+    },
+    fetch: async () =>
+      Response.json(
+        {
+          schemaVersion: 1,
+          uploadId: 'optional-cover-upload',
+          libraryId: 'music',
+          mimeType: 'image/jpeg',
+          size: 4,
+          expiresAt: 2,
+          previewUrl: '/api/v1/metadata-covers/optional-cover-upload',
+        },
+        { status: 201 },
+      ),
+  });
+  expect(result.uploadId).toBe('optional-cover-upload');
 });
 
 it('uses Authorization only as a header and supports candidate, inspect and previews', async () => {
