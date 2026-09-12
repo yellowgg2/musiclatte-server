@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { ComponentType } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MusicRow } from '../src/music/components/MusicRow';
 import { SongList, SongViewHeading } from '../src/music/components/SongView';
@@ -226,5 +226,26 @@ describe('design foundation', () => {
 
     expect(actionRail).toContain('display: flex');
     expect(actionRail).toContain('align-items: center');
+  });
+
+  /** Variable title and metadata height cannot pull tile controls away from the card bottom. */
+  it('should pin tile controls to the final grid row with and without selection', () => {
+    const css = readFileSync(resolve('apps/web/src/music/components/MusicRow.module.css'), 'utf8');
+
+    expect(css).toMatch(
+      /\.rowMain\[data-layout='tile'\]\s*\{[^}]*grid-template-rows:\s*minmax\(0, 1fr\) auto/,
+    );
+    expect(css).toMatch(
+      /\.rowMain\[data-layout='tile'\]\[data-selectable='true'\]\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\) auto/,
+    );
+  });
+
+  /** Gallery compares a long-title standard action rail with the editable tile variant. */
+  it('should render standard actions on the long-title Gallery tile', async () => {
+    const { Gallery } = await import('../src/dev/Gallery');
+    render(<Gallery />);
+
+    const tiles = within(screen.getByRole('list', { name: '곡 · 타일' })).getAllByRole('listitem');
+    expect(within(tiles[1]!).getAllByRole('button')).toHaveLength(3);
   });
 });

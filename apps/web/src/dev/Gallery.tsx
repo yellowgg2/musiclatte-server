@@ -414,7 +414,21 @@ export function Gallery() {
                         </>
                       ),
                     }
-                  : {})}
+                  : {
+                      onActivate: respond,
+                      actions: (
+                        <>
+                          <div>
+                            <IconAction label={`${t['metadata.options']}: ${song.title}`}>
+                              ⋮
+                            </IconAction>
+                          </div>
+                          <div>
+                            <IconAction label={t['gallery.favorite']}>★</IconAction>
+                          </div>
+                        </>
+                      ),
+                    })}
               />
             ))}
           </SongList>

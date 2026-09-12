@@ -38,6 +38,7 @@
 }
 .rowMain[data-layout='tile'] {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   grid-template-areas:
     'details'
     'controls';
@@ -47,6 +48,7 @@
 }
 .rowMain[data-layout='tile'][data-selectable='true'] {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas:
     'selection'
     'details'

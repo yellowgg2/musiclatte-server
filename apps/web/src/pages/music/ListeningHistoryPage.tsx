@@ -235,10 +235,18 @@ export function ListeningHistoryPage({
                 current={player.state.current?.id === row.songId}
                 playbackStatus={player.state.status}
                 context={
-                  <div className={styles.detail}>
-                    <time dateTime={row.time}>{date(row.time)}</time>
+                  <div
+                    className={`${styles.detail}${
+                      row.count !== undefined ? ` ${styles.topDetail}` : ''
+                    }`}
+                  >
+                    <time className={styles.contextChip} dateTime={row.time}>
+                      {date(row.time)}
+                    </time>
                     {row.count !== undefined && (
-                      <span>{copy['listening.count'].replace('{count}', String(row.count))}</span>
+                      <span className={styles.contextChip}>
+                        {copy['listening.count'].replace('{count}', String(row.count))}
+                      </span>
                     )}
                   </div>
                 }

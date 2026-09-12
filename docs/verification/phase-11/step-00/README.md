@@ -54,3 +54,20 @@ pending in `P11-UA-001` and `SONG-TILE-UA-001`; they are not reported as passed 
 Postflight: `skipped(no_new_lesson)`. The mobile grid correction was found and verified in the same
 focused visual cycle, with low debugging cost and no distinct high-recurrence lesson beyond the
 selected shared-boundary audit rule.
+
+## Acceptance feedback follow-up — 2026-09-12
+
+- Finding `MAJOR-002`: a tile with longer album/artist metadata consumed another content line, so
+  its control rail started lower than adjacent cards even though the outer card bottoms aligned.
+- RED: `design-foundation.test.tsx` first failed the missing final-row grid contract, then failed the
+  Gallery long-title standard-action comparison until the fixture exposed the actual three-action
+  rail.
+- GREEN: non-selectable tile rows now use `minmax(0, 1fr) auto`; selectable tiles use
+  `auto minmax(0, 1fr) auto`. The details row absorbs variable content height and controls remain in
+  the final row without truncating metadata.
+- Gallery geometry: the short editable tile and long standard-action tile both measured a `9px`
+  control-to-card-bottom gap in actual Chrome. The long tile exposes play/info/favorite while the
+  editable six-action regression remains visible beside it.
+- Affected verification: design foundation 13/13; shared consumer unit 74/74; contract 18/18.
+  Final typecheck/build/format and devserver identity are recorded in the Phase 11 acceptance delta
+  artifact.

@@ -332,6 +332,25 @@ it('should render top songs with authoritative context and shared row actions', 
   expect(cards[1]?.textContent).toContain('Top song A');
   expect(cards[1]?.textContent).toContain('3 plays');
   expect(document.querySelector('time[datetime="2026-09-09T00:03:00Z"]')).toBeTruthy();
+  const contextCss = readFileSync(resolve('apps/web/src/pages/music/Listening.module.css'), 'utf8');
+  expect(contextCss).toMatch(
+    /\.topDetail\s*\{[^}]*flex-direction:\s*column[^}]*align-items:\s*flex-start/,
+  );
+  expect(contextCss).toMatch(
+    /\.contextChip\s*\{[^}]*padding:\s*var\(--space-1\) var\(--space-2\)[^}]*border:\s*1px solid var\(--color-border\)[^}]*border-radius:\s*var\(--radius-control\)[^}]*background:\s*var\(--color-surface\)/,
+  );
+  expect(contextCss).toMatch(
+    /\.list\[data-view='tiles'\]\s+\.topDetail\s*\{[^}]*min-block-size:\s*calc\(4\.05em \+ var\(--space-5\)\)/,
+  );
+  expect(
+    Array.from(list.querySelectorAll('time')).every((time) => {
+      const context = time.parentElement;
+      return (
+        context?.children.length === 2 &&
+        Array.from(context.children).every((child) => child.className.includes('contextChip'))
+      );
+    }),
+  ).toBe(true);
   expect(screen.queryByText('Song unavailable')).toBeNull();
   expect(screen.getByRole('button', { name: 'Metadata Top song B' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Favorite Top song B' })).toBeTruthy();

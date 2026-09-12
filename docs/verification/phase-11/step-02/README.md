@@ -46,3 +46,10 @@ The real Router ran against `tests/support/listening-preview.ts` on owned loopba
 - Postflight Rulebook reconciliation was skipped (`no_new_lesson`); the enforcement-boundary projection rule applied in preflight already covers the card/player/queue consistency risk, and the transient TypeScript narrowing correction did not meet shared capture criteria.
 - Shared Gallery primitives were consumed unchanged from S00. No new shared component, global token, database, deployment, native, iOS, bot, or Compose change was made.
 - Final visual judgment, reduced-motion, and actual Safari/touch acceptance remain deferred to P11-UA-003/P11-UA-005.
+
+## Acceptance feedback follow-up — 2026-09-12
+
+- User evidence exposed a missed tile alignment defect: a short Korean date kept the count on the same line while longer dates wrapped it, so card bodies started at different vertical positions.
+- RED added a feature-local contract requiring separate date/count chip styling plus a shared tile context reserve. The focused listening suite failed on the missing contract, then passed 7/7 after implementation.
+- Frequently played now presents time and authoritative count as two non-interactive chips. Tile mode stacks them consistently and reserves a two-line-date plus one-line-count context height; history retains one time chip without the Top-only reserve.
+- Chrome fixture geometry measured the first seven tile contexts at 76.6484375px and every card top at 494.546875px, with document `scrollWidth === clientWidth` (1800px). Actual devserver revalidation is recorded in the Phase 11 acceptance artifact.
