@@ -116,6 +116,15 @@ record the allowed short reason before any accepted mutation and continue. Authe
 policy changes, exhausted upstream availability, invalid/locked journal state, strict response
 decode failures, and failures after mutation acceptance stop all later items.
 
+When the verified release requires both a title/artist correction and optional fields, split the
+manifest into a required-fields manifest and an optional-fields manifest. Upload the cover first,
+submit the required manifest with the current revision, re-inspect after its successful result, then
+submit the optional manifest with that result revision. The private schema-version-2 journal owns a
+different stable operation/checkpoint for each metadata purpose; organization must use the final
+successful metadata job and revision. Existing schema-version-1 journals are normalized on read and
+atomically upgraded on their next checkpoint, preserving their prior metadata operation as the
+optional step. Do not edit or recreate a live journal to perform this upgrade.
+
 For a new-session resume, reuse the same API, token file, and state file, then call `batch-next`.
 Resume the returned accepted job/revision checkpoint exactly; never research or mutate a succeeded
 item again. Final output contains total/succeeded/skipped/blocked counts and only public song display

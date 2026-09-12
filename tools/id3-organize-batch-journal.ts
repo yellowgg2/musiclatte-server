@@ -22,6 +22,7 @@ export const id3OrganizationBatchItemStates = [
   'blocked',
 ] as const;
 export type Id3OrganizationBatchItemState = (typeof id3OrganizationBatchItemStates)[number];
+export type Id3OrganizationMetadataStepKind = 'required' | 'optional';
 
 export const id3OrganizationBatchSkipReasons = [
   'ambiguous_release',
@@ -40,6 +41,13 @@ export const id3OrganizationBatchSystemFailures = [
   'scope_changed',
 ] as const;
 
+export interface Id3OrganizationMetadataStep {
+  operationId: string;
+  jobId: string | null;
+  resultRevision: string | null;
+  serverStage: string | null;
+}
+
 export interface Id3OrganizationBatchItem {
   trackId: string;
   title: string;
@@ -48,17 +56,16 @@ export interface Id3OrganizationBatchItem {
   occurrenceIndexes: number[];
   state: Id3OrganizationBatchItemState;
   errorCode: string | null;
-  operations: { cover: string; metadata: string; organization: string };
+  operations: { cover: string; organization: string };
   coverUploadId: string | null;
-  metadataJobId: string | null;
-  resultRevision: string | null;
+  metadataSteps: Record<Id3OrganizationMetadataStepKind, Id3OrganizationMetadataStep>;
   organizationJobId: string | null;
   newTrackId: string | null;
   serverStage: string | null;
 }
 
 export interface Id3OrganizationBatchJournal {
-  schemaVersion: 1;
+  schemaVersion: 2;
   apiFingerprint: string;
   credentialFingerprint: string;
   selectionRevision: string;
@@ -98,7 +105,22 @@ function decodeSource(value: unknown): OrganizationSelectionSource {
   return { kind: 'playlist', playlistId: value.playlistId, name: value.name };
 }
 
-function decodeItem(value: unknown): Id3OrganizationBatchItem {
+function decodeMetadataStep(value: unknown): Id3OrganizationMetadataStep {
+  if (
+    !object(value) ||
+    !exact(value, ['operationId', 'jobId', 'resultRevision', 'serverStage']) ||
+    !opaque(value.operationId) ||
+    !nullableOpaque(value.jobId) ||
+    !nullableOpaque(value.resultRevision) ||
+    !nullableOpaque(value.serverStage) ||
+    (value.jobId === null && (value.resultRevision !== null || value.serverStage !== null)) ||
+    (value.jobId !== null && value.serverStage === null)
+  )
+    failure('journal_invalid');
+  return value as unknown as Id3OrganizationMetadataStep;
+}
+
+function decodeItemV2(value: unknown): Id3OrganizationBatchItem {
   if (
     !object(value) ||
     !exact(value, [
@@ -111,8 +133,7 @@ function decodeItem(value: unknown): Id3OrganizationBatchItem {
       'errorCode',
       'operations',
       'coverUploadId',
-      'metadataJobId',
-      'resultRevision',
+      'metadataSteps',
       'organizationJobId',
       'newTrackId',
       'serverStage',
@@ -134,31 +155,93 @@ function decodeItem(value: unknown): Id3OrganizationBatchItem {
     !id3OrganizationBatchItemStates.includes(value.state as never) ||
     !(value.errorCode === null || nonempty(value.errorCode)) ||
     !object(value.operations) ||
-    !exact(value.operations, ['cover', 'metadata', 'organization']) ||
+    !exact(value.operations, ['cover', 'organization']) ||
     !opaque(value.operations.cover) ||
-    !opaque(value.operations.metadata) ||
     !opaque(value.operations.organization) ||
     !nullableOpaque(value.coverUploadId) ||
-    !nullableOpaque(value.metadataJobId) ||
-    !nullableOpaque(value.resultRevision) ||
+    !object(value.metadataSteps) ||
+    !exact(value.metadataSteps, ['required', 'optional']) ||
     !nullableOpaque(value.organizationJobId) ||
     !nullableOpaque(value.newTrackId) ||
     !nullableOpaque(value.serverStage)
   )
     failure('journal_invalid');
+  const required = decodeMetadataStep(value.metadataSteps.required);
+  const optional = decodeMetadataStep(value.metadataSteps.optional);
   const state = value.state as Id3OrganizationBatchItemState;
+  const hasMetadata = required.jobId !== null || optional.jobId !== null;
+  const finalMetadata = optional.jobId !== null ? optional : required;
   if (
     (['pending', 'researching', 'skipped'].includes(state) &&
-      (value.metadataJobId !== null || value.organizationJobId !== null)) ||
-    (['metadata_accepted', 'organization_accepted', 'succeeded'].includes(state) &&
-      value.metadataJobId === null) ||
+      (hasMetadata || value.organizationJobId !== null)) ||
+    (['metadata_accepted', 'organization_accepted', 'succeeded'].includes(state) && !hasMetadata) ||
     (['organization_accepted', 'succeeded'].includes(state) && value.organizationJobId === null) ||
+    (optional.jobId !== null &&
+      required.jobId !== null &&
+      (required.serverStage !== 'succeeded' || required.resultRevision === null)) ||
+    (state === 'organization_accepted' &&
+      (finalMetadata.serverStage !== 'succeeded' || finalMetadata.resultRevision === null)) ||
     (state === 'succeeded' && value.serverStage !== 'succeeded') ||
     (['skipped', 'blocked'].includes(state) && value.errorCode === null) ||
     (!['skipped', 'blocked'].includes(state) && value.errorCode !== null)
   )
     failure('journal_invalid');
   return value as unknown as Id3OrganizationBatchItem;
+}
+
+function normalizeV1Item(value: unknown): Id3OrganizationBatchItem {
+  if (
+    !object(value) ||
+    !exact(value, [
+      'trackId',
+      'title',
+      'artist',
+      'album',
+      'occurrenceIndexes',
+      'state',
+      'errorCode',
+      'operations',
+      'coverUploadId',
+      'metadataJobId',
+      'resultRevision',
+      'organizationJobId',
+      'newTrackId',
+      'serverStage',
+    ]) ||
+    !object(value.operations) ||
+    !exact(value.operations, ['cover', 'metadata', 'organization']) ||
+    !opaque(value.operations.cover) ||
+    !opaque(value.operations.metadata) ||
+    !opaque(value.operations.organization)
+  )
+    failure('journal_invalid');
+  const normalized: Record<string, unknown> = {
+    ...value,
+    operations: { cover: value.operations.cover, organization: value.operations.organization },
+    metadataSteps: {
+      required: {
+        operationId: `required-${fingerprint(['v1-metadata', value.operations.metadata])}`,
+        jobId: null,
+        resultRevision: null,
+        serverStage: null,
+      },
+      optional: {
+        operationId: value.operations.metadata,
+        jobId: value.metadataJobId,
+        resultRevision: value.resultRevision,
+        serverStage:
+          value.metadataJobId === null
+            ? null
+            : value.organizationJobId === null
+              ? value.serverStage
+              : 'succeeded',
+      },
+    },
+  };
+  delete normalized.metadataJobId;
+  delete normalized.resultRevision;
+  if (normalized.organizationJobId === null) normalized.serverStage = null;
+  return decodeItemV2(normalized);
 }
 
 export function decodeId3OrganizationBatchJournal(value: unknown): Id3OrganizationBatchJournal {
@@ -174,7 +257,7 @@ export function decodeId3OrganizationBatchJournal(value: unknown): Id3Organizati
       'stopCode',
       'items',
     ]) ||
-    value.schemaVersion !== 1 ||
+    ![1, 2].includes(value.schemaVersion as number) ||
     typeof value.apiFingerprint !== 'string' ||
     !/^[a-f0-9]{64}$/.test(value.apiFingerprint) ||
     typeof value.credentialFingerprint !== 'string' ||
@@ -189,13 +272,17 @@ export function decodeId3OrganizationBatchJournal(value: unknown): Id3Organizati
   )
     failure('journal_invalid');
   const source = decodeSource(value.source);
-  const items = value.items.map(decodeItem);
+  const items = value.items.map(value.schemaVersion === 1 ? normalizeV1Item : decodeItemV2);
   const tracks = new Set(items.map(({ trackId }) => trackId));
-  const operations = items.flatMap((item) => Object.values(item.operations));
+  const operations = items.flatMap((item) => [
+    ...Object.values(item.operations),
+    item.metadataSteps.required.operationId,
+    item.metadataSteps.optional.operationId,
+  ]);
   if (tracks.size !== items.length || new Set(operations).size !== operations.length)
     failure('journal_invalid');
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     apiFingerprint: value.apiFingerprint,
     credentialFingerprint: value.credentialFingerprint,
     selectionRevision: value.selectionRevision,
@@ -315,7 +402,7 @@ export function createId3OrganizationBatchJournal(input: {
   const release = acquireId3OrganizationBatchLock(input.path);
   try {
     const journal: Id3OrganizationBatchJournal = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       apiFingerprint: fingerprint(['api', input.api]),
       credentialFingerprint: fingerprint(['credential', input.token]),
       selectionRevision: input.selection.selectionRevision,
@@ -332,12 +419,23 @@ export function createId3OrganizationBatchJournal(input: {
         errorCode: null,
         operations: {
           cover: randomUUID(),
-          metadata: randomUUID(),
           organization: randomUUID(),
         },
         coverUploadId: null,
-        metadataJobId: null,
-        resultRevision: null,
+        metadataSteps: {
+          required: {
+            operationId: randomUUID(),
+            jobId: null,
+            resultRevision: null,
+            serverStage: null,
+          },
+          optional: {
+            operationId: randomUUID(),
+            jobId: null,
+            resultRevision: null,
+            serverStage: null,
+          },
+        },
         organizationJobId: null,
         newTrackId: null,
         serverStage: null,
@@ -490,8 +588,7 @@ export function nextId3OrganizationBatchItem(path: string) {
     state: item.state,
     checkpoint: {
       coverUploadId: item.coverUploadId,
-      metadataJobId: item.metadataJobId,
-      resultRevision: item.resultRevision,
+      metadataSteps: item.metadataSteps,
       organizationJobId: item.organizationJobId,
       newTrackId: item.newTrackId,
       serverStage: item.serverStage,
@@ -512,7 +609,7 @@ export function skipId3OrganizationBatchItem(
       !item ||
       !['pending', 'researching'].includes(item.state) ||
       item.coverUploadId !== null ||
-      item.metadataJobId !== null ||
+      Object.values(item.metadataSteps).some(({ jobId }) => jobId !== null) ||
       item.organizationJobId !== null
     )
       failure('journal_transition');
@@ -543,7 +640,13 @@ export function checkpointId3OrganizationBatch(
   trackId: string,
   checkpoint:
     | { kind: 'cover'; uploadId: string }
-    | { kind: 'metadata'; jobId: string; resultRevision: string | null; serverStage: string }
+    | {
+        kind: 'metadata';
+        step?: Id3OrganizationMetadataStepKind;
+        jobId: string;
+        resultRevision: string | null;
+        serverStage: string;
+      }
     | {
         kind: 'organization';
         jobId: string;
@@ -562,6 +665,8 @@ export function checkpointId3OrganizationBatch(
       return;
     }
     if (checkpoint.kind === 'metadata') {
+      const step = checkpoint.step ?? 'optional';
+      const target = item.metadataSteps[step];
       if (
         !['researching', 'metadata_accepted'].includes(item.state) ||
         !opaque(checkpoint.jobId) ||
@@ -569,10 +674,18 @@ export function checkpointId3OrganizationBatch(
         !opaque(checkpoint.serverStage)
       )
         failure('journal_transition');
+      if (
+        (step === 'required' && item.metadataSteps.optional.jobId !== null) ||
+        (step === 'optional' &&
+          item.metadataSteps.required.jobId !== null &&
+          (item.metadataSteps.required.serverStage !== 'succeeded' ||
+            item.metadataSteps.required.resultRevision === null))
+      )
+        failure('journal_transition');
       item.state = 'metadata_accepted';
-      item.metadataJobId = checkpoint.jobId;
-      item.resultRevision = checkpoint.resultRevision;
-      item.serverStage = checkpoint.serverStage;
+      target.jobId = checkpoint.jobId;
+      target.resultRevision = checkpoint.resultRevision;
+      target.serverStage = checkpoint.serverStage;
       return;
     }
     if (
@@ -598,6 +711,30 @@ export function id3OrganizationBatchBinding(path: string, trackId: string) {
   );
   if (!item || current?.trackId !== trackId) failure('journal_binding');
   return item;
+}
+
+export function id3OrganizationMetadataBinding(
+  item: Id3OrganizationBatchItem,
+  step: Id3OrganizationMetadataStepKind,
+) {
+  const target = item.metadataSteps[step];
+  if (step === 'required' && item.metadataSteps.optional.jobId !== null) failure('journal_binding');
+  if (step === 'optional' && item.metadataSteps.required.jobId !== null) {
+    const required = item.metadataSteps.required;
+    if (required.serverStage !== 'succeeded' || required.resultRevision === null)
+      failure('journal_binding');
+  }
+  return target;
+}
+
+export function id3OrganizationFinalMetadataBinding(item: Id3OrganizationBatchItem) {
+  const target =
+    item.metadataSteps.optional.jobId !== null
+      ? item.metadataSteps.optional
+      : item.metadataSteps.required;
+  if (target.jobId === null || target.resultRevision === null || target.serverStage !== 'succeeded')
+    failure('journal_binding');
+  return target;
 }
 
 export function verifyId3OrganizationBatchContext(

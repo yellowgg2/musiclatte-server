@@ -8,6 +8,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -48,6 +49,101 @@ function paths() {
 }
 
 describe('private ID3 organization batch journal', () => {
+  /** Upgrades a live v1 journal without losing its stable metadata operation or accepted checkpoint. */
+  it('normalizes a v1 journal into ordered required and optional metadata checkpoints', async () => {
+    const module = await batchModule();
+    expect(module).toHaveProperty('readId3OrganizationBatchJournal');
+    if (!('readId3OrganizationBatchJournal' in module)) return;
+    const { stateFile } = paths();
+    const digest = (value: unknown) =>
+      createHash('sha256').update(JSON.stringify(value)).digest('hex');
+    const legacy = {
+      schemaVersion: 1,
+      apiFingerprint: digest(['api', 'https://music.example/api/v1']),
+      credentialFingerprint: digest(['credential', 'mlpat_' + 'x'.repeat(48)]),
+      selectionRevision: 'a'.repeat(64),
+      source: { kind: 'favorites' },
+      stopped: false,
+      stopCode: null,
+      items: [
+        {
+          trackId: 'A',
+          title: 'A title',
+          artist: 'Artist',
+          album: 'Album',
+          occurrenceIndexes: [0],
+          state: 'metadata_accepted',
+          errorCode: null,
+          operations: {
+            cover: 'cover-operation',
+            metadata: 'legacy-metadata-operation',
+            organization: 'organization-operation',
+          },
+          coverUploadId: null,
+          metadataJobId: 'legacy-metadata-job',
+          resultRevision: 'legacy-result-revision',
+          organizationJobId: null,
+          newTrackId: null,
+          serverStage: 'succeeded',
+        },
+        {
+          trackId: 'S',
+          title: 'Succeeded title',
+          artist: 'Artist',
+          album: 'Album',
+          occurrenceIndexes: [1],
+          state: 'succeeded',
+          errorCode: null,
+          operations: {
+            cover: 'succeeded-cover-operation',
+            metadata: 'succeeded-metadata-operation',
+            organization: 'succeeded-organization-operation',
+          },
+          coverUploadId: 'succeeded-cover-upload',
+          metadataJobId: 'succeeded-metadata-job',
+          resultRevision: null,
+          organizationJobId: 'succeeded-organization-job',
+          newTrackId: 'S2',
+          serverStage: 'succeeded',
+        },
+      ],
+    };
+    writeFileSync(stateFile, JSON.stringify(legacy) + '\n', { mode: 0o600 });
+
+    const normalized = module.readId3OrganizationBatchJournal(stateFile);
+    expect(normalized).toMatchObject({ schemaVersion: 2 });
+    expect(normalized.items[0]).toMatchObject({
+      metadataSteps: {
+        required: {
+          operationId: expect.any(String),
+          jobId: null,
+          resultRevision: null,
+          serverStage: null,
+        },
+        optional: {
+          operationId: 'legacy-metadata-operation',
+          jobId: 'legacy-metadata-job',
+          resultRevision: 'legacy-result-revision',
+          serverStage: 'succeeded',
+        },
+      },
+    });
+    expect(normalized.items[1]).toMatchObject({
+      state: 'succeeded',
+      metadataSteps: {
+        optional: { jobId: 'succeeded-metadata-job', resultRevision: null },
+      },
+      organizationJobId: 'succeeded-organization-job',
+    });
+    module.checkpointId3OrganizationBatch(stateFile, 'A', {
+      kind: 'organization',
+      jobId: 'organization-job',
+      newTrackId: 'A2',
+      serverStage: 'succeeded',
+    });
+    expect(JSON.parse(readFileSync(stateFile, 'utf8')).schemaVersion).toBe(2);
+  });
+
   it('creates a strict private journal with stable IDs and one item per unique track', async () => {
     const module = await batchModule();
     expect(module).toHaveProperty('createId3OrganizationBatchJournal');
@@ -68,8 +164,11 @@ describe('private ID3 organization batch journal', () => {
     });
     expect(journal.items[0]!.operations).toEqual({
       cover: expect.any(String),
-      metadata: expect.any(String),
       organization: expect.any(String),
+    });
+    expect(journal.items[0]!.metadataSteps).toMatchObject({
+      required: { operationId: expect.any(String), jobId: null },
+      optional: { operationId: expect.any(String), jobId: null },
     });
     const serialized = readFileSync(stateFile, 'utf8');
     expect(serialized).not.toMatch(/mlpat_|\/private|sourceEvidence|usageBasis|lyrics|\.jpg/);
@@ -278,7 +377,8 @@ describe('private ID3 organization batch journal', () => {
     expect(module.id3OrganizationBatchStatus(stopped.stateFile).stopped).toBe(false);
   });
 
-  it('checkpoints accepted stages and reuses the stored metadata operation ID', async () => {
+  /** Keeps distinct stable operations while chaining required metadata into optional metadata. */
+  it('checkpoints required and optional metadata stages with distinct stable operation IDs', async () => {
     const module = await batchModule();
     expect(module).toHaveProperty('checkpointId3OrganizationBatch');
     if (!('checkpointId3OrganizationBatch' in module)) return;
@@ -299,12 +399,13 @@ describe('private ID3 organization batch journal', () => {
           generation: 1,
           results: [{ trackId: 'A', status: 'granted' }],
         });
-      if (path.endsWith('/metadata-jobs'))
+      if (path.endsWith('/metadata-jobs')) {
+        const required = Object.hasOwn(body.patch, 'title');
         return Response.json(
           {
             schemaVersion: 1,
             job: {
-              id: 'metadata-job-1',
+              id: required ? 'metadata-job-required' : 'metadata-job-optional',
               libraryId: 'music',
               createdAt: Date.now(),
               status: 'succeeded',
@@ -318,9 +419,9 @@ describe('private ID3 organization batch journal', () => {
                   stage: 'succeeded',
                   fileSavedAt: 1,
                   reflectedAt: 2,
-                  previousRevision: 'revision-1',
-                  resultRevision: 'revision-2',
-                  changedFields: ['album'],
+                  previousRevision: required ? 'revision-1' : 'revision-2',
+                  resultRevision: required ? 'revision-2' : 'revision-3',
+                  changedFields: [required ? 'title' : 'album'],
                   errorCode: null,
                   recoveryActions: [],
                   restoreAvailable: true,
@@ -331,6 +432,7 @@ describe('private ID3 organization batch journal', () => {
           },
           { status: 202 },
         );
+      }
       if (path.endsWith('/curation-claims/claim-1')) return new Response(null, { status: 204 });
       throw new Error('unexpected request');
     };
@@ -350,7 +452,18 @@ describe('private ID3 organization batch journal', () => {
       trackId: 'A',
       occurrenceCount: 2,
     });
-    const manifest = {
+    const requiredManifest = {
+      schemaVersion: 1 as const,
+      metadata: { title: 'Verified title' },
+      sourceEvidence: [
+        {
+          url: 'https://artist.example/release',
+          kind: 'official_artist' as const,
+          fields: ['title' as const],
+        },
+      ],
+    };
+    const optionalManifest = {
       schemaVersion: 1 as const,
       metadata: { album: 'Verified album' },
       sourceEvidence: [
@@ -366,25 +479,42 @@ describe('private ID3 organization batch journal', () => {
       command: 'metadata-submit',
       trackId: 'A',
       revision: 'revision-1',
-      manifest,
+      manifest: requiredManifest,
     });
     await runId3OrganizeCommand({
       ...common,
       command: 'metadata-submit',
       trackId: 'A',
-      revision: 'revision-1',
-      manifest,
+      revision: 'revision-2',
+      manifest: optionalManifest,
+    });
+    await runId3OrganizeCommand({
+      ...common,
+      command: 'metadata-submit',
+      trackId: 'A',
+      revision: 'revision-2',
+      manifest: optionalManifest,
     });
     const metadataBodies = calls
       .filter(({ path }) => path.endsWith('/metadata-jobs'))
       .map(({ body }) => body.operationId);
-    expect(metadataBodies).toHaveLength(2);
-    expect(new Set(metadataBodies).size).toBe(1);
+    expect(metadataBodies).toHaveLength(3);
+    expect(metadataBodies[0]).not.toBe(metadataBodies[1]);
+    expect(metadataBodies[1]).toBe(metadataBodies[2]);
     expect(module.readId3OrganizationBatchJournal(stateFile).items[0]).toMatchObject({
       state: 'metadata_accepted',
-      metadataJobId: 'metadata-job-1',
-      resultRevision: 'revision-2',
-      serverStage: 'succeeded',
+      metadataSteps: {
+        required: {
+          jobId: 'metadata-job-required',
+          resultRevision: 'revision-2',
+          serverStage: 'succeeded',
+        },
+        optional: {
+          jobId: 'metadata-job-optional',
+          resultRevision: 'revision-3',
+          serverStage: 'succeeded',
+        },
+      },
     });
 
     const callsBeforeMismatch = calls.length;
@@ -393,9 +523,9 @@ describe('private ID3 organization batch journal', () => {
         ...common,
         command: 'organization-submit',
         trackId: 'A',
-        revision: 'different-revision',
-        metadataJobId: 'metadata-job-1',
-        sourceEvidence: manifest.sourceEvidence,
+        revision: 'revision-2',
+        metadataJobId: 'metadata-job-required',
+        sourceEvidence: optionalManifest.sourceEvidence,
       }),
     ).rejects.toThrow('client_failed:journal_binding');
     expect(calls).toHaveLength(callsBeforeMismatch);
@@ -413,7 +543,7 @@ describe('private ID3 organization batch journal', () => {
       serverStage: 'succeeded',
     });
     expect(module.nextId3OrganizationBatchItem(stateFile)).toMatchObject({ trackId: 'B' });
-    expect(calls.filter(({ path }) => path.endsWith('/metadata-jobs'))).toHaveLength(2);
+    expect(calls.filter(({ path }) => path.endsWith('/metadata-jobs'))).toHaveLength(3);
   });
 
   it('keeps the accepted organization checkpoint when bounded polling times out', async () => {
@@ -593,7 +723,11 @@ describe('private ID3 organization batch journal', () => {
     expect(resumed).toMatchObject({
       trackId: 'B',
       state: 'metadata_accepted',
-      checkpoint: { metadataJobId: 'metadata-job-B', resultRevision: 'revision-B' },
+      checkpoint: {
+        metadataSteps: {
+          optional: { jobId: 'metadata-job-B', resultRevision: 'revision-B' },
+        },
+      },
     });
     expect(module.readId3OrganizationBatchJournal(stateFile).items[1]!.operations).toEqual(
       stableOperations,

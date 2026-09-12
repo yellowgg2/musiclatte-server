@@ -26,6 +26,8 @@ import {
   checkpointId3OrganizationBatch,
   createId3OrganizationBatchJournal,
   id3OrganizationBatchBinding,
+  id3OrganizationFinalMetadataBinding,
+  id3OrganizationMetadataBinding,
   id3OrganizationBatchStatus,
   nextId3OrganizationBatchItem,
   recordId3OrganizationBatchFailure,
@@ -424,12 +426,23 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     if (requiredFields.length && optionalFields.length) fail('mixed_claim_purpose');
     const purpose = requiredFields.length ? 'required_review' : 'optional_enrichment';
     const binding = batchBinding();
+    const metadataStep = requiredFields.length ? 'required' : 'optional';
+    const metadataBinding = binding
+      ? id3OrganizationMetadataBinding(binding, metadataStep)
+      : undefined;
     if (
       binding &&
       (!['researching', 'metadata_accepted'].includes(binding.state) ||
         (options.operationId !== undefined &&
-          options.operationId !== binding.operations.metadata) ||
+          options.operationId !== metadataBinding?.operationId) ||
         (binding.coverUploadId !== null && binding.coverUploadId !== options.coverUploadId))
+    )
+      fail('journal_binding');
+    if (
+      binding &&
+      metadataStep === 'optional' &&
+      binding.metadataSteps.required.jobId !== null &&
+      options.revision !== binding.metadataSteps.required.resultRevision
     )
       fail('journal_binding');
     const claim = decodeCurationClaimResult(
@@ -449,7 +462,7 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const claimId = claim.claimId;
     try {
       const body = {
-        operationId: binding?.operations.metadata ?? options.operationId ?? randomUUID(),
+        operationId: metadataBinding?.operationId ?? options.operationId ?? randomUUID(),
         targets: [target()],
         patch,
         automation: {
@@ -472,6 +485,7 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         const result = accepted.job.items.find((item) => item.originalTrackId === binding.trackId);
         checkpointId3OrganizationBatch(options.stateFile, binding.trackId, {
           kind: 'metadata',
+          step: metadataStep,
           jobId: accepted.job.id,
           resultRevision: result?.resultRevision ?? null,
           serverStage: result?.stage ?? accepted.job.status,
@@ -489,11 +503,12 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
   }
   if (options.command === 'organization-submit') {
     const binding = batchBinding();
+    const finalMetadata = binding ? id3OrganizationFinalMetadataBinding(binding) : undefined;
     if (
       binding &&
       (!['metadata_accepted', 'organization_accepted'].includes(binding.state) ||
-        binding.metadataJobId !== options.metadataJobId ||
-        (binding.resultRevision !== null && binding.resultRevision !== options.revision) ||
+        finalMetadata?.jobId !== options.metadataJobId ||
+        finalMetadata?.resultRevision !== options.revision ||
         (options.operationId !== undefined &&
           options.operationId !== binding.operations.organization))
     )
