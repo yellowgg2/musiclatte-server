@@ -64,6 +64,73 @@ it('previews without durable effects and admits only valid targets with replayab
   }
 });
 
+/** A PAT may retry only its own failed unsaved automation item through the existing child-job contract. */
+it('retries a failed unsaved automation item with the original scoped PAT', async () => {
+  const c = await createCurationMutationContext();
+  try {
+    const headers = await c.token(['metadata:read', 'metadata:write', 'curation:write']);
+    const target = {
+      trackId: 'track-1',
+      expectedRevision: c.repository.get(c.trackRef)!.fileRevision!,
+    };
+    const claim = (
+      await c.post(
+        'curation-claims',
+        {
+          operationId: randomUUID(),
+          purpose: 'required_review',
+          fields: ['title'],
+          targets: [target],
+        },
+        headers,
+      )
+    ).json();
+    const created = await c.post(
+      'metadata-jobs',
+      {
+        operationId: randomUUID(),
+        targets: [target],
+        patch: { title: { op: 'set', value: 'Retry title' } },
+        automation: {
+          claimId: claim.claimId,
+          claimGeneration: claim.generation,
+          purpose: 'required_review',
+          sourceNotes: null,
+        },
+        dryRun: false,
+      },
+      headers,
+    );
+    const job = created.json().job;
+    const item = job.items[0];
+    c.storage.db.connection
+      .prepare("UPDATE metadata_items SET stage='failed',error_code='write_failed' WHERE id=?")
+      .run(item.itemId);
+    const payload = {
+      operationId: randomUUID(),
+      items: [{ itemId: item.itemId, expectedRevision: target.expectedRevision }],
+    };
+    const detail = await c.app.inject({
+      url: `/api/v1/metadata-jobs/${job.id}`,
+      headers,
+    });
+    expect(detail.json().job.items[0].recoveryActions).toContain('retry');
+    const retried = await c.post(`metadata-jobs/${job.id}/retries`, payload, headers);
+    expect(retried.statusCode, JSON.stringify(retried.json())).toBe(202);
+    expect(retried.json().job).toMatchObject({
+      kind: 'retry',
+      parentJobId: job.id,
+      items: [{ stage: 'queued' }],
+    });
+    const otherToken = await c.token(['metadata:read', 'metadata:write', 'curation:write']);
+    expect((await c.post(`metadata-jobs/${job.id}/retries`, payload, otherToken)).statusCode).toBe(
+      404,
+    );
+  } finally {
+    await c.cleanup();
+  }
+});
+
 it('admits automation while a file-verified album projection waits for organization', async () => {
   const c = await createCurationMutationContext();
   try {

@@ -259,7 +259,9 @@ export function registerMetadataRoutes(app: FastifyInstance, service: SessionSer
     async (request, reply) =>
       reply
         .code(202)
-        .send(await boundary(request, true, (m, v) => m.retry(v, request.params.id, request.body))),
+        .send(
+          await boundary(request, 'pat', (m, v) => m.retry(v, request.params.id, request.body)),
+        ),
   );
   app.post<{
     Params: { id: string };

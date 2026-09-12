@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { lstatSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -8,6 +8,7 @@ import {
   decodeAutomationJobResponse,
   decodeCurationClaimResult,
   decodeMetadataCoverUpload,
+  decodeMetadataJob,
   decodeMetadataPreview,
   decodeMetadataSnapshot,
   decodeOrganizationCandidates,
@@ -70,6 +71,7 @@ export interface Id3OrganizeCommandOptions {
     | 'cover-upload'
     | 'metadata-submit'
     | 'metadata-status'
+    | 'metadata-retry'
     | 'organization-preview'
     | 'organization-submit'
     | 'status'
@@ -230,6 +232,17 @@ function patchFor(manifest: Id3OrganizationManifest, coverUploadId?: string): Me
   ) as MetadataPatch;
   if (coverUploadId) patch.cover = { op: 'replaceAll', uploadId: coverUploadId };
   return patch;
+}
+
+function decodeMetadataJobDetail(value: unknown) {
+  if (!object(value) || value.schemaVersion !== 1 || !Object.hasOwn(value, 'job')) fail('response');
+  if (Object.hasOwn(value, 'admissionResults')) {
+    const decoded = decodeAutomationJobResponse(value);
+    if (!decoded.job) fail('response');
+    return { schemaVersion: 1 as const, job: decoded.job };
+  }
+  if (!exact(value, ['schemaVersion', 'job'])) fail('response');
+  return { schemaVersion: 1 as const, job: decodeMetadataJob(value.job) };
 }
 
 function required(value: string | undefined, code: string): string {
@@ -642,9 +655,7 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     if (!binding || binding.state !== 'metadata_accepted') fail('journal_binding');
     const pending = id3OrganizationPendingMetadataBinding(binding);
     const response = await call('/metadata-jobs/' + encodeURIComponent(pending.target.jobId!));
-    const accepted = decodeAutomationJobResponse(response);
-    if (!accepted.job) fail('response');
-    const job = accepted.job;
+    const job = decodeMetadataJobDetail(response).job;
     const result = job.items.find((item) => item.originalTrackId === binding.trackId);
     if (!result) fail('response');
     checkpointId3OrganizationBatch(options.stateFile!, binding.trackId, {
@@ -655,6 +666,52 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       serverStage: result.stage,
     });
     return { schemaVersion: 1 as const, job };
+  }
+  if (options.command === 'metadata-retry') {
+    const binding = batchBinding();
+    if (!binding || binding.state !== 'metadata_accepted') fail('journal_binding');
+    const pending = id3OrganizationPendingMetadataBinding(binding);
+    const parent = decodeMetadataJobDetail(
+      await call('/metadata-jobs/' + encodeURIComponent(pending.target.jobId!)),
+    );
+    const failed = parent.job.items.find(
+      (item) => item.originalTrackId === binding.trackId && item.currentTrackId === binding.trackId,
+    );
+    if (
+      !failed ||
+      !['failed', 'conflict'].includes(failed.stage) ||
+      failed.fileSavedAt !== null ||
+      !failed.recoveryActions.includes('retry')
+    )
+      fail('metadata_retry');
+    const operationId =
+      'metadata-retry-' +
+      createHash('sha256')
+        .update(JSON.stringify([pending.step, pending.target.operationId, pending.target.jobId]))
+        .digest('hex');
+    const retried = decodeMetadataJobDetail(
+      await jsonPost(
+        '/metadata-jobs/' + encodeURIComponent(parent.job.id) + '/retries',
+        {
+          operationId,
+          items: [{ itemId: failed.itemId, expectedRevision: failed.previousRevision }],
+        },
+        [202],
+        true,
+      ),
+    );
+    const result = retried.job.items.find(
+      (item) => item.originalTrackId === binding.trackId && item.currentTrackId === binding.trackId,
+    );
+    if (!result) fail('response');
+    checkpointId3OrganizationBatch(options.stateFile!, binding.trackId, {
+      kind: 'metadata',
+      step: pending.step,
+      jobId: retried.job.id,
+      resultRevision: result.resultRevision,
+      serverStage: result.stage,
+    });
+    return retried;
   }
   if (options.command === 'organization-submit') {
     const binding = batchBinding();

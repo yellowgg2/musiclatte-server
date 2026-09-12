@@ -54,6 +54,7 @@ npm run id3:organize -- metadata-preview --api https://service.example/api/v1 --
 npm run id3:organize -- cover-upload --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --library-id LIBRARY_ID
 npm run id3:organize -- metadata-submit --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision REVISION --cover-upload-id UPLOAD_ID --operation-id STABLE_OPERATION_ID
 npm run id3:organize -- metadata-status --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID
+npm run id3:organize -- metadata-retry --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID
 npm run id3:organize -- organization-preview --api https://service.example/api/v1 --token-file /absolute/private/token --track-id TRACK_ID --revision RESULT_REVISION
 npm run id3:organize -- organization-submit --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision RESULT_REVISION --metadata-job-id METADATA_JOB_ID --operation-id STABLE_OPERATION_ID --poll-attempts 180 --poll-interval-ms 1000 --recovery-retries 1
 ```
@@ -148,6 +149,12 @@ If an accepted metadata submit returns before its item succeeds, use `metadata-s
 same state file and track. It reads the journal-owned job ID and checkpoints the server's current
 stage/result revision without acquiring a new claim or replaying the mutation. Continue to the next
 metadata step only after that checkpoint reports a successful nonempty result revision.
+
+When that exact accepted metadata item reaches `failed` or `conflict` before saving the file and the
+server advertises `retry`, use `metadata-retry` once with the same state file and track. The client
+reads the parent item, derives one stable child-retry intent, replays a lost response idempotently,
+and replaces only that metadata step's job checkpoint. It refuses saved failures, another PAT's
+job, and failures without the server-owned retry action.
 
 Gonic can temporarily keep the directory-level album projection until the file moves. A final
 metadata checkpoint with a nonempty result revision may therefore remain `reflecting`; pass it only

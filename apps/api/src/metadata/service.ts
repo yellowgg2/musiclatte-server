@@ -28,6 +28,7 @@ import { createMetadataProvider, metadataReady } from './provider.js';
 import type { VerifiedMetadataSession as Verified, ResolvedMetadataFile } from './resolver.js';
 import { createMetadataCoverService } from './cover-service.js';
 import { canEditMetadata } from './policy.js';
+import { createMetadataJobAuthorizer } from '../auth/metadata-job-authorizer.js';
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -44,6 +45,9 @@ export function createMetadataService(service: SessionService) {
   const { options, identity, hash } = p;
   const db = options.database.connection;
   const repository = createMetadataRepository(options);
+  const jobAuthorizer = service.options.automation
+    ? createMetadataJobAuthorizer(service.options.automation)
+    : undefined;
   let coverService: ReturnType<typeof createMetadataCoverService> | undefined;
   const getCovers = () => (coverService ??= createMetadataCoverService(service, p));
   const available = () => {
@@ -73,7 +77,8 @@ export function createMetadataService(service: SessionService) {
       item.recoveryActions = item.recoveryActions.filter(
         (action) =>
           action === 'refresh' ||
-          (!isTokenPrincipal(v) && (action === 'restore' ? restoreAllowed : editAllowed)),
+          (action === 'retry' && editAllowed) ||
+          (!isTokenPrincipal(v) && action === 'restore' && restoreAllowed),
       );
     }
     return job;
@@ -156,18 +161,42 @@ export function createMetadataService(service: SessionService) {
     v: Verified,
     file: ResolvedMetadataFile,
     patch: MetadataPatch,
-  ): ValidatedMetadataItem => ({
-    id: randomUUID(),
-    mediaLinkId: file.mediaLinkId,
-    fileIdentity: file.fileIdentity,
-    bindingRevision: file.bindingRevision,
-    trackId: file.trackId,
-    expectedRevision: file.fileRevision,
-    expectedDigest: file.inspection.digest,
-    actorSessionId: createHash('sha256').update(metadataSession(v).raw).digest('hex'),
-    policyRevision: metadataContext(v).policyRevision,
-    patch,
-  });
+  ): ValidatedMetadataItem => {
+    const validated: ValidatedMetadataItem = {
+      id: randomUUID(),
+      mediaLinkId: file.mediaLinkId,
+      fileIdentity: file.fileIdentity,
+      bindingRevision: file.bindingRevision,
+      trackId: file.trackId,
+      expectedRevision: file.fileRevision,
+      expectedDigest: file.inspection.digest,
+      actorSessionId: isTokenPrincipal(v)
+        ? null
+        : createHash('sha256').update(metadataSession(v).raw).digest('hex'),
+      policyRevision: metadataContext(v).policyRevision,
+      patch,
+    };
+    if (isTokenPrincipal(v)) {
+      if (!jobAuthorizer) throw new ApiError(403, 'forbidden');
+      Object.assign(
+        validated,
+        jobAuthorizer.createGrant(v, {
+          id: validated.id,
+          mediaLinkId: validated.mediaLinkId,
+          fileIdentity: validated.fileIdentity,
+          bindingRevision: validated.bindingRevision,
+          trackId: validated.trackId,
+          expectedRevision: validated.expectedRevision,
+          expectedDigest: validated.expectedDigest,
+          policyRevision: validated.policyRevision,
+          patch: validated.patch,
+          identityKey: identity(v),
+          libraryId: file.libraryId,
+        }),
+      );
+    }
+    return validated;
+  };
   const frameHandle = (v: Verified, file: ResolvedMetadataFile, frameId: string) =>
     `${frameId}.${file.fileRevision}.${service.sign('metadata-frame', JSON.stringify([p.credentialIdentity(v), file.trackId, file.fileRevision, frameId]))}`;
   return {

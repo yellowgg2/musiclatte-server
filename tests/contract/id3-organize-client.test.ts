@@ -10,6 +10,7 @@ import {
 import {
   checkpointId3OrganizationBatch,
   createId3OrganizationBatchJournal,
+  id3OrganizationBatchBinding,
   nextId3OrganizationBatchItem,
 } from '../../tools/id3-organize-batch-journal.js';
 
@@ -133,6 +134,102 @@ it('uploads the optional cover after a successful required metadata step', async
       ),
   });
   expect(result.uploadId).toBe('optional-cover-upload');
+});
+
+/** A failed unsaved metadata checkpoint resumes through one stable child retry intent. */
+it('retries a failed batch metadata job and checkpoints its child job', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-metadata-retry-'));
+  const token = 'mlpat_' + 'r'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const stateFile = join(directory, 'batch.json');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  createId3OrganizationBatchJournal({
+    path: stateFile,
+    api: 'https://music.example/api/v1',
+    token,
+    selection: {
+      schemaVersion: 1,
+      capturedAt: 1,
+      source: { kind: 'favorites' },
+      selectionRevision: 'a'.repeat(64),
+      occurrenceCount: 1,
+      uniqueTrackCount: 1,
+      items: [
+        {
+          trackId: 'track-1',
+          title: 'Title',
+          artist: 'Artist',
+          album: null,
+          occurrenceIndexes: [0],
+        },
+      ],
+    },
+  });
+  nextId3OrganizationBatchItem(stateFile);
+  checkpointId3OrganizationBatch(stateFile, 'track-1', {
+    kind: 'metadata',
+    step: 'optional',
+    jobId: 'failed-job',
+    resultRevision: null,
+    serverStage: 'failed',
+  });
+  const item = (jobId: string, stage: string, errorCode: string | null) => ({
+    schemaVersion: 1,
+    job: {
+      id: jobId,
+      libraryId: 'music',
+      createdAt: 1,
+      status: stage,
+      kind: jobId === 'failed-job' ? 'edit' : 'retry',
+      parentJobId: jobId === 'failed-job' ? null : 'failed-job',
+      items: [
+        {
+          itemId: jobId + '-item',
+          originalTrackId: 'track-1',
+          currentTrackId: 'track-1',
+          stage,
+          fileSavedAt: null,
+          reflectedAt: null,
+          previousRevision: 'revision-1',
+          resultRevision: null,
+          changedFields: ['album'],
+          errorCode,
+          recoveryActions: stage === 'failed' ? ['retry'] : [],
+          restoreAvailable: false,
+        },
+      ],
+    },
+  });
+  const retryBodies: string[] = [];
+  let retryAttempts = 0;
+  const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith('/metadata-jobs/failed-job') && init?.method === undefined)
+      return Response.json(item('failed-job', 'failed', 'write_failed'));
+    if (url.pathname.endsWith('/metadata-jobs/failed-job/retries')) {
+      retryBodies.push(String(init?.body));
+      retryAttempts++;
+      if (retryAttempts === 1) throw new TypeError('lost response');
+      return Response.json(item('retry-job', 'queued', null), { status: 202 });
+    }
+    throw new Error('unexpected request');
+  });
+  const result = await runId3OrganizeCommand({
+    api: 'https://music.example/api/v1',
+    tokenFile,
+    stateFile,
+    fetch: fetcher,
+    command: 'metadata-retry',
+    trackId: 'track-1',
+  });
+  expect(result.job.id).toBe('retry-job');
+  expect(retryBodies).toHaveLength(2);
+  expect(retryBodies[1]).toBe(retryBodies[0]);
+  expect(id3OrganizationBatchBinding(stateFile, 'track-1').metadataSteps.optional).toMatchObject({
+    jobId: 'retry-job',
+    serverStage: 'queued',
+    resultRevision: null,
+  });
 });
 
 it('uses Authorization only as a header and supports candidate, inspect and previews', async () => {
