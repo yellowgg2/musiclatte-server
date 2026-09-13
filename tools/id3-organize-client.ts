@@ -236,7 +236,10 @@ function patchFor(manifest: Id3OrganizationManifest, coverUploadId?: string): Me
   return patch;
 }
 
-function metadataValuesMatch(expected: MetadataValues, actual: MetadataValues) {
+function metadataValuesMatch(
+  expected: MetadataValues,
+  actual: ReturnType<typeof decodeMetadataSnapshot>['values'],
+) {
   return Object.entries(expected).every(
     ([field, value]) =>
       JSON.stringify(actual[field as keyof MetadataValues]) === JSON.stringify(value),

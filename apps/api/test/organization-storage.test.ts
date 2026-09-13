@@ -98,9 +98,25 @@ async function setup() {
 }
 
 describe('organization storage', () => {
+  it('accepts consecutive periods inside safe path components', async () => {
+    const s = await setup();
+    const job = s.repository.createOrReplay({
+      ...s.input,
+      targetKey:
+        "jojo-music/account/ID3-managed/Artist/I Said I Love You First... And You Said It Back/01 - That's When I'll Care.mp3",
+    });
+
+    expect(job.item.targetKey).toContain('First... And');
+    expect(() =>
+      s.c.db.connection
+        .prepare("UPDATE organization_items SET target_key='jojo-music/account/../escape.mp3'")
+        .run(),
+    ).toThrow('CHECK constraint failed');
+  });
+
   it('migrates through the organization schemas and keeps immutable intent idempotent', async () => {
     const s = await setup();
-    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 26 });
+    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 27 });
     const first = s.repository.createOrReplay(s.input);
     expect(
       s.repository.createOrReplay({ ...s.input, id: 'discarded', itemId: 'discarded-item' }),
