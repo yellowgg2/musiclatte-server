@@ -405,10 +405,36 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       ).length !== 1
     )
       fail('shared_successor');
+    const successorReferences = verifyId3ReferenceContext(
+      required(options.referenceFile, 'reference_file'),
+      base,
+      token,
+    );
+    const restoredOriginalSnapshot =
+      successorReferences.trackId === oldTrackId &&
+      successorReferences.starred &&
+      successorReferences.favoriteRestoredTo === newTrackId &&
+      successorReferences.playlists.every(
+        ({ songIds, restoredTo }) => songIds.includes(oldTrackId) && restoredTo === newTrackId,
+      );
+    const currentSuccessorSnapshot =
+      successorReferences.trackId === newTrackId &&
+      successorReferences.starred &&
+      successorReferences.favoriteRestoredTo === null &&
+      successorReferences.playlists.every(
+        ({ songIds, restoredTo }) => songIds.includes(newTrackId) && restoredTo === null,
+      );
+    if (!restoredOriginalSnapshot && !currentSuccessorSnapshot) fail('reference_context');
+    const playlists = successorReferences.playlists.map(({ id, name, owner, songIds }) => ({
+      id,
+      name,
+      owner,
+      songIds,
+    }));
     const restored = decodeReferenceRestore(
       await jsonPost(
         '/metadata-organization/reference-restores',
-        { trackId: oldTrackId, newTrackId, starred: true, playlists: [] },
+        { trackId: oldTrackId, newTrackId, starred: true, playlists },
         [200],
       ),
     );
@@ -416,7 +442,7 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       restored.trackId !== oldTrackId ||
       restored.newTrackId !== newTrackId ||
       !restored.starred ||
-      restored.playlistsRestored !== 0
+      restored.playlistsRestored !== playlists.length
     )
       fail('reference_conflict');
     completeId3OrganizationBatchSharedItem(stateFile, oldTrackId, newTrackId);
