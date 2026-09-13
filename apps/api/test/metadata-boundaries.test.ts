@@ -139,11 +139,22 @@ except module["FileAccessError"] as error:
     const c = recent;
     const known = c.seed();
     writeFileSync(join(c.musicRoot, 'imports', 'legacy.mp3'), 'synthetic legacy');
+    mkdirSync(join(c.musicRoot, 'imports', 'Legacy Artist '));
+    writeFileSync(
+      join(c.musicRoot, 'imports', 'Legacy Artist ', 'source.mp3'),
+      'synthetic spaced legacy',
+    );
     c.songs.push({
       id: 'legacy-track',
       title: 'Synthetic legacy',
       isDir: false,
       path: 'imports/legacy.mp3',
+    });
+    c.songs.push({
+      id: 'spaced-legacy-track',
+      title: 'Synthetic spaced legacy',
+      isDir: false,
+      path: 'imports/Legacy Artist /source.mp3',
     });
     const sessionService = createSessionService(c.options);
     const token = c.headers.cookie.slice(c.headers.cookie.indexOf('=') + 1);
@@ -184,6 +195,11 @@ except module["FileAccessError"] as error:
     expect(existing.mediaLinkId).toBe('media-1');
     const legacy = await resolver.resolve(verified, 'legacy-track');
     expect(legacy.editable).toBe(true);
+    const spacedLegacy = await resolver.resolve(verified, 'spaced-legacy-track');
+    expect(spacedLegacy).toMatchObject({
+      editable: true,
+      relativeFileKey: 'imports/Legacy Artist /source.mp3',
+    });
     expect((await resolver.resolve(verified, 'legacy-track')).mediaLinkId).toBe(legacy.mediaLinkId);
     expect(
       c.storage.db.connection.prepare('SELECT count(*) AS count FROM download_events').get(),
@@ -242,6 +258,12 @@ except module["FileAccessError"] as error:
     expect(first.digest).toMatch(/^[a-f0-9]{64}$/);
     expect(first.writable).toBe(true);
     expect(first.size).toBe(15);
+    mkdirSync(join(c.musicRoot, 'Library', 'Legacy Artist '));
+    writeFileSync(join(c.musicRoot, 'Library', 'Legacy Artist ', 'source.mp3'), 'legacy');
+    await expect(access.inspect('Library/Legacy Artist /source.mp3')).resolves.toMatchObject({
+      size: 6,
+      writable: true,
+    });
     for (const key of [
       '../outside',
       '/absolute',

@@ -1,7 +1,7 @@
 import { decodeAutomationDiff } from '@musiclatte/contracts';
 import { isAbsolute } from 'node:path';
 import { createMetadataFileAccess, type MetadataFileAccessOptions } from './file-access.js';
-import { validateRelativeKey } from '../imports/policy.js';
+import { validateExistingRelativeKey, validateRelativeKey } from '../imports/policy.js';
 import { runProcess } from '../imports/process-runner.js';
 
 export const metadataProtectiveDefaults = Object.freeze({
@@ -124,7 +124,8 @@ export function createMetadataHelper(
     extra: Record<string, unknown>,
     signal?: AbortSignal,
   ) {
-    validateRelativeKey(key);
+    if (['read', 'preview', 'cover'].includes(action)) validateExistingRelativeKey(key);
+    else validateRelativeKey(key);
     const controller = new AbortController();
     const cancel = () => controller.abort();
     signal?.addEventListener('abort', cancel, { once: true });

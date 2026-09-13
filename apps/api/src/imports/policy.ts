@@ -18,8 +18,7 @@ const disabledPolicy: ImportPolicy = Object.freeze({
   engineManagers: Object.freeze([]),
 });
 
-/** Reject aliases instead of normalizing untrusted keys; all stored keys are POSIX relative. */
-export function validateRelativeKey(key: string): string {
+function validatePathKey(key: string, strictPortableNames: boolean): string {
   if (
     typeof key !== 'string' ||
     !key ||
@@ -32,13 +31,22 @@ export function validateRelativeKey(key: string): string {
           !part ||
           part === '.' ||
           part === '..' ||
-          part !== part.trim() ||
-          /[. ]$/.test(part) ||
+          (strictPortableNames && (part !== part.trim() || /[. ]$/.test(part))) ||
           Buffer.byteLength(part) > 255,
       )
   )
     throw new Error('invalid_file_key');
   return key;
+}
+
+/** Reject aliases instead of normalizing untrusted keys; generated keys stay portable. */
+export function validateRelativeKey(key: string): string {
+  return validatePathKey(key, true);
+}
+
+/** Accept exact POSIX legacy names while retaining traversal, separator and size boundaries. */
+export function validateExistingRelativeKey(key: string): string {
+  return validatePathKey(key, false);
 }
 function record(value: unknown, keys: string[]): Record<string, unknown> {
   if (

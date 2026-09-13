@@ -16,8 +16,7 @@ def segments(key):
     if not isinstance(key, str) or not key or len(key.encode()) > 4096:
         raise FileAccessError("file_unavailable")
     parts = key.split("/")
-    if any(not part or part in (".", "..") or part != part.strip()
-           or part.endswith((".", " ")) or len(part.encode()) > 255 for part in parts):
+    if any(not part or part in (".", "..") or len(part.encode()) > 255 for part in parts):
         raise FileAccessError("file_unavailable")
     if any(ord(char) < 32 or ord(char) == 127 or char in "\\:" for char in key):
         raise FileAccessError("file_unavailable")

@@ -2,7 +2,7 @@ import { lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, sep } from 'node:path';
 import type { OrganizationRuntimePolicy } from '../automation/config.js';
 import { sanitizeMediaName } from '../imports/file-keys.js';
-import { validateRelativeKey } from '../imports/policy.js';
+import { validateExistingRelativeKey, validateRelativeKey } from '../imports/policy.js';
 
 export type OrganizationPathErrorCode =
   | 'account_unmapped'
@@ -46,7 +46,7 @@ export function resolveOrganizationAccountScope(
     return { status: 'error', code: 'account_unmapped' };
   try {
     validateRelativeKey(input.relativeRoot);
-    validateRelativeKey(input.sourceKey);
+    validateExistingRelativeKey(input.sourceKey);
     if (input.targetKey !== undefined) validateRelativeKey(input.targetKey);
   } catch {
     return { status: 'error', code: 'source_outside_account' };

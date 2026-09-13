@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiError, type SessionService } from '../auth/session-service.js';
 import type { ManagementDatabase } from '../storage/database.js';
 import { createMediaLinkRepository } from '../storage/media-link-repository.js';
-import { validateRelativeKey } from '../imports/policy.js';
+import { validateExistingRelativeKey } from '../imports/policy.js';
 import { createMetadataRevision } from './revision.js';
 import { canEditMetadata, canRestoreMetadata, type MetadataPolicy } from './policy.js';
 import type { createMetadataFileAccess, MetadataFileInspection } from './file-access.js';
@@ -69,7 +69,7 @@ export function createMetadataFileResolver(options: {
         throw new ApiError(409, 'conflict');
       let key: string;
       try {
-        key = validateRelativeKey(result.path);
+        key = validateExistingRelativeKey(result.path);
       } catch {
         throw new ApiError(409, 'conflict');
       }

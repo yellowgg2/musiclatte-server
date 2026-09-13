@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { validateRelativeKey } from '../imports/policy.js';
+import { validateExistingRelativeKey } from '../imports/policy.js';
 
 export interface MetadataRevisionInput {
   libraryId: string;
@@ -16,7 +16,7 @@ export function createMetadataRevision(input: Uint8Array) {
       .digest('hex');
   const scope = (input: Pick<MetadataRevisionInput, 'libraryId' | 'relativeFileKey'>) => {
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(input.libraryId)) throw new Error('invalid_metadata_scope');
-    return [input.libraryId, validateRelativeKey(input.relativeFileKey)];
+    return [input.libraryId, validateExistingRelativeKey(input.relativeFileKey)];
   };
   const fileRevision = (input: MetadataRevisionInput) => {
     if (!/^[a-f0-9]{64}$/.test(input.digest)) throw new Error('invalid_metadata_digest');

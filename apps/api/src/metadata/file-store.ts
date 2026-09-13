@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { lstatSync, realpathSync } from 'node:fs';
 import { isAbsolute, sep } from 'node:path';
 import { createMetadataFileAccess, type MetadataFileAccessOptions } from './file-access.js';
-import { validateRelativeKey } from '../imports/policy.js';
+import { validateExistingRelativeKey, validateRelativeKey } from '../imports/policy.js';
 
 export interface FileTransactionInput {
   itemId: string;
@@ -135,7 +135,7 @@ export function createMetadataFileStore(
       onRecovered?(recovery: FileRecovery): Promise<void>;
     },
   ): Promise<FileSavedReceipt | FileRecovery> {
-    validateRelativeKey(input.key);
+    validateExistingRelativeKey(input.key);
     if (
       !hash(input.expectedDigest) ||
       !hash(input.fileIdentity) ||

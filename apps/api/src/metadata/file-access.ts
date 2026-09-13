@@ -1,6 +1,6 @@
 import { lstatSync, realpathSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
-import { validateRelativeKey } from '../imports/policy.js';
+import { validateExistingRelativeKey } from '../imports/policy.js';
 import { runProcess } from '../imports/process-runner.js';
 
 export interface MetadataFileInspection {
@@ -46,7 +46,7 @@ export function createMetadataFileAccess(options: MetadataFileAccessOptions) {
   return {
     rootIdentity,
     async inspect(key: string, signal?: AbortSignal): Promise<MetadataFileInspection> {
-      validateRelativeKey(key);
+      validateExistingRelativeKey(key);
       const controller = new AbortController();
       const cancel = () => controller.abort();
       signal?.addEventListener('abort', cancel, { once: true });

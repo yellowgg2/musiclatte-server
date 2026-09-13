@@ -1,7 +1,7 @@
 import { lstatSync, realpathSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { runProcess } from '../imports/process-runner.js';
-import { validateRelativeKey } from '../imports/policy.js';
+import { validateExistingRelativeKey, validateRelativeKey } from '../imports/policy.js';
 import { withMediaFences, type createMediaFence } from './media-fence.js';
 import { createMetadataFileAccess } from './file-access.js';
 
@@ -176,7 +176,7 @@ export function createOrganizationFileStore(options: {
   return {
     async prepare(input: { libraryId: string; sourceKey: string; targetKey: string }) {
       assertRoot();
-      validateRelativeKey(input.sourceKey);
+      validateExistingRelativeKey(input.sourceKey);
       validateRelativeKey(input.targetKey);
       const sourceFenceIdentity = options.fileIdentity(input.libraryId, input.sourceKey);
       const targetFenceIdentity = options.fileIdentity(input.libraryId, input.targetKey);

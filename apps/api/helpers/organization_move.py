@@ -12,12 +12,13 @@ class MoveError(Exception):
     pass
 
 
-def parts(key):
+def parts(key, strict_portable_names=False):
     if not isinstance(key, str) or not key or len(key.encode()) > 4096:
         raise MoveError("unsafe_target")
     value = key.split("/")
-    if any(not part or part in (".", "..") or part != part.strip()
-           or part.endswith((".", " ")) or len(part.encode()) > 255 for part in value):
+    if any(not part or part in (".", "..")
+           or (strict_portable_names and (part != part.strip() or part.endswith((".", " "))))
+           or len(part.encode()) > 255 for part in value):
         raise MoveError("unsafe_target")
     if any(ord(char) < 32 or ord(char) == 127 or char in "\\:" for char in key):
         raise MoveError("unsafe_target")
@@ -126,7 +127,7 @@ def source(request, root_fd):
 
 
 def target_parent(request, root_fd, create):
-    values = parts(request["targetKey"])
+    values = parts(request["targetKey"], True)
     parent, opened = directory_chain(root_fd, values[:-1], create, True)
     return values[-1], parent, opened
 
@@ -204,8 +205,8 @@ def move(request, root_fd):
         close_all(source_dirs, target_dirs)
 
 
-def inspect_optional(request, root_fd, key):
-    values = parts(key)
+def inspect_optional(request, root_fd, key, strict_portable_names):
+    values = parts(key, strict_portable_names)
     parent, opened = directory_chain(root_fd, values[:-1], False, True)
     if parent is None:
         return None
@@ -223,8 +224,8 @@ def inspect_optional(request, root_fd, key):
 
 def classify(request, root_fd):
     try:
-        source_value = inspect_optional(request, root_fd, request["sourceKey"])
-        target_value = inspect_optional(request, root_fd, request["targetKey"])
+        source_value = inspect_optional(request, root_fd, request["sourceKey"], False)
+        target_value = inspect_optional(request, root_fd, request["targetKey"], True)
         if bool(source_value) == bool(target_value):
             return {"state": "ambiguous"}
         value = source_value or target_value

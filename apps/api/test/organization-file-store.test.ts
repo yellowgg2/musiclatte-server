@@ -110,6 +110,30 @@ it('atomically moves one regular file while preserving identity, mode, owner, an
   ]);
 });
 
+it('moves an exact legacy source from a directory ending in whitespace to a strict target', async () => {
+  const s = setup();
+  const legacyParent = join(s.musicRoot, 'jojo-music/account/Legacy ');
+  renameSync(join(s.musicRoot, 'jojo-music/account/Legacy'), legacyParent);
+  const sourceKey = 'jojo-music/account/Legacy /source.mp3';
+  const prepared = await s.store.prepare({
+    libraryId: 'library',
+    sourceKey,
+    targetKey: s.targetKey,
+  });
+  await s.store.move(prepared);
+  expect(existsSync(join(s.musicRoot, sourceKey))).toBe(false);
+  expect(existsSync(join(s.musicRoot, s.targetKey))).toBe(true);
+
+  const strict = setup();
+  await expect(
+    strict.store.prepare({
+      libraryId: 'library',
+      sourceKey: strict.sourceKey,
+      targetKey: strict.targetKey.replace('/Artist/', '/Artist /'),
+    }),
+  ).rejects.toThrow('invalid_file_key');
+});
+
 it('rejects collisions and symlink parents before losing the source', async () => {
   const collision = setup();
   mkdirSync(join(collision.musicRoot, 'jojo-music/account/ID3-managed/Artist/Album'), {

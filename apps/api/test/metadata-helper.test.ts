@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -41,6 +42,15 @@ async function makeSUT(version: 3 | 4 | 0 = 4, includeLegacyWebp = false) {
   return { root, helper };
 }
 describe('actual MP3 metadata helper', () => {
+  it('reads an exact legacy MP3 below a directory ending in whitespace', async () => {
+    const s = await makeSUT();
+    mkdirSync(join(s.root, 'Legacy Artist '));
+    copyFileSync(join(s.root, 'source.mp3'), join(s.root, 'Legacy Artist ', 'source.mp3'));
+    await expect(s.helper.read({ key: 'Legacy Artist /source.mp3' })).resolves.toMatchObject({
+      editable: true,
+    });
+  });
+
   /** Real v2.3/v2.4 files preserve audio and every untouched language/source/artwork frame. */
   it.each([3, 4] as const)(
     'should roundtrip selected fields and lyrics while preserving ID3v2.%s',

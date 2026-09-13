@@ -68,6 +68,15 @@ describe('id3-managed-v1 organization path planning', () => {
     ).not.toThrow();
   });
 
+  it('accepts an exact legacy source directory ending in whitespace and keeps the target strict', () => {
+    const input = fixture('jojo-music/account/Westlife /source.mp3');
+    expect(planOrganizationPath(input)).toMatchObject({
+      status: 'ready',
+      currentKey: input.sourceKey,
+      targetKey: 'jojo-music/account/ID3-managed/アルバム作家/앨범/10 - 노래 - 東京 - Song.mp3',
+    });
+  });
+
   /** A configured operator keeps another configured source account as the destination owner. */
   it('should organize a shared-library song inside its source account directory', () => {
     const input = fixture('jojo-music/admin/Legacy/source.mp3');
