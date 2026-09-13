@@ -71,6 +71,7 @@ export interface Id3OrganizeCommandOptions {
     | 'cover-upload'
     | 'metadata-submit'
     | 'metadata-status'
+    | 'metadata-recheck'
     | 'metadata-retry'
     | 'organization-preview'
     | 'organization-submit'
@@ -692,6 +693,58 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       serverStage: result.stage,
     });
     return { schemaVersion: 1 as const, job };
+  }
+  if (options.command === 'metadata-recheck') {
+    const binding = batchBinding();
+    if (!binding || binding.state !== 'metadata_accepted') fail('journal_binding');
+    const pending = id3OrganizationPendingMetadataBinding(binding);
+    const parent = decodeMetadataJobDetail(
+      await call('/metadata-jobs/' + encodeURIComponent(pending.target.jobId!)),
+    );
+    const reflecting = parent.job.items.find(
+      (item) => item.originalTrackId === binding.trackId && item.currentTrackId === binding.trackId,
+    );
+    if (
+      !reflecting ||
+      !['file_saved', 'reflecting'].includes(reflecting.stage) ||
+      reflecting.fileSavedAt === null ||
+      reflecting.resultRevision === null ||
+      reflecting.resultRevision !== pending.target.resultRevision
+    )
+      fail('metadata_recheck');
+    const operationId =
+      'metadata-recheck-' +
+      createHash('sha256')
+        .update(
+          JSON.stringify([
+            pending.step,
+            pending.target.operationId,
+            pending.target.jobId,
+            reflecting.itemId,
+          ]),
+        )
+        .digest('hex');
+    const rechecked = decodeMetadataJobDetail(
+      await jsonPost(
+        '/metadata-jobs/' + encodeURIComponent(parent.job.id) + '/rechecks',
+        { operationId, itemIds: [reflecting.itemId] },
+        [202],
+        true,
+      ),
+    );
+    if (rechecked.job.id !== parent.job.id) fail('response');
+    const result = rechecked.job.items.find(
+      (item) => item.originalTrackId === binding.trackId && item.currentTrackId === binding.trackId,
+    );
+    if (!result) fail('response');
+    checkpointId3OrganizationBatch(options.stateFile!, binding.trackId, {
+      kind: 'metadata',
+      step: pending.step,
+      jobId: rechecked.job.id,
+      resultRevision: result.resultRevision,
+      serverStage: result.stage,
+    });
+    return rechecked;
   }
   if (options.command === 'metadata-retry') {
     const binding = batchBinding();

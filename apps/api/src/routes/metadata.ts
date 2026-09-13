@@ -40,7 +40,7 @@ export function registerMetadataRoutes(app: FastifyInstance, service: SessionSer
       reply
         .code(202)
         .send(
-          await boundary(request, true, (m, v) => m.recheck(v, request.params.id, request.body)),
+          await boundary(request, 'pat', (m, v) => m.recheck(v, request.params.id, request.body)),
         ),
   );
   app.get<{ Querystring: { cursor?: string; limit?: string } }>(

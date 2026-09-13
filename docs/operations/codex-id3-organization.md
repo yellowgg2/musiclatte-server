@@ -54,6 +54,7 @@ npm run id3:organize -- metadata-preview --api https://service.example/api/v1 --
 npm run id3:organize -- cover-upload --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --library-id LIBRARY_ID
 npm run id3:organize -- metadata-submit --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision REVISION --cover-upload-id UPLOAD_ID --operation-id STABLE_OPERATION_ID
 npm run id3:organize -- metadata-status --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID
+npm run id3:organize -- metadata-recheck --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID
 npm run id3:organize -- metadata-retry --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID
 npm run id3:organize -- organization-preview --api https://service.example/api/v1 --token-file /absolute/private/token --track-id TRACK_ID --revision RESULT_REVISION
 npm run id3:organize -- organization-submit --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision RESULT_REVISION --metadata-job-id METADATA_JOB_ID --operation-id STABLE_OPERATION_ID --poll-attempts 180 --poll-interval-ms 1000 --recovery-retries 1
@@ -154,6 +155,11 @@ If an accepted metadata submit returns before its item succeeds, use `metadata-s
 same state file and track. It reads the journal-owned job ID and checkpoints the server's current
 stage/result revision without acquiring a new claim or replaying the mutation. Continue to the next
 metadata step only after that checkpoint reports a successful nonempty result revision.
+
+If a saved item remains `reflecting` after bounded status polling, use `metadata-recheck` once with
+the same state file and track. The client binds the parent job and item to the current journal,
+derives one stable recheck intent, and preserves the accepted result revision while the server runs
+a fresh bounded scan. It refuses unsaved, terminal, unrelated, or revision-mismatched items.
 
 When that exact accepted metadata item reaches `failed` or `conflict` before saving the file and the
 server advertises `retry`, use `metadata-retry` once with the same state file and track. The client

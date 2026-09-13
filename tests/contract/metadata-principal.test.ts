@@ -43,4 +43,42 @@ describe('metadata principal wire compatibility', () => {
       await c.cleanup();
     }
   });
+
+  /** Scoped metadata writers can reach recheck recovery without admitting read-only PATs. */
+  it('should admit metadata write PATs to recheck recovery only', async () => {
+    const c = await createMetadataPrincipalContext();
+    try {
+      const issue = async (scopes: ('metadata:read' | 'metadata:write')[]) =>
+        (
+          await c.app.inject({
+            method: 'POST',
+            url: '/api/v1/access-tokens',
+            headers: c.headers,
+            payload: {
+              name: `Synthetic ${scopes.length}`,
+              scopes,
+              libraryIds: ['music'],
+              expiresAt: recentNow + 10000,
+            },
+          })
+        ).json().token as string;
+      const recheck = (token: string) =>
+        c.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-jobs/missing/rechecks',
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          payload: { operationId: 'recheck_operation_0123456789', itemIds: ['item'] },
+        });
+
+      const writer = await recheck(await issue(['metadata:read', 'metadata:write']));
+      expect(writer.statusCode).toBe(404);
+      expect(writer.json()).toMatchObject({ error: { code: 'not_found' } });
+
+      const reader = await recheck(await issue(['metadata:read']));
+      expect(reader.statusCode).toBe(403);
+      expect(reader.json()).toMatchObject({ error: { code: 'forbidden' } });
+    } finally {
+      await c.cleanup();
+    }
+  });
 });

@@ -237,6 +237,190 @@ it('retries a failed batch metadata job and checkpoints its child job', async ()
   });
 });
 
+/** A saved reflecting checkpoint rechecks through one stable parent-job intent. */
+it('rechecks a reflecting batch metadata job and preserves its accepted checkpoint', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-metadata-recheck-'));
+  const token = 'mlpat_' + 'k'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const stateFile = join(directory, 'batch.json');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  createId3OrganizationBatchJournal({
+    path: stateFile,
+    api: 'https://music.example/api/v1',
+    token,
+    selection: {
+      schemaVersion: 1,
+      capturedAt: 1,
+      source: { kind: 'favorites' },
+      selectionRevision: 'a'.repeat(64),
+      occurrenceCount: 1,
+      uniqueTrackCount: 1,
+      items: [
+        {
+          trackId: 'track-1',
+          title: 'Title',
+          artist: 'Artist',
+          album: null,
+          occurrenceIndexes: [0],
+        },
+      ],
+    },
+  });
+  nextId3OrganizationBatchItem(stateFile);
+  checkpointId3OrganizationBatch(stateFile, 'track-1', {
+    kind: 'metadata',
+    step: 'optional',
+    jobId: 'reflecting-job',
+    resultRevision: 'revision-2',
+    serverStage: 'reflecting',
+  });
+  const detail = {
+    schemaVersion: 1,
+    job: {
+      id: 'reflecting-job',
+      libraryId: 'music',
+      createdAt: 1,
+      status: 'reflecting',
+      kind: 'edit',
+      parentJobId: null,
+      items: [
+        {
+          itemId: 'reflecting-item',
+          originalTrackId: 'track-1',
+          currentTrackId: 'track-1',
+          stage: 'reflecting',
+          fileSavedAt: 1,
+          reflectedAt: null,
+          previousRevision: 'revision-1',
+          resultRevision: 'revision-2',
+          changedFields: ['album'],
+          errorCode: 'reflection_mismatch',
+          recoveryActions: [],
+          restoreAvailable: false,
+        },
+      ],
+    },
+  };
+  const recheckBodies: string[] = [];
+  let recheckAttempts = 0;
+  const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith('/metadata-jobs/reflecting-job') && init?.method === undefined)
+      return Response.json(detail);
+    if (url.pathname.endsWith('/metadata-jobs/reflecting-job/rechecks')) {
+      recheckBodies.push(String(init?.body));
+      recheckAttempts++;
+      if (recheckAttempts === 1) throw new TypeError('lost response');
+      return Response.json(detail, { status: 202 });
+    }
+    throw new Error('unexpected request');
+  });
+
+  const result = await runId3OrganizeCommand({
+    api: 'https://music.example/api/v1',
+    tokenFile,
+    stateFile,
+    fetch: fetcher,
+    command: 'metadata-recheck',
+    trackId: 'track-1',
+  });
+
+  expect(result.job.id).toBe('reflecting-job');
+  expect(recheckBodies).toHaveLength(2);
+  expect(recheckBodies[1]).toBe(recheckBodies[0]);
+  expect(JSON.parse(recheckBodies[0]!)).toMatchObject({ itemIds: ['reflecting-item'] });
+  expect(id3OrganizationBatchBinding(stateFile, 'track-1').metadataSteps.optional).toMatchObject({
+    jobId: 'reflecting-job',
+    serverStage: 'reflecting',
+    resultRevision: 'revision-2',
+  });
+});
+
+/** A metadata recheck refuses a terminal parent even when the journal still has an accepted item. */
+it('rejects metadata recheck outside the saved reflecting stages', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-metadata-recheck-terminal-'));
+  const token = 'mlpat_' + 'z'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const stateFile = join(directory, 'batch.json');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  createId3OrganizationBatchJournal({
+    path: stateFile,
+    api: 'https://music.example/api/v1',
+    token,
+    selection: {
+      schemaVersion: 1,
+      capturedAt: 1,
+      source: { kind: 'favorites' },
+      selectionRevision: 'a'.repeat(64),
+      occurrenceCount: 1,
+      uniqueTrackCount: 1,
+      items: [
+        {
+          trackId: 'track-1',
+          title: 'Title',
+          artist: 'Artist',
+          album: null,
+          occurrenceIndexes: [0],
+        },
+      ],
+    },
+  });
+  nextId3OrganizationBatchItem(stateFile);
+  checkpointId3OrganizationBatch(stateFile, 'track-1', {
+    kind: 'metadata',
+    step: 'optional',
+    jobId: 'terminal-job',
+    resultRevision: 'revision-2',
+    serverStage: 'reflecting',
+  });
+  let posted = false;
+  const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith('/metadata-jobs/terminal-job') && init?.method === undefined)
+      return Response.json({
+        schemaVersion: 1,
+        job: {
+          id: 'terminal-job',
+          libraryId: 'music',
+          createdAt: 1,
+          status: 'succeeded',
+          kind: 'edit',
+          parentJobId: null,
+          items: [
+            {
+              itemId: 'terminal-item',
+              originalTrackId: 'track-1',
+              currentTrackId: 'track-1',
+              stage: 'succeeded',
+              fileSavedAt: 1,
+              reflectedAt: 2,
+              previousRevision: 'revision-1',
+              resultRevision: 'revision-2',
+              changedFields: ['album'],
+              errorCode: null,
+              recoveryActions: [],
+              restoreAvailable: false,
+            },
+          ],
+        },
+      });
+    posted = true;
+    throw new Error('unexpected request');
+  });
+
+  await expect(
+    runId3OrganizeCommand({
+      api: 'https://music.example/api/v1',
+      tokenFile,
+      stateFile,
+      fetch: fetcher,
+      command: 'metadata-recheck',
+      trackId: 'track-1',
+    }),
+  ).rejects.toThrow('client_failed:metadata_recheck');
+  expect(posted).toBe(false);
+});
+
 it('uses Authorization only as a header and supports candidate, inspect and previews', async () => {
   const token = 'mlpat_' + 'b'.repeat(48);
   const tokenFile = privateFile('token', token);

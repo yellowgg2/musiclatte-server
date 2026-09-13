@@ -77,7 +77,7 @@ export function createMetadataService(service: SessionService) {
       item.recoveryActions = item.recoveryActions.filter(
         (action) =>
           action === 'refresh' ||
-          (action === 'retry' && editAllowed) ||
+          ((action === 'retry' || action === 'recheck') && editAllowed) ||
           (!isTokenPrincipal(v) && action === 'restore' && restoreAllowed),
       );
     }
