@@ -16,7 +16,9 @@
   --color-error-surface: #fff3f3;
   --color-success: #35644d;
   --color-warning: #805315;
+  --color-warning-surface: #fff4dc;
   --color-info: #435e80;
+  --color-info-surface: #eef5ff;
   --font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   --text-small: 0.8125rem;

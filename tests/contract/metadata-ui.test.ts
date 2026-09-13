@@ -1,7 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { clientFeatures } from '../../apps/web/src/capabilities/client-features';
 import { safeReturnPath } from '../../apps/web/src/auth/guards';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+
+function contrast(left: string, right: string) {
+  const luminance = (hex: string) => {
+    const channels = hex
+      .slice(1)
+      .match(/.{2}/g)!
+      .map((value) => Number.parseInt(value, 16) / 255)
+      .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!;
+  };
+  const high = Math.max(luminance(left), luminance(right));
+  const low = Math.min(luminance(left), luminance(right));
+  return (high + 0.05) / (low + 0.05);
+}
+
+function token(css: string, name: string) {
+  const value = css.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, 'i'))?.[1];
+  if (!value) throw new Error(`Missing color token ${name}`);
+  return value;
+}
 
 describe('single metadata UI contract', () => {
   /** Only implemented single-field consumers open; implemented automation consumers open in Phase 6. */
@@ -18,6 +38,17 @@ describe('single metadata UI contract', () => {
     expect(safeReturnPath('/app/metadata-jobs/%2E%2E', '/app/')).toBe('/app/music');
     expect(safeReturnPath('/app/metadata-jobs/job-1?token=secret', '/app/')).toBe('/app/music');
   });
+});
+
+/** Organization emphasis tokens retain AA text contrast on their dedicated subtle surfaces. */
+it('should keep warning and processing state contrast above the normal-text threshold', () => {
+  const css = readFileSync('apps/web/src/design/tokens.css', 'utf8');
+  expect(
+    contrast(token(css, 'color-warning'), token(css, 'color-warning-surface')),
+  ).toBeGreaterThanOrEqual(4.5);
+  expect(
+    contrast(token(css, 'color-info'), token(css, 'color-info-surface')),
+  ).toBeGreaterThanOrEqual(4.5);
 });
 
 /** The loopback harness serves producer-shaped browse and snapshot DTOs to the actual strict clients. */

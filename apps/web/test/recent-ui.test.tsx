@@ -193,7 +193,9 @@ describe('recent route', () => {
     const downloadedAt = contextRegion.querySelector('time')!;
     expect(downloadedAt.dateTime).toBe('2026-09-07T11:00:00.000Z');
     const play = within(row).getByRole('button', { name: 'Play Song 1' });
-    const metadata = within(row).getByRole('button', { name: 'Music information: Song 1' });
+    const metadata = within(row).getByRole('button', {
+      name: /^Music information: Song 1 — /,
+    });
     const favorite = within(row).getByRole('button', { name: 'Add Song 1 to favorites' });
     expect(play.compareDocumentPosition(metadata) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(metadata.compareDocumentPosition(favorite) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(

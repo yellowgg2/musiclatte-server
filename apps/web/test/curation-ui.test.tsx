@@ -72,7 +72,7 @@ it('renders completed with missing lyrics, pages a frozen list, filters independ
   );
   await screen.findByText('Required review and optional information are independent.');
   await c.user.click(
-    screen.getByRole('button', { name: 'Music information: Evening in the studio' }),
+    screen.getByRole('button', { name: /^Music information: Evening in the studio — / }),
   );
   await c.user.click(await screen.findByRole('button', { name: 'Edit music information' }));
   const dialog = await screen.findByRole('dialog');
@@ -116,7 +116,7 @@ it('refreshes curation from a real metadata change response after optional editi
   const c = setup();
   await screen.findByText(/Showing 25 of 27/);
   await c.user.click(
-    screen.getByRole('button', { name: 'Music information: Evening in the studio' }),
+    screen.getByRole('button', { name: /^Music information: Evening in the studio — / }),
   );
   await c.user.click(await screen.findByRole('button', { name: 'Edit music information' }));
   const dialog = await screen.findByRole('dialog');

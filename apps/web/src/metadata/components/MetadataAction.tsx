@@ -4,12 +4,44 @@ import { IconAction } from '../../design/components/IconAction';
 import { Action } from '../../design/components/Action';
 import { messages } from '../../i18n';
 import { ApiError } from '../../auth/client';
-import { useMetadataSync } from '../MetadataSyncProvider';
+import { useMetadataSync, useOrganizationState } from '../MetadataSyncProvider';
 import { useMetadataUI } from '../MetadataUIProvider';
-import styles from './MetadataJobStatus.module.css';
+import jobStyles from './MetadataJobStatus.module.css';
+import styles from './MetadataAction.module.css';
+
+const organizationCopyKeys = {
+  loading: 'metadata.organization.loading',
+  error: 'metadata.organization.error',
+  organized: 'metadata.organization.organized',
+  needs_organization: 'metadata.organization.needsOrganization',
+  processing: 'metadata.organization.processing',
+  attention: 'metadata.organization.attention',
+  unknown: 'metadata.organization.unknown',
+} as const;
+
+const organizationMarks = {
+  loading: '…',
+  error: '?',
+  needs_organization: '!',
+  processing: '…',
+  attention: '!',
+  unknown: '?',
+} as const;
+
+const organizationClassNames = {
+  loading: styles.loading,
+  error: styles.error,
+  organized: '',
+  needs_organization: styles.needsOrganization,
+  processing: styles.processing,
+  attention: styles.attention,
+  unknown: styles.unknown,
+} as const;
+
 export function MetadataAction({ song }: { song: MusicEntry }) {
   const ui = useMetadataUI();
   const sync = useMetadataSync();
+  const organization = useOrganizationState(song.id, ui.canEdit);
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -65,10 +97,18 @@ export function MetadataAction({ song }: { song: MusicEntry }) {
   }, [expanded, attempt, song.id, sync.client, ui.canEdit, ui.onUnauthenticated]);
   if (!ui.canEdit) return null;
   const copy = messages[ui.locale];
+  const organizationState =
+    organization.phase === 'ready' ? organization.value.state : organization.phase;
+  const organizationCopy = copy[organizationCopyKeys[organizationState]];
+  const organizationMark =
+    organizationState === 'organized' ? undefined : organizationMarks[organizationState];
   return (
-    <div ref={root} className={styles.action}>
+    <div ref={root} className={jobStyles.action} data-organization-state={organizationState}>
       <IconAction
-        label={`${copy['metadata.options']}: ${song.title}`}
+        label={`${copy['metadata.options']}: ${song.title} — ${organizationCopy}`}
+        className={[styles.trigger, organizationClassNames[organizationState]]
+          .filter(Boolean)
+          .join(' ')}
         aria-expanded={expanded}
         aria-controls={id}
         onClick={() => setExpanded((value) => !value)}
@@ -86,9 +126,25 @@ export function MetadataAction({ song }: { song: MusicEntry }) {
           <circle cx="5" cy="12" r="1" />
           <circle cx="5" cy="19" r="1" />
         </svg>
+        {organizationMark && (
+          <span className={styles.mark} data-organization-mark>
+            {organizationMark}
+          </span>
+        )}
       </IconAction>
       {expanded && (
-        <div id={id} className={styles.disclosure}>
+        <div id={id} className={jobStyles.disclosure}>
+          <div className={styles.summary} data-organization-summary>
+            <span className={styles.summaryMark} aria-hidden="true">
+              {organizationState === 'organized' ? '✓' : organizationMark}
+            </span>
+            <p>{organizationCopy}</p>
+            {organization.phase === 'error' && (
+              <Action variant="quiet" onClick={organization.retry}>
+                {copy['metadata.organization.retry']}
+              </Action>
+            )}
+          </div>
           {loading && <p role="status">{copy['metadata.checking']}</p>}
           {error && (
             <>

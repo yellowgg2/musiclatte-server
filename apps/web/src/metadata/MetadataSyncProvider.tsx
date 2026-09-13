@@ -34,6 +34,7 @@ const MetadataContext = createContext<MetadataContextValue>({
   refresh: () => undefined,
   refreshOrganization: () => undefined,
 });
+const unavailableOrganizationState = { phase: 'loading' } as const;
 export function MetadataSyncProvider({
   children,
   scope,
@@ -141,15 +142,21 @@ export function useMetadataSync() {
   return useContext(MetadataContext);
 }
 
-export function useOrganizationState(trackId: string) {
+export function useOrganizationState(trackId: string, enabled = true) {
   const { organizationStore } = useContext(MetadataContext);
   const subscribe = useCallback(
-    (listener: () => void) => organizationStore?.subscribe(trackId, listener) ?? (() => undefined),
-    [organizationStore, trackId],
+    (listener: () => void) =>
+      enabled
+        ? (organizationStore?.subscribe(trackId, listener) ?? (() => undefined))
+        : () => undefined,
+    [enabled, organizationStore, trackId],
   );
   const snapshot = useCallback(
-    () => organizationStore?.getSnapshot(trackId) ?? ({ phase: 'loading' } as const),
-    [organizationStore, trackId],
+    () =>
+      enabled
+        ? (organizationStore?.getSnapshot(trackId) ?? unavailableOrganizationState)
+        : unavailableOrganizationState,
+    [enabled, organizationStore, trackId],
   );
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }

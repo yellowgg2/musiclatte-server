@@ -184,9 +184,25 @@ it('should lazily read per-song editability and not expose an enabled edit butto
     Object.keys(providers)[0]!
   ]!()) as typeof import('../src/metadata/MetadataUIProvider');
   const { MetadataSyncProvider } = await import('../src/metadata/MetadataSyncProvider');
-  const fetcher = vi.fn<typeof fetch>(async () =>
-    Response.json({ ...snapshot, editable: false, reason: 'read_only' }),
-  );
+  const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+    if (String(input).endsWith('/metadata-organization/statuses')) {
+      const request = JSON.parse(init!.body as string) as {
+        targets: { kind: 'track'; trackId: string }[];
+      };
+      return Response.json({
+        schemaVersion: 1,
+        capturedAt: 1,
+        items: request.targets.map((target) => ({
+          target,
+          state: 'organized',
+          reason: 'verified',
+          stage: 'succeeded',
+          changedAt: 1,
+        })),
+      });
+    }
+    return Response.json({ ...snapshot, editable: false, reason: 'read_only' });
+  });
   render(
     <MetadataSyncProvider
       scope="test"
@@ -210,15 +226,149 @@ it('should lazily read per-song editability and not expose an enabled edit butto
       </MetadataUIProvider>
     </MetadataSyncProvider>,
   );
-  expect(fetcher).not.toHaveBeenCalled();
-  expect(screen.queryByRole('button', { name: 'Edit music information' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Music information: Original title' }));
   await waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+  expect(screen.queryByRole('button', { name: 'Edit music information' })).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Music information: Original title — File organization verified',
+    }),
+  );
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
   await screen.findByText('This file is read-only.');
   expect(screen.getByRole('button', { name: 'Edit music information' })).toHaveProperty(
     'disabled',
     true,
   );
+});
+
+/** Row actions expose every durable organization state without relying on color alone. */
+it('should name and mark the organization state before opening edit details', async () => {
+  const { MetadataAction } = await import('../src/metadata/components/MetadataAction');
+  const { MetadataUIProvider } = await import('../src/metadata/MetadataUIProvider');
+  const { MetadataSyncProvider } = await import('../src/metadata/MetadataSyncProvider');
+  const fixtures = [
+    ['organized', 'verified', 'Organized', 'File organization verified', 'succeeded'],
+    ['needs_organization', 'never_organized', 'Needs', 'File organization needed', null],
+    ['processing', 'job_active', 'Processing', 'Organizing file', 'moving'],
+    ['attention', 'job_failed', 'Attention', 'File organization needs attention', 'failed'],
+    ['unknown', 'identity_unavailable', 'Unknown', 'File organization status unavailable', null],
+  ] as const;
+  const byTrack = new Map<
+    string,
+    {
+      state: (typeof fixtures)[number][0];
+      reason: (typeof fixtures)[number][1];
+      stage: (typeof fixtures)[number][4];
+    }
+  >(fixtures.map(([state, reason, title, , stage]) => [title, { state, reason, stage }]));
+  const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+    if (String(input).endsWith('/metadata-organization/statuses')) {
+      const request = JSON.parse(init!.body as string) as {
+        targets: { kind: 'track'; trackId: string }[];
+      };
+      return Response.json({
+        schemaVersion: 1,
+        capturedAt: 1,
+        items: request.targets.map((target) => ({
+          target,
+          ...byTrack.get(target.trackId)!,
+          changedAt: 1,
+        })),
+      });
+    }
+    return Response.json({ ...snapshot, trackId: 'Attention' });
+  });
+
+  render(
+    <MetadataSyncProvider
+      scope="organization-state-test"
+      enabled={false}
+      fetcher={fetcher}
+      apiOrigin=""
+      csrfToken="synthetic-csrf"
+      onUnauthenticated={vi.fn()}
+    >
+      <MetadataUIProvider
+        locale="en"
+        base="/"
+        apiOrigin=""
+        csrfToken="synthetic-csrf"
+        canEdit
+        canLyrics
+        canHistory
+        onUnauthenticated={vi.fn()}
+      >
+        {fixtures.map(([, , title]) => (
+          <MetadataAction key={title} song={{ id: title, title, isDir: false }} />
+        ))}
+      </MetadataUIProvider>
+    </MetadataSyncProvider>,
+  );
+
+  for (const [state, , title, statusCopy] of fixtures) {
+    const action = await screen.findByRole('button', {
+      name: `Music information: ${title} — ${statusCopy}`,
+    });
+    expect(
+      action.closest('[data-organization-state]')?.getAttribute('data-organization-state'),
+    ).toBe(state);
+    if (state !== 'organized')
+      expect(action.querySelector('[data-organization-mark]')).not.toBeNull();
+  }
+
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Music information: Attention — File organization needs attention',
+    }),
+  );
+  expect(await screen.findByText('File organization needs attention')).toBeTruthy();
+});
+
+/** Transport failure stays neutral, explains itself, and can retry independently from edit loading. */
+it('should keep organization transport errors recoverable without hiding metadata editing', async () => {
+  const { MetadataAction } = await import('../src/metadata/components/MetadataAction');
+  const { MetadataUIProvider } = await import('../src/metadata/MetadataUIProvider');
+  const { MetadataSyncProvider } = await import('../src/metadata/MetadataSyncProvider');
+  const fetcher = vi.fn<typeof fetch>(async (input) => {
+    if (String(input).endsWith('/metadata-organization/statuses'))
+      return Response.json({ error: { code: 'upstream_unavailable' } }, { status: 503 });
+    return Response.json(snapshot);
+  });
+
+  render(
+    <MetadataSyncProvider
+      scope="organization-error-test"
+      enabled={false}
+      fetcher={fetcher}
+      apiOrigin=""
+      csrfToken="synthetic-csrf"
+      onUnauthenticated={vi.fn()}
+    >
+      <MetadataUIProvider
+        locale="en"
+        base="/"
+        apiOrigin=""
+        csrfToken="synthetic-csrf"
+        canEdit
+        canLyrics
+        canHistory
+        onUnauthenticated={vi.fn()}
+      >
+        <MetadataAction song={{ id: 'song', title: 'Original title', isDir: false }} />
+      </MetadataUIProvider>
+    </MetadataSyncProvider>,
+  );
+
+  const action = await screen.findByRole('button', {
+    name: 'Music information: Original title — Couldn’t check file organization',
+  });
+  expect(action.closest('[data-organization-state]')?.getAttribute('data-organization-state')).toBe(
+    'error',
+  );
+  fireEvent.click(action);
+  expect(screen.getByText('Couldn’t check file organization')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Check organization again' }));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
 });
 
 /** History detail retains saved versus verified states and exposes a durable re-entry link. */
@@ -541,7 +691,25 @@ it('should dismiss row options on outside activation and Escape while preserving
     <MetadataSyncProvider
       scope="test"
       enabled={false}
-      fetcher={async () => Response.json(snapshot)}
+      fetcher={async (input, init) => {
+        if (String(input).endsWith('/metadata-organization/statuses')) {
+          const request = JSON.parse(init!.body as string) as {
+            targets: { kind: 'track'; trackId: string }[];
+          };
+          return Response.json({
+            schemaVersion: 1,
+            capturedAt: 1,
+            items: request.targets.map((target) => ({
+              target,
+              state: 'organized',
+              reason: 'verified',
+              stage: 'succeeded',
+              changedAt: 1,
+            })),
+          });
+        }
+        return Response.json(snapshot);
+      }}
       apiOrigin=""
       csrfToken="synthetic-csrf"
       onUnauthenticated={vi.fn()}
@@ -561,7 +729,9 @@ it('should dismiss row options on outside activation and Escape while preserving
       </MetadataUIProvider>
     </MetadataSyncProvider>,
   );
-  const trigger = screen.getByRole('button', { name: 'Music information: Original title' });
+  const trigger = await screen.findByRole('button', {
+    name: 'Music information: Original title — File organization verified',
+  });
   await user.click(trigger);
   await screen.findByRole('button', { name: 'Edit music information' });
   await user.click(screen.getByRole('button', { name: 'Select songs' }));
