@@ -15,8 +15,8 @@
 
 ## Verification
 
-- `npm run test:unit -- apps/api/test/metadata-organization-api.test.ts` — 15/15 passed.
-- `npm run test:unit -- apps/api/test/organization-storage.test.ts` — abort and projection regression covered.
+- `npm run test:unit -- apps/api/test/metadata-organization-api.test.ts` — 16/16 passed, including storage-error redaction.
+- `npm run test:unit -- apps/api/test/organization-storage.test.ts` — 14/14 passed, including abort and projection regression.
 - `npm run test:contract -- tests/contract/metadata-organization-api.test.ts` — 8/8 passed.
 - `npm run typecheck` — passed.
 - `npm run build` — passed.

@@ -393,6 +393,27 @@ describe('metadata organization PAT API', () => {
     );
   });
 
+  /** Storage failures keep SQLite details and private target data behind the API error envelope. */
+  it('should redact status projection storage failures', async () => {
+    const s = await setup();
+    s.c.storage.db.connection.exec('DROP TABLE organization_items');
+    const response = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/statuses',
+      headers: s.headers,
+      payload: {
+        schemaVersion: 1,
+        targets: [{ kind: 'track', trackId: s.trackId }],
+      },
+    });
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      schemaVersion: 1,
+      error: { code: 'internal_error', retryable: true },
+    });
+    expect(response.body).not.toMatch(/organization_items|sqlite|source\.mp3/i);
+  });
+
   /** A scoped PAT freezes and restores only its own references for a recorded successor. */
   it('preserves duplicate playlist occurrences and a favorite across another account move', async () => {
     const s = await setup();
