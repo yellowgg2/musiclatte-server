@@ -92,6 +92,7 @@ export interface Id3OrganizeCommandOptions {
   metadataJobId?: string;
   operationId?: string;
   manifest?: Id3OrganizationManifest;
+  requiredManifest?: Id3OrganizationManifest;
   sourceEvidence?: OrganizationSourceEvidence[];
   coverUploadId?: string;
   stateFile?: string;
@@ -233,6 +234,13 @@ function patchFor(manifest: Id3OrganizationManifest, coverUploadId?: string): Me
   ) as MetadataPatch;
   if (coverUploadId) patch.cover = { op: 'replaceAll', uploadId: coverUploadId };
   return patch;
+}
+
+function metadataValuesMatch(expected: MetadataValues, actual: MetadataValues) {
+  return Object.entries(expected).every(
+    ([field, value]) =>
+      JSON.stringify(actual[field as keyof MetadataValues]) === JSON.stringify(value),
+  );
 }
 
 function decodeMetadataJobDetail(value: unknown) {
@@ -614,13 +622,29 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
           (binding.coverUploadId === null || binding.coverUploadId !== options.coverUploadId)))
     )
       fail('journal_binding');
-    if (
+    const requiredRevisionMismatch =
       binding &&
       metadataStep === 'optional' &&
       binding.metadataSteps.required.jobId !== null &&
-      options.revision !== binding.metadataSteps.required.resultRevision
-    )
-      fail('journal_binding');
+      options.revision !== binding.metadataSteps.required.resultRevision;
+    if (requiredRevisionMismatch) {
+      const requiredManifest = options.requiredManifest;
+      if (
+        !requiredManifest ||
+        requiredManifest.cover !== undefined ||
+        Object.keys(requiredManifest.metadata).some((field) => !['title', 'artist'].includes(field))
+      )
+        fail('journal_binding');
+      const current = decodeMetadataSnapshot(
+        await call('/tracks/' + encodeURIComponent(binding.trackId) + '/metadata'),
+      );
+      if (
+        current.trackId !== binding.trackId ||
+        current.fileRevision !== options.revision ||
+        !metadataValuesMatch(requiredManifest.metadata, current.values)
+      )
+        fail('journal_binding');
+    }
     const claim = decodeCurationClaimResult(
       await jsonPost(
         '/curation-claims',
@@ -987,6 +1011,9 @@ function parseArgs(argv: string[]) {
   const manifest = values.get('manifest')
     ? readPrivateManifest(resolve(values.get('manifest')!))
     : undefined;
+  const requiredManifest = values.get('required-manifest')
+    ? readPrivateManifest(resolve(values.get('required-manifest')!))
+    : undefined;
   const result: Id3OrganizeCommandOptions = {
     command,
     api: required(values.get('api'), 'api'),
@@ -1017,6 +1044,7 @@ function parseArgs(argv: string[]) {
     result.source = source as 'favorites' | 'playlist';
   }
   if (manifest) result.manifest = manifest;
+  if (requiredManifest) result.requiredManifest = requiredManifest;
   if (values.get('poll-attempts'))
     result.poll = {
       attempts: Number(values.get('poll-attempts')),

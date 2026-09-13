@@ -450,6 +450,38 @@ describe('private ID3 organization batch journal', () => {
           },
           admissionResults: [{ trackId: 'A', status: 'accepted', jobItemId: 'item-1' }],
         });
+      if (path.endsWith('/tracks/A/metadata'))
+        return Response.json({
+          schemaVersion: 1,
+          trackId: 'A',
+          editable: true,
+          reason: null,
+          format: 'mp3',
+          supportedFields: [
+            'title',
+            'artist',
+            'album',
+            'albumArtist',
+            'trackNumber',
+            'year',
+            'genre',
+            'cover',
+            'lyrics',
+          ],
+          fileRevision: 'revision-current',
+          values: {
+            title: 'Verified title',
+            artist: ['Verified artist'],
+            album: null,
+            albumArtist: [],
+            trackNumber: null,
+            year: null,
+            genre: [],
+          },
+          coverFrames: [],
+          lyricsFrames: [],
+          lastVerifiedAt: 1,
+        });
       if (path.endsWith('/metadata-jobs')) {
         const required = Object.hasOwn(body.patch, 'title');
         return Response.json(
@@ -509,7 +541,7 @@ describe('private ID3 organization batch journal', () => {
     });
     const requiredManifest = {
       schemaVersion: 1 as const,
-      metadata: { title: 'Verified title' },
+      metadata: { title: 'Verified title', artist: ['Verified artist'] },
       sourceEvidence: [
         {
           url: 'https://artist.example/release',
@@ -549,16 +581,18 @@ describe('private ID3 organization batch journal', () => {
       ...common,
       command: 'metadata-submit',
       trackId: 'A',
-      revision: 'revision-2',
+      revision: 'revision-current',
       manifest: optionalManifest,
+      requiredManifest,
       coverUploadId: 'cover-upload-before-required-step',
     });
     await runId3OrganizeCommand({
       ...common,
       command: 'metadata-submit',
       trackId: 'A',
-      revision: 'revision-2',
+      revision: 'revision-current',
       manifest: optionalManifest,
+      requiredManifest,
       coverUploadId: 'cover-upload-before-required-step',
     });
     const metadataBodies = calls
@@ -567,6 +601,21 @@ describe('private ID3 organization batch journal', () => {
     expect(metadataBodies).toHaveLength(3);
     expect(metadataBodies[0]).not.toBe(metadataBodies[1]);
     expect(metadataBodies[1]).toBe(metadataBodies[2]);
+    await expect(
+      runId3OrganizeCommand({
+        ...common,
+        command: 'metadata-submit',
+        trackId: 'A',
+        revision: 'revision-current',
+        manifest: optionalManifest,
+        requiredManifest: {
+          ...requiredManifest,
+          metadata: { title: 'Different title', artist: ['Verified artist'] },
+        },
+        coverUploadId: 'cover-upload-before-required-step',
+      }),
+    ).rejects.toThrow('client_failed:journal_binding');
+    expect(calls.filter(({ path }) => path.endsWith('/metadata-jobs'))).toHaveLength(3);
     expect(module.readId3OrganizationBatchJournal(stateFile).items[0]).toMatchObject({
       state: 'metadata_accepted',
       metadataSteps: {
