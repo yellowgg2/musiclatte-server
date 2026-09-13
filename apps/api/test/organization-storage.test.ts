@@ -98,6 +98,306 @@ async function setup() {
 }
 
 describe('organization storage', () => {
+  /** Status projection resolves bounded targets in order and keeps current library identity isolated. */
+  it('should project latest organization states for current scoped media links', async () => {
+    const s = await setup();
+    s.repository.createOrReplay(s.input);
+    const readOrganizationStatuses = (
+      s.repository as unknown as {
+        readOrganizationStatuses?: (input: {
+          targets: Array<
+            { kind: 'track'; trackId: string } | { kind: 'media_link'; mediaLinkId: string }
+          >;
+          allowedLibraryIds: string[];
+          currentPolicyVersion: string;
+          requireInventoryIdentity?: boolean;
+        }) => Array<{
+          target: unknown;
+          state: string;
+          reason: string;
+          stage: string | null;
+          changedAt: number | null;
+        }>;
+      }
+    ).readOrganizationStatuses;
+    expect(readOrganizationStatuses).toBeTypeOf('function');
+    if (!readOrganizationStatuses) return;
+
+    const active = readOrganizationStatuses({
+      targets: [
+        { kind: 'track', trackId: 'song-1' },
+        { kind: 'media_link', mediaLinkId: 'media-1' },
+        { kind: 'track', trackId: 'missing' },
+      ],
+      allowedLibraryIds: ['library-1'],
+      currentPolicyVersion: 'id3-managed-v1',
+    });
+    expect(active).toEqual([
+      {
+        target: { kind: 'track', trackId: 'song-1' },
+        state: 'processing',
+        reason: 'job_active',
+        stage: 'queued',
+        changedAt: 1_000,
+      },
+      {
+        target: { kind: 'media_link', mediaLinkId: 'media-1' },
+        state: 'processing',
+        reason: 'job_active',
+        stage: 'queued',
+        changedAt: 1_000,
+      },
+      {
+        target: { kind: 'track', trackId: 'missing' },
+        state: 'unknown',
+        reason: 'identity_unavailable',
+        stage: null,
+        changedAt: null,
+      },
+    ]);
+
+    s.c.mediaLinks.create({
+      id: 'media-2',
+      libraryId: 'library-1',
+      relativeFileKey: 'jojo-music/account/Unmanaged/source.mp3',
+      gonicSongId: 'song-2',
+    });
+    s.c.mediaLinks.create({
+      id: 'media-other',
+      libraryId: 'library-2',
+      relativeFileKey: 'jojo-music/other/Unmanaged/source.mp3',
+      gonicSongId: 'song-1',
+    });
+    expect(
+      readOrganizationStatuses({
+        targets: [
+          { kind: 'track', trackId: 'song-2' },
+          { kind: 'media_link', mediaLinkId: 'media-other' },
+        ],
+        allowedLibraryIds: ['library-1'],
+        currentPolicyVersion: 'id3-managed-v1',
+      }),
+    ).toEqual([
+      {
+        target: { kind: 'track', trackId: 'song-2' },
+        state: 'needs_organization',
+        reason: 'never_organized',
+        stage: null,
+        changedAt: null,
+      },
+      {
+        target: { kind: 'media_link', mediaLinkId: 'media-other' },
+        state: 'unknown',
+        reason: 'identity_unavailable',
+        stage: null,
+        changedAt: null,
+      },
+    ]);
+  });
+
+  /** Succeeded status requires current binding, source location, policy, and metadata freshness. */
+  it('should keep succeeded organization state fresh only across non-path metadata changes', async () => {
+    const s = await setup();
+    s.repository.createOrReplay(s.input);
+    const readOrganizationStatuses = (
+      s.repository as unknown as {
+        readOrganizationStatuses: (input: {
+          targets: Array<{ kind: 'track'; trackId: string }>;
+          allowedLibraryIds: string[];
+          currentPolicyVersion: string;
+        }) => Array<{ state: string; reason: string; stage: string | null }>;
+      }
+    ).readOrganizationStatuses;
+    expect(readOrganizationStatuses).toBeTypeOf('function');
+    if (!readOrganizationStatuses) return;
+
+    const connection = s.c.db.connection;
+    connection
+      .prepare(
+        "INSERT INTO metadata_changes(item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at) VALUES('metadata-item','media-1',?,'library-1','revision-0','revision-1','{}','cover-1','[\"title\"]','verified',1000)",
+      )
+      .run('1'.repeat(64));
+    connection
+      .prepare(
+        "UPDATE media_links SET relative_file_key=?,gonic_song_id='song-2',revision=revision+1,validated_at=1000 WHERE id='media-1'",
+      )
+      .run(s.input.targetKey);
+    connection
+      .prepare(
+        "UPDATE organization_items SET stage='succeeded',new_track_id='song-2',stage_changed_at=1100 WHERE id='organization-item'",
+      )
+      .run();
+    s.repository.bindSourceLocation({
+      itemId: 'organization-item',
+      mediaLinkId: 'media-1',
+      sourceId: 'synthetic-source',
+      managedKey: s.input.targetKey,
+    });
+    const read = () =>
+      readOrganizationStatuses({
+        targets: [{ kind: 'track', trackId: 'song-2' }],
+        allowedLibraryIds: ['library-1'],
+        currentPolicyVersion: 'id3-managed-v1',
+      })[0]!;
+    expect(read()).toMatchObject({ state: 'organized', reason: 'verified', stage: 'succeeded' });
+    expect(
+      readOrganizationStatuses({
+        targets: [{ kind: 'track', trackId: 'song-2' }],
+        allowedLibraryIds: ['library-1'],
+        currentPolicyVersion: 'id3-managed-v2',
+      })[0],
+    ).toMatchObject({ state: 'needs_organization', reason: 'policy_changed' });
+    connection
+      .prepare(
+        "UPDATE organization_source_locations SET managed_key='jojo-music/account/ID3-managed/Other.mp3' WHERE media_link_id='media-1'",
+      )
+      .run();
+    expect(read()).toMatchObject({ state: 'needs_organization', reason: 'path_binding_changed' });
+    connection
+      .prepare('UPDATE organization_source_locations SET managed_key=? WHERE media_link_id=?')
+      .run(s.input.targetKey, 'media-1');
+
+    const addMetadataChange = (id: string, fields: string[]) => {
+      connection
+        .prepare(
+          "INSERT INTO metadata_jobs(id,identity_key,library_id,operation_id_hash,request_hash,kind,created_at) VALUES(?,?,?,?,?,'edit',1200)",
+        )
+        .run(
+          `metadata-job-${id}`,
+          id.repeat(64).slice(0, 64),
+          'library-1',
+          `${id}o`.repeat(64).slice(0, 64),
+          `${id}r`.repeat(64).slice(0, 64),
+        );
+      connection
+        .prepare(
+          "INSERT INTO metadata_items(id,job_id,item_order,media_link_id,file_identity,binding_revision,original_track_id,current_track_id,expected_revision,expected_digest,patch_json,actor_session_id,policy_revision,stage,stage_changed_at,file_saved_at,reflected_at,result_revision,result_digest,changed_fields_json) VALUES(?,?,0,'media-1',?,2,'song-2','song-2','revision-1',?,'{}',(SELECT id_hash FROM sessions LIMIT 1),1,'succeeded',1200,1200,1200,'revision-2',?,?)",
+        )
+        .run(
+          `metadata-item-${id}`,
+          `metadata-job-${id}`,
+          id.repeat(64).slice(0, 64),
+          `${id}d`.repeat(64).slice(0, 64),
+          `${id}g`.repeat(64).slice(0, 64),
+          JSON.stringify(fields),
+        );
+      connection
+        .prepare(
+          "INSERT INTO metadata_changes(item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at) VALUES(?,'media-1',?,'library-1','revision-1','revision-2','{}','cover-2',?,'verified',1200)",
+        )
+        .run(`metadata-item-${id}`, id.repeat(64).slice(0, 64), JSON.stringify(fields));
+    };
+    addMetadataChange('4', ['cover', 'genre', 'lyrics', 'year']);
+    expect(read()).toMatchObject({ state: 'organized', reason: 'verified' });
+    addMetadataChange('5', ['title']);
+    expect(read()).toMatchObject({
+      state: 'needs_organization',
+      reason: 'path_metadata_changed',
+    });
+  });
+
+  /** Latest-attempt tie breaking and inventory identity cannot hide attention or stale rows. */
+  it('should use id-desc tie breaks and require verified current inventory when requested', async () => {
+    const s = await setup();
+    s.repository.createOrReplay(s.input);
+    const readOrganizationStatuses = (
+      s.repository as unknown as {
+        readOrganizationStatuses: (input: {
+          targets: Array<{ kind: 'media_link'; mediaLinkId: string }>;
+          allowedLibraryIds: string[];
+          currentPolicyVersion: string;
+          requireInventoryIdentity?: boolean;
+        }) => Array<{ state: string; reason: string; stage: string | null }>;
+      }
+    ).readOrganizationStatuses;
+    expect(readOrganizationStatuses).toBeTypeOf('function');
+    if (!readOrganizationStatuses) return;
+
+    s.repository.createOrReplay({
+      ...s.input,
+      id: 'organization-job-z',
+      itemId: 'organization-item-z',
+      identityKey: '6'.repeat(64),
+      operationIdHash: '7'.repeat(64),
+      requestHash: '8'.repeat(64),
+    });
+    s.c.db.connection
+      .prepare(
+        "UPDATE organization_items SET stage='failed',error_code='synthetic_failure',stage_changed_at=1000 WHERE id='organization-item-z'",
+      )
+      .run();
+    const read = (requireInventoryIdentity = false) =>
+      readOrganizationStatuses({
+        targets: [{ kind: 'media_link', mediaLinkId: 'media-1' }],
+        allowedLibraryIds: ['library-1'],
+        currentPolicyVersion: 'id3-managed-v1',
+        requireInventoryIdentity,
+      })[0]!;
+    expect(read()).toMatchObject({ state: 'attention', reason: 'job_failed', stage: 'failed' });
+    for (const [stage, reason] of [
+      ['conflict', 'job_conflict'],
+      ['recovery_required', 'recovery_required'],
+    ] as const) {
+      s.c.db.connection
+        .prepare('UPDATE organization_items SET stage=?,error_code=? WHERE id=?')
+        .run(stage, `synthetic_${stage}`, 'organization-item-z');
+      expect(read()).toMatchObject({ state: 'attention', reason, stage });
+    }
+    for (const stage of [
+      'moved',
+      'scanning',
+      'rebound',
+      'migrating_references',
+      'verifying',
+    ] as const) {
+      s.c.db.connection
+        .prepare('UPDATE organization_items SET stage=?,error_code=NULL WHERE id=?')
+        .run(stage, 'organization-item-z');
+      expect(read()).toMatchObject({ state: 'processing', reason: 'job_active', stage });
+    }
+    expect(read(true)).toMatchObject({ state: 'unknown', reason: 'identity_unavailable' });
+
+    const trackRef = createCurationRepository({
+      database: s.c.db,
+      clock: () => 1_000,
+      cursorKey: new Uint8Array(32).fill(1),
+      limits: {
+        claimLeaseMs: 100,
+        maxTargets: 100,
+        snapshotMaxAgeMs: 10_000,
+        snapshotMaxItems: 1_000,
+        snapshotMaxCount: 10,
+      },
+    }).discover({
+      libraryId: 'library-1',
+      trackId: 'song-1',
+      format: 'mp3',
+      mediaLinkId: 'media-1',
+      fileIdentity: 'd'.repeat(64),
+      bindingRevision: 1,
+    });
+    s.c.db.connection
+      .prepare("UPDATE curation_tracks SET validation='verified' WHERE id=?")
+      .run(trackRef);
+    expect(read(true)).toMatchObject({ state: 'processing', reason: 'job_active' });
+    s.c.db.connection.prepare('UPDATE curation_tracks SET tombstoned=1 WHERE id=?').run(trackRef);
+    expect(read(true)).toMatchObject({ state: 'unknown', reason: 'identity_unavailable' });
+  });
+
+  /** The additive migration installs the dedicated deterministic latest-state lookup index. */
+  it('should migrate the organization status lookup index and use it in the bounded plan', async () => {
+    const s = await setup();
+    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 28 });
+    const plan = s.c.db.connection
+      .prepare(
+        'EXPLAIN QUERY PLAN SELECT id FROM organization_items WHERE media_link_id=? ORDER BY stage_changed_at DESC,id DESC LIMIT 1',
+      )
+      .all('media-1');
+    expect(plan.map((row) => String(row.detail)).join('\n')).toContain(
+      'organization_items_status_lookup',
+    );
+  });
+
   it('accepts an exact existing source beneath a whitespace-ending directory', async () => {
     const s = await setup();
 
@@ -127,7 +427,7 @@ describe('organization storage', () => {
 
   it('migrates through the organization schemas and keeps immutable intent idempotent', async () => {
     const s = await setup();
-    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 27 });
+    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 28 });
     const first = s.repository.createOrReplay(s.input);
     expect(
       s.repository.createOrReplay({ ...s.input, id: 'discarded', itemId: 'discarded-item' }),

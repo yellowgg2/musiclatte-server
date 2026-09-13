@@ -1,20 +1,21 @@
-export const organizationStages = [
-  'queued',
-  'validating',
-  'references_captured',
-  'moving',
-  'moved',
-  'scanning',
-  'rebound',
-  'migrating_references',
-  'verifying',
-  'succeeded',
-  'failed',
-  'conflict',
-  'recovery_required',
-] as const;
-export type OrganizationStage = (typeof organizationStages)[number];
+import {
+  mapOrganizationState,
+  organizationStages,
+  type OrganizationStateFacts,
+  type OrganizationStatusItem,
+  type OrganizationStage,
+} from '@musiclatte/contracts';
+
+export { organizationStages };
+export type { OrganizationStage };
 export type OrganizationRecoveryOwner = 'filesystem' | 'gonic' | 'references' | 'verification';
+export const organizationPathDrivingFields = [
+  'title',
+  'album',
+  'albumArtist',
+  'artist',
+  'trackNumber',
+] as const;
 export interface OrganizationState {
   stage: OrganizationStage;
   errorCode?: string | null;
@@ -73,4 +74,11 @@ export function conflictOrganizationState(
   if (['queued', 'validating', 'references_captured'].includes(state.stage))
     return { stage: 'conflict', errorCode, nextOwner: null };
   return failOrganizationState(state, errorCode);
+}
+
+/** Collapse private persistence facts into the bounded public organization-state contract. */
+export function projectOrganizationState(
+  facts: OrganizationStateFacts,
+): Pick<OrganizationStatusItem, 'state' | 'reason'> {
+  return mapOrganizationState(facts);
 }

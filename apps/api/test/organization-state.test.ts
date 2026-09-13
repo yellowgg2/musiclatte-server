@@ -4,10 +4,22 @@ import {
   conflictOrganizationState,
   failOrganizationState,
   initialOrganizationState,
+  organizationPathDrivingFields,
   organizationStages,
 } from '../src/metadata/organization-state.js';
 
 describe('organization state machine', () => {
+  /** Path freshness uses exactly the metadata fields consumed by id3-managed-v1 path planning. */
+  it('should expose the canonical path-driving metadata field set', () => {
+    expect(organizationPathDrivingFields).toEqual([
+      'title',
+      'album',
+      'albumArtist',
+      'artist',
+      'trackNumber',
+    ]);
+  });
+
   it('accepts only the ordered happy path', () => {
     const path = organizationStages.slice(1, -3);
     let state = initialOrganizationState();

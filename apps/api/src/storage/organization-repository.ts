@@ -1,4 +1,5 @@
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
+import type { OrganizationStatusItem, OrganizationStatusTarget } from '@musiclatte/contracts';
 import type { ManagementDatabase } from './database.js';
 import { validateExistingRelativeKey, validateRelativeKey } from '../imports/policy.js';
 import {
@@ -6,6 +7,8 @@ import {
   conflictOrganizationState,
   failOrganizationState,
   organizationStages,
+  organizationPathDrivingFields,
+  projectOrganizationState,
   type OrganizationRecoveryOwner,
   type OrganizationStage,
 } from '../metadata/organization-state.js';
@@ -230,6 +233,138 @@ export function createOrganizationRepository(options: {
     };
   };
   return {
+    readOrganizationStatuses(input: {
+      targets: readonly OrganizationStatusTarget[];
+      allowedLibraryIds: readonly string[];
+      currentPolicyVersion: string;
+      requireInventoryIdentity?: boolean;
+    }): OrganizationStatusItem[] {
+      if (
+        input.targets.length < 1 ||
+        input.targets.length > 100 ||
+        !input.currentPolicyVersion ||
+        input.allowedLibraryIds.some((libraryId) => !libraryId)
+      )
+        throw new Error('invalid_organization_status_lookup');
+      const targetKeys = input.targets.map((target) =>
+        target.kind === 'track' ? `track:${target.trackId}` : `media_link:${target.mediaLinkId}`,
+      );
+      if (
+        input.targets.some((target) =>
+          target.kind === 'track' ? !target.trackId : !target.mediaLinkId,
+        ) ||
+        new Set(targetKeys).size !== targetKeys.length
+      )
+        throw new Error('invalid_organization_status_lookup');
+      if (input.allowedLibraryIds.length === 0)
+        return input.targets.map((target) => ({
+          target,
+          state: 'unknown',
+          reason: 'identity_unavailable',
+          stage: null,
+          changedAt: null,
+        }));
+
+      const requested = input.targets.map(() => '(?,?,?)').join(',');
+      const libraries = input.allowedLibraryIds.map(() => '?').join(',');
+      const pathFields = organizationPathDrivingFields.map(() => '?').join(',');
+      const bindings: Array<string | number> = input.targets.flatMap((target, ordinal) => [
+        ordinal,
+        target.kind,
+        target.kind === 'track' ? target.trackId : target.mediaLinkId,
+      ]);
+      bindings.push(...input.allowedLibraryIds);
+      bindings.push(...organizationPathDrivingFields);
+      const rows = db
+        .prepare(
+          `WITH requested(ordinal,kind,target_id) AS (VALUES ${requested}),
+          scoped AS (
+            SELECT r.ordinal,r.kind,r.target_id,
+              CASE WHEN count(m.id)=1 THEN min(m.id) ELSE NULL END AS media_link_id
+            FROM requested r
+            LEFT JOIN media_links m
+              ON m.library_id IN (${libraries})
+              AND m.availability='available'
+              AND ((r.kind='track' AND m.gonic_song_id=r.target_id)
+                OR (r.kind='media_link' AND m.id=r.target_id))
+            GROUP BY r.ordinal,r.kind,r.target_id
+          )
+          SELECT s.ordinal,m.id AS media_link_id,m.library_id,m.relative_file_key,m.gonic_song_id,
+            m.revision AS media_link_revision,i.id AS item_id,i.stage,i.stage_changed_at,
+            i.new_track_id,i.target_key,j.policy_version,
+            l.media_link_id AS source_location_media_link_id,l.managed_key,
+            l.organization_item_id,
+            (SELECT max(c.sequence)
+              FROM metadata_changes c
+              JOIN metadata_items mi ON mi.id=c.item_id
+              WHERE mi.job_id=j.metadata_job_id AND c.media_link_id=m.id
+            ) AS metadata_watermark,
+            EXISTS(
+              SELECT 1 FROM metadata_changes later,json_each(later.changed_fields_json) field
+              WHERE later.media_link_id=m.id
+                AND later.sequence>(SELECT max(c.sequence)
+                  FROM metadata_changes c
+                  JOIN metadata_items mi ON mi.id=c.item_id
+                  WHERE mi.job_id=j.metadata_job_id AND c.media_link_id=m.id)
+                AND field.value IN (${pathFields})
+            ) AS path_metadata_changed,
+            EXISTS(
+              SELECT 1 FROM curation_tracks c
+              WHERE c.media_link_id=m.id AND c.library_id=m.library_id
+                AND c.track_id=m.gonic_song_id AND c.binding_revision=m.revision
+                AND c.tombstoned=0 AND c.validation='verified'
+            ) AS inventory_matches
+          FROM scoped s
+          LEFT JOIN media_links m ON m.id=s.media_link_id
+          LEFT JOIN organization_items i ON i.id=(
+            SELECT latest.id FROM organization_items latest
+            WHERE latest.media_link_id=m.id
+            ORDER BY latest.stage_changed_at DESC,latest.id DESC LIMIT 1
+          )
+          LEFT JOIN organization_jobs j ON j.id=i.job_id
+          LEFT JOIN organization_source_locations l ON l.media_link_id=m.id
+          ORDER BY s.ordinal`,
+        )
+        .all(...bindings) as Row[];
+      if (rows.length !== input.targets.length) throw new Error('Storage unavailable');
+      return rows.map((row, ordinal) => {
+        const target = input.targets[ordinal]!;
+        const stage = row.stage === null ? null : (row.stage as OrganizationStage);
+        if (stage !== null && !organizationStages.includes(stage))
+          throw new Error('Storage unavailable');
+        const identityAvailable =
+          row.media_link_id !== null &&
+          (!input.requireInventoryIdentity || row.inventory_matches === 1);
+        const hasSourceLocation = row.source_location_media_link_id !== null;
+        const verificationComplete =
+          stage !== 'succeeded' ||
+          (typeof row.metadata_watermark === 'number' && hasSourceLocation);
+        const bindingMatches =
+          stage !== 'succeeded' ||
+          (row.new_track_id === row.gonic_song_id &&
+            row.target_key === row.relative_file_key &&
+            row.source_location_media_link_id === row.media_link_id &&
+            row.managed_key === row.relative_file_key &&
+            row.organization_item_id === row.item_id);
+        const publicState = projectOrganizationState({
+          stage,
+          identityAvailable,
+          verificationComplete,
+          pathMetadataChanged: row.path_metadata_changed === 1,
+          bindingMatches,
+          policyMatches: row.policy_version === input.currentPolicyVersion,
+        });
+        return {
+          target,
+          ...publicState,
+          stage: identityAvailable ? stage : null,
+          changedAt:
+            identityAvailable && typeof row.stage_changed_at === 'number'
+              ? row.stage_changed_at
+              : null,
+        };
+      });
+    },
     createOrReplay(input: OrganizationIntent) {
       return atomic(() => {
         const replay = db
