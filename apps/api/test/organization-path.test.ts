@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  selectExistingPathEntry,
   planOrganizationPath,
   resolveOrganizationAccountScope,
 } from '../src/metadata/organization-path.js';
@@ -38,6 +39,20 @@ function fixture(sourceKey = 'jojo-music/account/Legacy/source.mp3') {
 }
 
 describe('id3-managed-v1 organization path planning', () => {
+  it('selects an exact source entry without weakening equivalent target collision checks', () => {
+    const entries = ['source.mp3', 'SOURCE.mp3'];
+    expect(selectExistingPathEntry(entries, 'source.mp3', 'source')).toEqual({
+      status: 'match',
+      entry: 'source.mp3',
+    });
+    expect(selectExistingPathEntry(entries, 'source.mp3', 'target')).toEqual({
+      status: 'collision',
+    });
+    expect(selectExistingPathEntry(['SOURCE.mp3'], 'source.mp3', 'source')).toEqual({
+      status: 'collision',
+    });
+  });
+
   it('derives an account-scoped normalized key without mutating directories', () => {
     const input = fixture();
     const result = planOrganizationPath(input);

@@ -82,6 +82,19 @@ function equivalent(left: string, right: string): boolean {
   return left.normalize('NFC').toLowerCase() === right.normalize('NFC').toLowerCase();
 }
 
+export function selectExistingPathEntry(
+  entries: readonly string[],
+  part: string,
+  finalKind: 'source' | 'target',
+): { status: 'match'; entry: string } | { status: 'missing' | 'collision' } {
+  const matches = entries.filter((entry) => equivalent(entry, part));
+  if (!matches.length) return { status: 'missing' };
+  const exact = matches.find((entry) => entry === part);
+  if (finalKind === 'source' && exact) return { status: 'match', entry: exact };
+  if (matches.length > 1 || !exact) return { status: 'collision' };
+  return { status: 'match', entry: exact };
+}
+
 function safeMusicRoot(root: string): string | undefined {
   try {
     if (!isAbsolute(root)) return;
@@ -109,10 +122,9 @@ function inspectExistingKey(
     } catch {
       return 'unsafe';
     }
-    const matches = entries.filter((entry) => equivalent(entry, part));
-    if (matches.length > 1 || (matches.length === 1 && matches[0] !== part)) return 'collision';
-    if (!matches.length) return 'missing';
-    current = join(current, part);
+    const selected = selectExistingPathEntry(entries, part, finalKind);
+    if (selected.status !== 'match') return selected.status;
+    current = join(current, selected.entry);
     try {
       const stat = lstatSync(current);
       if (stat.isSymbolicLink()) return 'unsafe';
