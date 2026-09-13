@@ -8,6 +8,7 @@ import {
   readFileSync,
   readSync,
   realpathSync,
+  renameSync,
   rmSync,
   appendFileSync,
   chmodSync,
@@ -63,6 +64,18 @@ async function fixture() {
   return { store, input, musicRoot, privateRoot, original };
 }
 describe('durable metadata file transaction', () => {
+  it('publishes metadata for an exact legacy source below a whitespace-ending directory', async () => {
+    const s = await fixture();
+    mkdirSync(join(s.musicRoot, 'Legacy Artist '));
+    renameSync(join(s.musicRoot, 'source.mp3'), join(s.musicRoot, 'Legacy Artist ', 'source.mp3'));
+    const saved = await s.store.execute(
+      { ...s.input, key: 'Legacy Artist /source.mp3' },
+      { onEvent: async () => {} },
+    );
+    expect(saved.digest).not.toBe(s.input.expectedDigest);
+    expect(existsSync(join(s.musicRoot, 'Legacy Artist ', 'source.mp3'))).toBe(true);
+  });
+
   it('should reconstruct a receipt after death immediately after rename, before directory fsync', async () => {
     const s = await fixture();
     const wrapper = join(temp!, 'rename-crash.py');

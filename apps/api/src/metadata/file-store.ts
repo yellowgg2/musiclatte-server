@@ -235,7 +235,7 @@ export function createMetadataFileStore(
                 const intent = value.intent as FileIntent | null;
                 if (intent) {
                   backup(intent.backup);
-                  validateRelativeKey(intent.candidateKey);
+                  validateExistingRelativeKey(intent.candidateKey);
                   if (
                     intent.fileIdentity !== input.fileIdentity ||
                     intent.key !== input.key ||
@@ -267,7 +267,7 @@ export function createMetadataFileStore(
               if (value.stage !== 'candidate_verified') backup(value.backup);
               if (value.stage !== 'backup_verified') {
                 if (!hash(value.digest)) throw new Error('helper_unavailable');
-                validateRelativeKey(value.candidateKey as string);
+                validateExistingRelativeKey(value.candidateKey as string);
               }
               if (publication) options.publications!.validate(publication);
               if (publication && value.stage === 'candidate_verified')

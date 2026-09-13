@@ -46,9 +46,21 @@ describe('actual MP3 metadata helper', () => {
     const s = await makeSUT();
     mkdirSync(join(s.root, 'Legacy Artist '));
     copyFileSync(join(s.root, 'source.mp3'), join(s.root, 'Legacy Artist ', 'source.mp3'));
-    await expect(s.helper.read({ key: 'Legacy Artist /source.mp3' })).resolves.toMatchObject({
+    const before = await s.helper.read({ key: 'Legacy Artist /source.mp3' });
+    expect(before).toMatchObject({
       editable: true,
     });
+    copyFileSync(
+      join(s.root, 'Legacy Artist ', 'source.mp3'),
+      join(s.root, 'Legacy Artist ', 'candidate.metadata-pending'),
+    );
+    await expect(
+      s.helper.prepare({
+        candidateKey: 'Legacy Artist /candidate.metadata-pending',
+        expectedDigest: before.fullDigest,
+        patch: { title: { op: 'set', value: 'Changed legacy title' } },
+      }),
+    ).resolves.toMatchObject({ audioPreserved: true, untouchedFramesPreserved: true });
   });
 
   /** Real v2.3/v2.4 files preserve audio and every untouched language/source/artwork frame. */

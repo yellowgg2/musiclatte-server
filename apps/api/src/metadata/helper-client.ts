@@ -124,8 +124,8 @@ export function createMetadataHelper(
     extra: Record<string, unknown>,
     signal?: AbortSignal,
   ) {
-    if (['read', 'preview', 'cover'].includes(action)) validateExistingRelativeKey(key);
-    else validateRelativeKey(key);
+    if (action === 'validate-cover') validateRelativeKey(key);
+    else validateExistingRelativeKey(key);
     const controller = new AbortController();
     const cancel = () => controller.abort();
     signal?.addEventListener('abort', cancel, { once: true });
