@@ -65,12 +65,6 @@ export function SettingsPage({
             onRetryCapabilities={onRetryCapabilities}
           />
         )}
-      {state.capabilities?.features['library.scan']?.permission === 'denied' && (
-        <section className={styles.section}>
-          <h2>{copy['scan.title']}</h2>
-          <p className={styles.secondary}>{copy['scan.adminOnly']}</p>
-        </section>
-      )}
       {clientFeatures['automation.tokens'] &&
         state.session &&
         !state.busy &&
