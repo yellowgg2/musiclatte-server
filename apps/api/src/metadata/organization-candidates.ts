@@ -25,7 +25,12 @@ export function createOrganizationCandidates(options: {
         const songs = await options.search(input.title, library.musicFolderId, input.limit);
         for (const song of songs) {
           if (song.isDir || seen.has(song.id)) continue;
-          const resolved = await options.resolve(song.id);
+          let resolved: Awaited<ReturnType<typeof options.resolve>>;
+          try {
+            resolved = await options.resolve(song.id);
+          } catch {
+            continue;
+          }
           if (resolved.libraryId !== library.id) continue;
           const source = options.database
             .prepare(

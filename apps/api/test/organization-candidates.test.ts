@@ -6,6 +6,29 @@ let context: Awaited<ReturnType<typeof createTestContext>> | undefined;
 afterEach(() => context?.cleanup());
 
 describe('organization candidate lookup', () => {
+  it('skips an unresolvable search hit without hiding a valid sibling', async () => {
+    const c = (context = await createTestContext());
+    const candidates = createOrganizationCandidates({
+      database: c.db.connection,
+      libraries: [{ id: 'library', musicFolderId: '1' }],
+      search: async () => [
+        { id: 'stale', title: 'Match', isDir: false },
+        { id: 'valid', title: 'Match', isDir: false },
+      ],
+      resolve: async (trackId) => {
+        if (trackId === 'stale') throw new Error('unavailable search hit');
+        return { libraryId: 'library', fileRevision: 'revision' };
+      },
+    });
+
+    await expect(
+      candidates.list({ title: 'Match', limit: 2, allowedLibraryIds: ['library'] }),
+    ).resolves.toMatchObject({
+      total: 1,
+      candidates: [{ trackId: 'valid', currentRevision: 'revision' }],
+    });
+  });
+
   it('bounds results to allowed libraries and exposes only current identifiers and provenance', async () => {
     const c = (context = await createTestContext());
     c.mediaLinks.create({
