@@ -238,7 +238,9 @@ export function createOrganizationRepository(options: {
       allowedLibraryIds: readonly string[];
       currentPolicyVersion: string;
       requireInventoryIdentity?: boolean;
+      signal?: AbortSignal;
     }): OrganizationStatusItem[] {
+      input.signal?.throwIfAborted();
       if (
         input.targets.length < 1 ||
         input.targets.length > 100 ||
@@ -326,6 +328,7 @@ export function createOrganizationRepository(options: {
           ORDER BY s.ordinal`,
         )
         .all(...bindings) as Row[];
+      input.signal?.throwIfAborted();
       if (rows.length !== input.targets.length) throw new Error('Storage unavailable');
       return rows.map((row, ordinal) => {
         const target = input.targets[ordinal]!;

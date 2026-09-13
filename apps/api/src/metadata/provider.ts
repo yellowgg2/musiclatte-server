@@ -86,10 +86,10 @@ export function createMetadataProvider(service: SessionService) {
     isTokenPrincipal(v)
       ? hash('credential-identity', [identity(v), metadataCredentialFingerprint(v)])
       : identity(v);
-  const allowedLibraries = async (v: VerifiedMetadataSession) => {
+  const allowedLibraries = async (v: VerifiedMetadataSession, signal?: AbortSignal) => {
     let ids: string[];
     try {
-      ids = (await v.upstream.folders()).map((folder) => folder.id);
+      ids = (await v.upstream.folders(signal ? { signal } : undefined)).map((folder) => folder.id);
     } catch (error) {
       return rejectMetadataUpstream(service, v, error);
     }

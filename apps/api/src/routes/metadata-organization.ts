@@ -6,12 +6,18 @@ import {
   type OrganizationPreviewRequest,
   type OrganizationSelectionRequest,
   type OrganizationReferenceRestoreRequest,
+  type OrganizationStatusRequest,
   type AccessTokenScope,
+  decodeOrganizationStatusRequest,
 } from '@musiclatte/contracts';
 import { requiredCredentials } from '../auth/guards.js';
-import { requireJSON } from '../auth/csrf.js';
+import { cookieMutation, requireJSON } from '../auth/csrf.js';
 import { ApiError, type SessionService } from '../auth/session-service.js';
-import { verifyAccessTokenPrincipal } from '../auth/metadata-principal.js';
+import {
+  verifyAccessTokenPrincipal,
+  verifyMetadataPrincipal,
+  type MetadataPrincipal,
+} from '../auth/metadata-principal.js';
 import { createOrganizationService } from '../metadata/organization-service.js';
 
 export function registerMetadataOrganizationRoutes(
@@ -56,6 +62,53 @@ export function registerMetadataOrganizationRoutes(
     json: true,
     scopes: ['metadata:read', 'metadata:write', 'media:organize'],
   } as const;
+  const statusBoundary = async <T>(
+    request: FastifyRequest,
+    work: (principal: MetadataPrincipal, signal: AbortSignal) => Promise<T> | T,
+  ) => {
+    if (new URL(request.url, sessionService.options.origin).searchParams.has('token'))
+      throw new ApiError(403, 'forbidden');
+    const credentials = requiredCredentials(request, sessionService);
+    if (credentials.token.startsWith('mlpat_')) {
+      if (credentials.scheme !== 'bearer') throw new ApiError(403, 'forbidden');
+      requireJSON(request);
+    } else {
+      if (credentials.scheme !== 'cookie') throw new ApiError(403, 'forbidden');
+      cookieMutation(request, sessionService, credentials.token);
+    }
+    if (request.validationError) throw new ApiError(400, 'invalid_request');
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    request.raw.once('aborted', abort);
+    if (request.raw.destroyed) abort();
+    try {
+      const principal = await verifyMetadataPrincipal(request, sessionService, ['metadata:read']);
+      return await work(principal, controller.signal);
+    } finally {
+      request.raw.off('aborted', abort);
+    }
+  };
+  app.post<{ Body: OrganizationStatusRequest }>(
+    '/api/v1/metadata-organization/statuses',
+    {
+      attachValidation: true,
+      schema: {
+        querystring: requests.empty,
+        body: requests.statuses,
+        response: { 200: responses.statuses },
+      },
+    },
+    (request) =>
+      statusBoundary(request, (principal, signal) => {
+        let body: OrganizationStatusRequest;
+        try {
+          body = decodeOrganizationStatusRequest(request.body);
+        } catch {
+          throw new ApiError(400, 'invalid_request');
+        }
+        return getService().statuses(principal, body, signal);
+      }),
+  );
   app.post<{ Body: OrganizationSelectionRequest }>(
     '/api/v1/metadata-organization/selections',
     {

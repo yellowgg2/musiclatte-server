@@ -167,6 +167,232 @@ async function setup({
 }
 
 describe('metadata organization PAT API', () => {
+  /** The status read is the only organization endpoint shared by browser sessions and read PATs. */
+  it('should return the same scoped ordered statuses for cookie and PAT principals', async () => {
+    const s = await setup();
+    const mediaLinkId = String(
+      s.c.storage.db.connection
+        .prepare('SELECT id FROM media_links WHERE library_id=? AND gonic_song_id=?')
+        .get('music', s.trackId)!.id,
+    );
+    const payload = {
+      schemaVersion: 1,
+      targets: [
+        { kind: 'track', trackId: s.trackId },
+        { kind: 'media_link', mediaLinkId },
+        { kind: 'track', trackId: 'outside-or-missing' },
+      ],
+    };
+    const pat = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/statuses',
+      headers: s.headers,
+      payload,
+    });
+    const cookie = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/statuses',
+      headers: {
+        ...browserHeaders,
+        cookie: cookieOf(s.login),
+        'x-csrf-token': s.login.json().csrfToken,
+      },
+      payload,
+    });
+
+    expect(pat.statusCode, pat.body).toBe(200);
+    expect(cookie.statusCode, cookie.body).toBe(200);
+    expect(cookie.json()).toEqual(pat.json());
+    expect(pat.json()).toEqual({
+      schemaVersion: 1,
+      capturedAt: recentNow,
+      items: [
+        {
+          target: payload.targets[0],
+          state: 'needs_organization',
+          reason: 'never_organized',
+          stage: null,
+          changedAt: null,
+        },
+        {
+          target: payload.targets[1],
+          state: 'needs_organization',
+          reason: 'never_organized',
+          stage: null,
+          changedAt: null,
+        },
+        {
+          target: payload.targets[2],
+          state: 'unknown',
+          reason: 'identity_unavailable',
+          stage: null,
+          changedAt: null,
+        },
+      ],
+    });
+    expect(pat.body).not.toMatch(/source\.mp3|actor|operation|digest|token|errorCode/i);
+  });
+
+  /** Status auth and validation fail before projection without weakening PAT-only writes. */
+  it('should enforce status credential, CSRF, JSON, scope, and bounded target rules', async () => {
+    const s = await setup();
+    const payload = {
+      schemaVersion: 1,
+      targets: [{ kind: 'track', trackId: s.trackId }],
+    };
+    const cookie = { ...browserHeaders, cookie: cookieOf(s.login) };
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization/statuses',
+          headers: cookie,
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization/statuses',
+          headers: { ...cookie, 'x-csrf-token': 'wrong' },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: `/api/v1/metadata-organization/statuses?token=${encodeURIComponent(s.token)}`,
+          headers: s.headers,
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization/statuses',
+          headers: { authorization: `Bearer ${s.token}`, 'content-type': 'text/plain' },
+          payload: JSON.stringify(payload),
+        })
+      ).statusCode,
+    ).toBe(415);
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization/statuses',
+          headers: { 'content-type': 'application/json' },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(401);
+
+    const limited = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/access-tokens',
+      headers: {
+        ...browserHeaders,
+        cookie: cookieOf(s.login),
+        'x-csrf-token': s.login.json().csrfToken,
+      },
+      payload: {
+        name: 'Metadata read only',
+        scopes: ['metadata:read'],
+        libraryIds: ['music'],
+        expiresAt: recentNow + 60000,
+      },
+    });
+    expect(limited.statusCode).toBe(201);
+    const limitedHeaders = {
+      authorization: `Bearer ${limited.json().token}`,
+      'content-type': 'application/json',
+    };
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization/statuses',
+          headers: limitedHeaders,
+          payload,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization/selections',
+          headers: limitedHeaders,
+          payload: { source: { kind: 'favorites' } },
+        })
+      ).statusCode,
+    ).toBe(403);
+
+    for (const invalid of [
+      { ...payload, targets: [payload.targets[0], payload.targets[0]] },
+      {
+        ...payload,
+        targets: Array.from({ length: 101 }, (_, index) => ({
+          kind: 'track',
+          trackId: `track-${index}`,
+        })),
+      },
+      { ...payload, libraryId: 'music' },
+    ]) {
+      const response = await s.app.inject({
+        method: 'POST',
+        url: '/api/v1/metadata-organization/statuses',
+        headers: s.headers,
+        payload: invalid,
+      });
+      expect(response.statusCode, `${JSON.stringify(invalid)} ${response.body}`).toBe(400);
+    }
+
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization/previews',
+          headers: {
+            ...browserHeaders,
+            cookie: cookieOf(s.login),
+            'x-csrf-token': s.login.json().csrfToken,
+          },
+          payload: {
+            trackId: s.trackId,
+            expectedRevision: s.revision,
+            destinationPolicy: 'id3-managed-v1',
+          },
+        })
+      ).statusCode,
+    ).toBe(403);
+  });
+
+  /** The maximum batch remains one bounded read and preserves all requested positions. */
+  it('should accept one hundred unknown status targets in input order', async () => {
+    const s = await setup();
+    const targets = Array.from({ length: 100 }, (_, index) => ({
+      kind: 'track' as const,
+      trackId: `missing-${index}`,
+    }));
+    const response = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/statuses',
+      headers: s.headers,
+      payload: { schemaVersion: 1, targets },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().items.map((item: { target: unknown }) => item.target)).toEqual(targets);
+    expect(new Set(response.json().items.map((item: { state: string }) => item.state))).toEqual(
+      new Set(['unknown']),
+    );
+  });
+
   /** A scoped PAT freezes and restores only its own references for a recorded successor. */
   it('preserves duplicate playlist occurrences and a favorite across another account move', async () => {
     const s = await setup();

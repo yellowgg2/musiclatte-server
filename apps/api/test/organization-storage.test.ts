@@ -111,6 +111,7 @@ describe('organization storage', () => {
           allowedLibraryIds: string[];
           currentPolicyVersion: string;
           requireInventoryIdentity?: boolean;
+          signal?: AbortSignal;
         }) => Array<{
           target: unknown;
           state: string;
@@ -122,6 +123,17 @@ describe('organization storage', () => {
     ).readOrganizationStatuses;
     expect(readOrganizationStatuses).toBeTypeOf('function');
     if (!readOrganizationStatuses) return;
+
+    const controller = new AbortController();
+    controller.abort();
+    expect(() =>
+      readOrganizationStatuses({
+        targets: [{ kind: 'track', trackId: 'song-1' }],
+        allowedLibraryIds: ['library-1'],
+        currentPolicyVersion: 'id3-managed-v1',
+        signal: controller.signal,
+      }),
+    ).toThrow(expect.objectContaining({ name: 'AbortError' }));
 
     const active = readOrganizationStatuses({
       targets: [

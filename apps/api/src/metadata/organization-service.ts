@@ -8,12 +8,15 @@ import {
   type OrganizationSelectionRequest,
   type OrganizationSelectionSource,
   type OrganizationReferenceRestoreRequest,
+  type OrganizationStatusRequest,
+  decodeOrganizationStatusResponse,
 } from '@musiclatte/contracts';
 import { ApiError, type SessionService } from '../auth/session-service.js';
 import {
   checkMetadataPrincipal,
   metadataCredentialFingerprint,
   revalidateMetadataPrincipal,
+  type MetadataPrincipal,
 } from '../auth/metadata-principal.js';
 import type { verifyAccessTokenPrincipal } from '../auth/metadata-principal.js';
 import { createMetadataProvider, metadataReady } from './provider.js';
@@ -116,6 +119,29 @@ export function createOrganizationService(service: SessionService) {
     return { file, snapshot, plan };
   };
   return {
+    async statuses(
+      principal: MetadataPrincipal,
+      body: OrganizationStatusRequest,
+      signal?: AbortSignal,
+    ) {
+      available();
+      signal?.throwIfAborted();
+      const allowedLibraryIds = await provider.allowedLibraries(principal, signal);
+      signal?.throwIfAborted();
+      const items = repository.readOrganizationStatuses({
+        targets: body.targets,
+        allowedLibraryIds,
+        currentPolicyVersion: organization.policy.policyVersion,
+        ...(signal ? { signal } : {}),
+      });
+      await revalidateMetadataPrincipal(service, principal);
+      signal?.throwIfAborted();
+      return decodeOrganizationStatusResponse({
+        schemaVersion: 1,
+        capturedAt: automation.clock(),
+        items,
+      });
+    },
     async referenceSnapshot(principal: Principal, body: { trackId: string }, signal?: AbortSignal) {
       available();
       await provider.resolver.resolve(principal, body.trackId, 'read');
