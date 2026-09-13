@@ -19,6 +19,7 @@ import { registerCoverRoute } from './routes/media/cover.js';
 import { registerPlaylistReadRoutes } from './routes/playlists/read.js';
 import { registerPlaylistMutationRoutes } from './routes/playlists/mutations.js';
 import { registerFavoriteSongRoutes } from './routes/favorites/songs.js';
+import { registerAccountSummaryRoute } from './routes/account-summary.js';
 import { ApiError, createSessionService, type AuthOptions } from './auth/session-service.js';
 import { registerSessionRoutes } from './routes/session.js';
 import { registerDiscoveryRoute } from './routes/discovery.js';
@@ -118,6 +119,7 @@ export function createApp(options?: AuthOptions) {
     registerPlaylistReadRoutes(app, service);
     registerPlaylistMutationRoutes(app, service);
     registerFavoriteSongRoutes(app, service);
+    registerAccountSummaryRoute(app, service);
     registerImportRoutes(app, service);
     registerRecentDownloadsRoute(app, service);
     registerEngineRoutes(app, service);

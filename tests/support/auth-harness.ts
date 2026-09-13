@@ -119,6 +119,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     playlistOwner: password.username,
     playlistExists: true,
     playlistId: 'pl-1',
+    playlistIds: ['pl-1'],
     playlistPublic: false,
     playlistName: 'Synthetic List',
     playlistChanged: '2026-09-05T02:03:04Z',
@@ -405,6 +406,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
               empty:
                 state.emptyCollections || (operation === 'getPlaylists' && !state.playlistExists),
               id: state.playlistId,
+              playlistIds: state.playlistIds,
               owner: state.playlistOwner,
               public: state.playlistPublic,
               name: state.playlistName,

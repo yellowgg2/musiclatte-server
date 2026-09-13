@@ -3,6 +3,7 @@ import type { SubsonicEnvelope } from '@musiclatte/contracts';
 export interface CollectionFixtureOptions {
   empty?: boolean;
   id?: string;
+  playlistIds?: string[];
   owner?: string;
   public?: boolean;
   name?: string;
@@ -37,8 +38,13 @@ export function collectionFixture(
     public: options.public ?? false,
     ...(operation === 'getPlaylists' ? {} : { entry: empty ? undefined : songs }),
   };
+  const playlists = (options.playlistIds ?? [playlist.id]).map((id, index) => ({
+    ...playlist,
+    id,
+    name: index === 0 ? playlist.name : `${playlist.name} ${index + 1}`,
+  }));
   const payloads: Record<string, Record<string, unknown>> = {
-    getPlaylists: { playlists: { playlist: empty ? undefined : [playlist] } },
+    getPlaylists: { playlists: { playlist: empty ? undefined : playlists } },
     getPlaylist: { playlist },
     createPlaylist: { playlist },
     updatePlaylist: {},
