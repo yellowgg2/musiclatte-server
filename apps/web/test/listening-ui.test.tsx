@@ -62,8 +62,8 @@ it('should keep music feature page titles at one consistent height', () => {
   );
 });
 
-/** Top-level music pages share the same desktop and narrow content inset. */
-it('should keep all top-level music pages aligned', () => {
+/** Top-level feature pages leave the sole authenticated route gutter to AppShell. */
+it('should not duplicate the shell gutter in top-level page roots', () => {
   const paths = [
     'apps/web/src/pages/music/Music.module.css',
     'apps/web/src/pages/music/RecentDownloads.module.css',
@@ -71,18 +71,28 @@ it('should keep all top-level music pages aligned', () => {
     'apps/web/src/pages/music/CurationPage.module.css',
     'apps/web/src/pages/music/Listening.module.css',
     'apps/web/src/pages/music/Mixes.module.css',
+    'apps/web/src/pages/metadata/MetadataJobs.module.css',
   ];
-  const paddings = paths.map((path) => {
+  const rootLayouts = paths.map((path) => {
     const css = readFileSync(resolve(path), 'utf8');
     const base = css.match(/^\.page\s*\{([^}]*)\}/m)?.[1];
     const narrow = css.slice(css.indexOf('@media (max-width: 30rem)'));
     return {
-      base: base?.match(/padding:\s*([^;]+);/)?.[1],
-      narrow: narrow.match(/\.page\s*\{[^}]*padding:\s*([^;]+);/)?.[1],
+      path,
+      basePadding: base?.match(/padding(?:-inline)?:\s*([^;]+);/)?.[1],
+      narrowPadding: narrow.match(/\.page\s*\{[^}]*padding(?:-inline)?:\s*([^;]+);/)?.[1],
+      centered: base?.match(/margin-inline:\s*auto/)?.[0],
     };
   });
 
-  expect(paddings).toEqual(paths.map(() => ({ base: 'var(--space-5)', narrow: 'var(--space-4)' })));
+  expect(rootLayouts).toEqual(
+    paths.map((path) => ({
+      path,
+      basePadding: undefined,
+      narrowPadding: undefined,
+      centered: undefined,
+    })),
+  );
 });
 
 /** Loaded history keeps the newest available occurrence per song while top preserves server counts. */

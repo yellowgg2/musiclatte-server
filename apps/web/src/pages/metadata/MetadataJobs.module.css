@@ -3,8 +3,6 @@
   gap: var(--space-5);
   min-width: 0;
   max-width: 64rem;
-  margin-inline: auto;
-  padding: var(--space-5);
 }
 .heading {
   display: flex;

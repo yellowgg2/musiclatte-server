@@ -139,6 +139,7 @@
 }
 .content {
   min-width: 0;
+  /* Canonical outer gutter for every authenticated top-level route. */
   padding: var(--space-6);
 }
 .shell:has([data-persistent-player]) .content {

@@ -3,7 +3,6 @@
   min-width: 0;
   display: grid;
   gap: var(--space-5);
-  padding: var(--space-5);
 }
 .topline,
 .headingActions {
@@ -88,7 +87,6 @@
 @media (max-width: 30rem) {
   .page {
     gap: var(--space-4);
-    padding: var(--space-4);
   }
   .headingActions {
     justify-content: flex-start;

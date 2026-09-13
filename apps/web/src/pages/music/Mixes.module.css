@@ -3,7 +3,6 @@
   gap: var(--space-5);
   width: 100%;
   min-width: 0;
-  padding: var(--space-5);
 }
 .topline,
 .resultActions,
@@ -108,7 +107,6 @@
 @media (max-width: 30rem) {
   .page {
     gap: var(--space-4);
-    padding: var(--space-4);
   }
   .form,
   .resultPanel {

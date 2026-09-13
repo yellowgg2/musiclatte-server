@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -80,6 +80,19 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe('login shell', () => {
+  /** AppShell is the only owner of authenticated route outer gutters. */
+  it('should own the desktop and narrow content gutters in the shell', () => {
+    const css = readFileSync(resolve('apps/web/src/app/Shell.module.css'), 'utf8');
+    const desktop = css.match(/^\.content\s*\{([^}]*)\}/m)?.[1];
+    const narrowCss = css.slice(css.indexOf('@media (max-width: 48rem)'));
+    const narrow = narrowCss.match(/\.content\s*\{([^}]*)\}/)?.[1];
+
+    expect(desktop).toContain('padding: var(--space-6)');
+    expect(narrow).toContain(
+      'padding: var(--space-5) var(--space-4) calc(6rem + env(safe-area-inset-bottom))',
+    );
+  });
+
   /** Touch navigation retains the heading focus target while keyboard navigation can show its indicator. */
   it('should distinguish pointer and keyboard heading focus without removing the focus target', async () => {
     localStorage.setItem('musiclatte.locale', 'en');
