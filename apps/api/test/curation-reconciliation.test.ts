@@ -205,6 +205,16 @@ it('reconciles real MP3 bytes, preserves optional-only receipts and detects chan
     expect(repo.get(newId)?.curationStatus).toBe('unreviewed');
     expect(repo.rowFor(id)?.tombstoned).toBe(1);
     expect(repo.get(id)?.receipt).not.toBeNull();
+    mkdirSync(join(library, 'Legacy Artist '));
+    copyFileSync(file, join(library, 'Legacy Artist ', 'source.mp3'));
+    currentPath = 'library/Legacy Artist /source.mp3';
+    const legacyId = repo.discover({
+      libraryId: 'lib',
+      trackId: 'legacy-spaced-song',
+      format: 'unsupported',
+    });
+    await reconciler.reconcile(legacyId);
+    expect(repo.get(legacyId)).toMatchObject({ format: 'mp3', validation: 'verified' });
     currentPath = 'library/unsupported.flac';
     const unsupported = repo.discover({
       libraryId: 'lib',

@@ -9,7 +9,7 @@ import type { createMetadataHelper, MetadataTagSnapshot } from '../metadata/help
 import type { createMetadataFileAccess } from '../metadata/file-access.js';
 import { createMediaPublicationLedger, type createMediaFence } from '../metadata/media-fence.js';
 import { createMediaLinkRepository } from '../storage/media-link-repository.js';
-import { validateRelativeKey } from '../imports/policy.js';
+import { validateExistingRelativeKey } from '../imports/policy.js';
 import { isOrganizationAlbumProjectionPending } from '../metadata/organization-album-projection.js';
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export function curationSnapshot(snapshot: MetadataTagSnapshot) {
@@ -104,7 +104,7 @@ export function createCurationReconciler(options: CurationReconcilerOptions) {
         const current = await source.recentSong(String(row.track_id), signal ? { signal } : {});
         if (current.song.id !== row.track_id || current.song.isDir || !current.path)
           throw new Error('inventory_pending');
-        const key = validateRelativeKey(current.path);
+        const key = validateExistingRelativeKey(current.path);
         if (
           !key.startsWith(library.relativeRoot + '/') ||
           options.libraries.filter((entry) => key.startsWith(entry.relativeRoot + '/')).length !== 1
