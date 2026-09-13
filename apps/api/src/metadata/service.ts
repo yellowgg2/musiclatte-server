@@ -371,7 +371,11 @@ export function createMetadataService(service: SessionService) {
         ...key,
         jobId: id,
         itemIds: body.itemIds,
-        actorSessionId: createHash('sha256').update(metadataSession(v).raw).digest('hex'),
+        ...(isTokenPrincipal(v)
+          ? {}
+          : {
+              actorSessionId: createHash('sha256').update(metadataSession(v).raw).digest('hex'),
+            }),
         policyRevision: metadataContext(v).policyRevision,
       });
       return { schemaVersion: 1 as const, job: await scopedJob(v, id) };
