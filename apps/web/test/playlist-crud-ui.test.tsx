@@ -128,6 +128,13 @@ function createTestContext() {
     if (url.pathname === '/api/v1/playlists' && method === 'GET')
       return Response.json({ schemaVersion: 1, playlists: summaries });
 
+    if (url.pathname === '/api/v1/account/summary' && method === 'GET')
+      return Response.json({
+        schemaVersion: 1,
+        favoriteSongCount: 0,
+        playlistCount: summaries.length,
+      });
+
     if (url.pathname === '/api/v1/playlists' && method === 'POST') {
       const queued = mutationResponses.shift();
       if (queued) return queued;
@@ -260,6 +267,11 @@ describe('playlist CRUD UI', () => {
     expect(request.headers.get('x-csrf-token')).toBe('synthetic-csrf');
     expect(request.headers.get('x-musiclatte-client')).toBe('web');
     expect(document.activeElement).toBe(trigger);
+    await waitFor(() =>
+      expect(
+        context.calls.filter((call) => call.url.pathname === '/api/v1/account/summary'),
+      ).toHaveLength(2),
+    );
   });
 
   /** Network retry keeps one operation ID for the same intent, while editing creates a new intent. */
@@ -354,6 +366,11 @@ describe('playlist CRUD UI', () => {
     expect(window.location.pathname).toBe('/playlists');
     expect(audio.src).toContain('/songs/song%2FA/stream');
     expect(screen.getAllByText(song.title).length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(
+        context.calls.filter((call) => call.url.pathname === '/api/v1/account/summary'),
+      ).toHaveLength(2),
+    );
   });
 
   /** Rename and delete require both write capability and an editable resource, and Escape restores focus. */

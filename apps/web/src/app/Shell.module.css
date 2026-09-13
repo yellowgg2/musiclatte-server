@@ -84,6 +84,7 @@
   background: var(--color-selection);
 }
 .shell {
+  --account-overlay-bottom: 0px;
   --selection-inline-start: calc(15rem + var(--space-6));
   --selection-inline-end: var(--space-6);
   --selection-bottom: var(--space-4);
@@ -97,6 +98,7 @@
 }
 .shell:has([data-persistent-player]) {
   --selection-bottom: calc(6.5rem + var(--space-5));
+  --account-overlay-bottom: 0px;
 }
 .sidebar {
   position: fixed;
@@ -106,16 +108,20 @@
   overscroll-behavior: contain;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
 }
 .shellBrand {
   padding: var(--space-6) var(--space-5);
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
+  flex-shrink: 0;
 }
 .navigation {
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
   padding: var(--space-3);
+  flex: 1 0 auto;
 }
 .navigation a {
   display: flex;
@@ -166,37 +172,6 @@
 .section h2 {
   font-size: var(--text-title);
 }
-.accountRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-5);
-}
-.accountIdentity {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: 0;
-}
-.accountIdentity > div {
-  min-width: 0;
-}
-.avatar {
-  display: grid;
-  place-items: center;
-  width: var(--control-size);
-  height: var(--control-size);
-  flex-shrink: 0;
-  background: var(--color-selection);
-  color: var(--color-accent);
-  border-radius: 50%;
-  font-weight: 650;
-}
-.username {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
 .skip {
   position: fixed;
   top: var(--space-3);
@@ -245,6 +220,7 @@
     --selection-inline-end: var(--space-3);
     --selection-bottom: calc(4.6rem + var(--space-3) + env(safe-area-inset-bottom));
     --selection-bar-block-size: 14rem;
+    --account-overlay-bottom: calc(4.6rem + env(safe-area-inset-bottom));
 
     display: flex;
     flex-direction: column;
@@ -252,15 +228,17 @@
   }
   .shell:has([data-persistent-player]) {
     --selection-bottom: calc(4.6rem + 4.25rem + var(--space-4) + env(safe-area-inset-bottom));
+    --account-overlay-bottom: calc(4.6rem + 4.25rem + env(safe-area-inset-bottom));
   }
   .sidebar {
-    position: static;
+    position: relative;
     width: auto;
     overflow: visible;
     border-right: none;
   }
   .shellBrand {
     padding: var(--space-4) var(--space-5);
+    padding-right: calc(var(--control-size) + var(--space-7));
     border-right: none;
     border-bottom: 1px solid var(--color-border);
   }
@@ -272,6 +250,11 @@
   }
   .shell:has([data-selection-bar]) .content {
     padding-bottom: calc(var(--space-5) + var(--selection-content-clearance));
+  }
+  .shell:has([data-selection-bar]) {
+    --account-overlay-bottom: calc(
+      var(--selection-bottom) + var(--selection-bar-block-size) + var(--space-2)
+    );
   }
   .navigation {
     display: flex;

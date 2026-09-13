@@ -1,0 +1,130 @@
+.desktop {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+.identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.avatar,
+.mobileTrigger > span {
+  display: grid;
+  place-items: center;
+  width: var(--control-size);
+  height: var(--control-size);
+  flex: none;
+  border-radius: 50%;
+  background: var(--color-selection);
+  color: var(--color-accent);
+  font-weight: 700;
+}
+.identityCopy {
+  display: grid;
+  min-width: 0;
+}
+.signedIn,
+.summaryStatus {
+  color: var(--color-secondary);
+  font-size: var(--text-small);
+}
+.username {
+  overflow-wrap: anywhere;
+}
+.counts {
+  display: grid;
+  gap: var(--space-2);
+}
+.counts a {
+  min-height: var(--control-size);
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-control);
+  text-decoration: none;
+  font-weight: 600;
+}
+.counts a:hover {
+  text-decoration: underline;
+}
+.summaryError {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-secondary);
+  font-size: var(--text-small);
+}
+.summaryError button {
+  justify-self: start;
+  color: var(--color-accent);
+  font-weight: 650;
+}
+.logoutError {
+  color: var(--color-error);
+  font-size: var(--text-small);
+}
+.mobileTrigger,
+.backdrop {
+  display: none;
+}
+
+@media (max-width: 48rem) {
+  .desktop {
+    display: none;
+  }
+  .mobileTrigger {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-4);
+    z-index: 2;
+    display: grid;
+    width: var(--control-size);
+    height: var(--control-size);
+    padding: 0;
+    border-radius: 50%;
+  }
+  .mobileTrigger > span {
+    border: 1px solid var(--color-control-border);
+    background: var(--color-surface);
+  }
+  .backdrop {
+    position: fixed;
+    inset: 0 0 var(--account-overlay-bottom) 0;
+    z-index: 4;
+    display: grid;
+    align-items: start;
+    justify-items: end;
+    padding: var(--space-3) var(--space-4);
+    background: rgb(28 24 21 / 35%);
+  }
+  .dialog {
+    width: min(22rem, 100%);
+    max-height: 100%;
+    overflow: auto;
+    display: grid;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-surface);
+    background: var(--color-surface);
+    box-shadow: 0 1rem 2rem rgb(28 24 21 / 20%);
+  }
+  .dialogHeading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+  .dialogHeading h2 {
+    font-size: var(--text-title);
+  }
+  .dialogHeading button {
+    width: var(--control-size);
+    height: var(--control-size);
+    border-radius: var(--radius-control);
+    font-size: 1.5rem;
+  }
+}

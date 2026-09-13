@@ -56,6 +56,12 @@ function createTestContext() {
       });
     if (url.pathname === '/api/v1/favorites/songs' && method === 'GET')
       return Response.json({ schemaVersion: 1, songs: favorites });
+    if (url.pathname === '/api/v1/account/summary' && method === 'GET')
+      return Response.json({
+        schemaVersion: 1,
+        favoriteSongCount: favorites.length,
+        playlistCount: 0,
+      });
     if (url.pathname.startsWith('/api/v1/favorites/songs/') && method === 'PUT') {
       if (failNextWrite) {
         failNextWrite = false;
@@ -167,6 +173,11 @@ describe('favorites UI', () => {
     write.resolve({ schemaVersion: 1, id: songs[0]!.id, starred: true, song: songs[0]! });
     await waitFor(() => expect((action as HTMLButtonElement).disabled).toBe(false));
     expect(action.getAttribute('aria-pressed')).toBe('true');
+    await waitFor(() =>
+      expect(
+        context.calls.filter((call) => call.url.pathname === '/api/v1/account/summary'),
+      ).toHaveLength(2),
+    );
   });
 
   /** Failed optimistic state rolls back inline and retry replays the failed desired state. */

@@ -34,9 +34,11 @@ function codeOf(error: unknown): ApiErrorCode {
 export function createFavoritesStore({
   client,
   onUnauthenticated,
+  onCountChanged = () => undefined,
 }: {
   client: Pick<FavoritesClient, 'read' | 'set'>;
   onUnauthenticated: () => void;
+  onCountChanged?: () => void;
 }) {
   let state: FavoritesState = {
     enabled: false,
@@ -143,6 +145,7 @@ export function createFavoritesStore({
             songStates: songStatesWith(song.id),
           });
         }
+        onCountChanged();
       },
       (error) => {
         const current = mutations.get(song.id);

@@ -43,6 +43,7 @@ function createTestContext() {
   let sourceSongs = songs;
   let appendFailureAt = -1;
   let appendCount = 0;
+  let playlistCount = 2;
   const fetcher: typeof fetch = async (input, init) => {
     const url = new URL(String(input), 'http://localhost');
     const method = (init?.method ?? 'GET').toUpperCase();
@@ -76,6 +77,8 @@ function createTestContext() {
       });
     if (url.pathname === '/api/v1/playlists' && method === 'GET')
       return Response.json({ schemaVersion: 1, playlists: [target, locked] });
+    if (url.pathname === '/api/v1/account/summary' && method === 'GET')
+      return Response.json({ schemaVersion: 1, favoriteSongCount: 0, playlistCount });
     if (url.pathname === '/api/v1/playlists' && method === 'POST') {
       const created = {
         ...target,
@@ -83,6 +86,7 @@ function createTestContext() {
         name: body.name,
         revision: 'C'.repeat(43),
       };
+      playlistCount += 1;
       return Response.json(
         { schemaVersion: 1, outcome: 'applied', playlist: created },
         { status: 201 },
@@ -208,6 +212,11 @@ describe('playlist add UI', () => {
       ['PATCH', '/api/v1/playlists/created-target'],
     ]);
     expect(writes[1]?.body.songIds).toEqual(['song-a']);
+    await waitFor(() =>
+      expect(
+        context.calls.filter((call) => call.url.pathname === '/api/v1/account/summary'),
+      ).toHaveLength(2),
+    );
   });
 
   /** Partial failure removes the successful batch and keeps only failed or unattempted songs retryable. */

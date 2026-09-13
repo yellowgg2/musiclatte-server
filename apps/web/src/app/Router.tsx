@@ -41,6 +41,7 @@ import { FavoritesProvider } from '../favorites/FavoritesProvider';
 import { MetadataSyncProvider } from '../metadata/MetadataSyncProvider';
 import { isFavoritesPath } from '../favorites/routes';
 import { FavoritesPage } from '../pages/music/FavoritesPage';
+import { AccountSummaryProvider } from '../account/AccountSummaryProvider';
 import type { MusicSectionAvailability } from '../pages/music/MusicSectionNav';
 import styles from './Shell.module.css';
 import '../design/global.css';
@@ -300,369 +301,392 @@ export function Router({
       />
     );
   return (
-    <MetadataSyncProvider
-      key={JSON.stringify([
-        identity.current.epoch,
-        state.session.username,
-        state.session.csrfToken,
-      ])}
+    <AccountSummaryProvider
       scope={JSON.stringify([
         state.capabilities?.instanceId,
         state.session.username,
         state.session.csrfToken,
-        state.capabilities?.revision,
       ])}
-      enabled={state.capabilities?.features['metadata.write']?.supported === true}
+      enabled={canFavorites || canReadPlaylists}
       fetcher={fetcher}
       apiOrigin={apiOrigin}
       onUnauthenticated={store.expire}
     >
-      <FavoritesProvider
-        accountId={state.session.username}
-        csrfToken={state.session.csrfToken}
-        enabled={canFavorites}
+      <MetadataSyncProvider
+        key={JSON.stringify([
+          identity.current.epoch,
+          state.session.username,
+          state.session.csrfToken,
+        ])}
+        scope={JSON.stringify([
+          state.capabilities?.instanceId,
+          state.session.username,
+          state.session.csrfToken,
+          state.capabilities?.revision,
+        ])}
+        enabled={state.capabilities?.features['metadata.write']?.supported === true}
         fetcher={fetcher}
         apiOrigin={apiOrigin}
         onUnauthenticated={store.expire}
       >
-        <PlayerProvider
-          {...(playbackPreference.value
-            ? {
-                quality: {
-                  enabled: canQuality,
-                  value: playbackPreference.value,
-                  scope: playbackPreference.scope,
-                },
-              }
-            : {})}
-          listening={{
-            enabled:
-              featureState(state.capabilities?.features['listening.history']) === 'available',
-            scope: JSON.stringify([
-              state.capabilities?.instanceId,
-              state.session.username,
-              state.session.csrfToken,
-            ]),
-            csrfToken: state.session.csrfToken,
-          }}
+        <FavoritesProvider
+          accountId={state.session.username}
+          csrfToken={state.session.csrfToken}
+          enabled={canFavorites}
           fetcher={fetcher}
           apiOrigin={apiOrigin}
           onUnauthenticated={store.expire}
-          {...(audioFactory ? { audioFactory } : {})}
         >
-          <SelectionProvider>
-            <MetadataUIProvider
-              locale={locale}
-              base={base}
-              apiOrigin={apiOrigin}
-              csrfToken={state.session.csrfToken}
-              bulkFields={state.capabilities?.features['metadata.write']?.bulkFields ?? []}
-              canEdit={canEditMetadata}
-              canLyrics={canLyrics}
-              canCuration={canCuration}
-              canHistory={canMetadataHistory}
-              onUnauthenticated={store.expire}
-            >
-              <AppShell
+          <PlayerProvider
+            {...(playbackPreference.value
+              ? {
+                  quality: {
+                    enabled: canQuality,
+                    value: playbackPreference.value,
+                    scope: playbackPreference.scope,
+                  },
+                }
+              : {})}
+            listening={{
+              enabled:
+                featureState(state.capabilities?.features['listening.history']) === 'available',
+              scope: JSON.stringify([
+                state.capabilities?.instanceId,
+                state.session.username,
+                state.session.csrfToken,
+              ]),
+              csrfToken: state.session.csrfToken,
+            }}
+            fetcher={fetcher}
+            apiOrigin={apiOrigin}
+            onUnauthenticated={store.expire}
+            {...(audioFactory ? { audioFactory } : {})}
+          >
+            <SelectionProvider>
+              <MetadataUIProvider
                 locale={locale}
                 base={base}
-                capabilities={state.capabilities}
-                player={
-                  <>
-                    <DesktopPlayer locale={locale} />
-                    <MiniPlayer locale={locale} />
-                  </>
-                }
+                apiOrigin={apiOrigin}
+                csrfToken={state.session.csrfToken}
+                bulkFields={state.capabilities?.features['metadata.write']?.bulkFields ?? []}
+                canEdit={canEditMetadata}
+                canLyrics={canLyrics}
+                canCuration={canCuration}
+                canHistory={canMetadataHistory}
+                onUnauthenticated={store.expire}
               >
-                <QualityFeedback locale={locale} />
-                {currentCurationPath ? (
-                  canCuration ? (
-                    <CurationPage
-                      key={JSON.stringify([
-                        state.capabilities?.instanceId,
-                        state.session.username,
-                        state.session.csrfToken,
-                        state.capabilities?.revision,
-                      ])}
+                <AppShell
+                  locale={locale}
+                  base={base}
+                  capabilities={state.capabilities}
+                  account={{
+                    username: state.session.username,
+                    busy: state.busy,
+                    error: state.error ?? null,
+                    onLogout: () => void store.logout(),
+                  }}
+                  player={
+                    <>
+                      <DesktopPlayer locale={locale} />
+                      <MiniPlayer locale={locale} />
+                    </>
+                  }
+                >
+                  <QualityFeedback locale={locale} />
+                  {currentCurationPath ? (
+                    canCuration ? (
+                      <CurationPage
+                        key={JSON.stringify([
+                          state.capabilities?.instanceId,
+                          state.session.username,
+                          state.session.csrfToken,
+                          state.capabilities?.revision,
+                        ])}
+                        base={base}
+                        locale={locale}
+                        onLocale={onLocale}
+                        fetcher={fetcher}
+                        apiOrigin={apiOrigin}
+                        canStream={canStream}
+                        sections={musicSections}
+                        onUnauthenticated={store.expire}
+                      />
+                    ) : (
+                      <div className={styles.settings}>
+                        <h1 tabIndex={-1} data-page-heading>
+                          {copy['curation.title']}
+                        </h1>
+                        <StatusSurface
+                          state={
+                            curationCapability === 'unknown' && !state.capabilityUnavailable
+                              ? 'loading'
+                              : 'error'
+                          }
+                          title={
+                            copy[
+                              curationCapability === 'denied'
+                                ? 'status.denied'
+                                : curationCapability === 'unknown' && !state.capabilityUnavailable
+                                  ? 'status.loading'
+                                  : 'status.unavailable'
+                            ]
+                          }
+                          description={copy['curation.unavailableHelp']}
+                          action={
+                            <Action onClick={() => void store.restore()}>
+                              {copy['status.retry']}
+                            </Action>
+                          }
+                        />
+                        <a href={`${base}music`}>{copy['curation.back']}</a>
+                      </div>
+                    )
+                  ) : metadataRoute ? (
+                    metadataRoute.kind === 'list' ? (
+                      <MetadataJobsPage />
+                    ) : (
+                      <MetadataJobPage jobId={metadataRoute.id} />
+                    )
+                  ) : currentRecentPath &&
+                    recentCapability === 'unknown' &&
+                    !state.capabilityUnavailable ? (
+                    <div className={styles.settings}>
+                      <h1 tabIndex={-1} data-page-heading>
+                        {copy['recent.title']}
+                      </h1>
+                      <StatusSurface
+                        state="loading"
+                        title={copy['recent.loading']}
+                        description={copy['status.loadingHelp']}
+                      />
+                    </div>
+                  ) : currentRecentPath && (canRecent || recentCapability === 'unavailable') ? (
+                    <RecentDownloadsPage
+                      key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}`}
                       base={base}
                       locale={locale}
                       onLocale={onLocale}
                       fetcher={fetcher}
                       apiOrigin={apiOrigin}
+                      onUnauthenticated={store.expire}
+                      canStream={canStream}
+                      canWritePlaylists={canWritePlaylists}
+                      csrfToken={state.session.csrfToken}
+                      unavailable={recentCapability === 'unavailable'}
+                      onCapabilityRetry={() => void store.restore()}
+                      sections={musicSections}
+                    />
+                  ) : currentRecentPath ? (
+                    <div className={styles.settings}>
+                      <h1 tabIndex={-1} data-page-heading>
+                        {
+                          copy[
+                            recentCapability === 'denied' ? 'recent.denied' : 'recent.unsupported'
+                          ]
+                        }
+                      </h1>
+                      <p>{copy['recent.deniedHelp']}</p>
+                      <a href={canBrowse ? `${base}music` : `${base}settings`}>
+                        {copy[canBrowse ? 'recent.back' : 'status.back']}
+                      </a>
+                    </div>
+                  ) : currentImportsPath && canImport ? (
+                    <ImportPage
+                      key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}`}
+                      locale={locale}
+                      onLocale={onLocale}
+                      fetcher={fetcher}
+                      apiOrigin={apiOrigin}
+                      csrfToken={state.session.csrfToken}
+                      onUnauthenticated={store.expire}
+                    />
+                  ) : currentImportsPath ? (
+                    <div className={styles.settings}>
+                      <h1 tabIndex={-1} data-page-heading>
+                        {
+                          copy[
+                            importCapability === 'denied'
+                              ? 'imports.denied'
+                              : importCapability === 'unavailable'
+                                ? 'imports.unavailable'
+                                : 'imports.unsupported'
+                          ]
+                        }
+                      </h1>
+                      <p>
+                        {
+                          copy[
+                            importCapability === 'denied'
+                              ? 'imports.deniedHelp'
+                              : importCapability === 'unavailable'
+                                ? 'imports.unavailableHelp'
+                                : 'imports.unsupportedHelp'
+                          ]
+                        }
+                      </p>
+                      {importCapability === 'unavailable' && (
+                        <Action onClick={() => void store.restore()}>{copy['status.retry']}</Action>
+                      )}
+                      <a href={canBrowse ? `${base}music` : `${base}settings`}>
+                        {copy[canBrowse ? 'favorites.back' : 'status.back']}
+                      </a>
+                    </div>
+                  ) : currentFavoritesPath && canFavorites ? (
+                    <FavoritesPage
+                      base={base}
+                      locale={locale}
+                      onLocale={onLocale}
+                      fetcher={fetcher}
+                      apiOrigin={apiOrigin}
+                      onUnauthenticated={store.expire}
                       canStream={canStream}
                       sections={musicSections}
+                      canWritePlaylists={canWritePlaylists}
+                      csrfToken={state.session.csrfToken}
+                    />
+                  ) : currentFavoritesPath ? (
+                    <div className={styles.settings}>
+                      <h1 tabIndex={-1} data-page-heading>
+                        {
+                          copy[
+                            favoritesCapability === 'denied'
+                              ? 'status.denied'
+                              : 'status.unavailable'
+                          ]
+                        }
+                      </h1>
+                      <p>
+                        {
+                          copy[
+                            favoritesCapability === 'denied'
+                              ? 'favorites.deniedHelp'
+                              : 'favorites.unavailableHelp'
+                          ]
+                        }
+                      </p>
+                      <a href={canBrowse ? `${base}music` : `${base}settings`}>
+                        {copy[canBrowse ? 'favorites.back' : 'status.back']}
+                      </a>
+                    </div>
+                  ) : currentPlaylistRoute && canReadPlaylists ? (
+                    currentPlaylistRoute.kind === 'list' ? (
+                      <PlaylistsPage
+                        base={base}
+                        locale={locale}
+                        onLocale={onLocale}
+                        fetcher={fetcher}
+                        apiOrigin={apiOrigin}
+                        onUnauthenticated={store.expire}
+                        canWrite={canWritePlaylists}
+                        csrfToken={state.session.csrfToken}
+                      />
+                    ) : (
+                      <PlaylistDetailPage
+                        id={currentPlaylistRoute.id}
+                        base={base}
+                        locale={locale}
+                        onLocale={onLocale}
+                        fetcher={fetcher}
+                        apiOrigin={apiOrigin}
+                        onUnauthenticated={store.expire}
+                        canStream={canStream}
+                        canWrite={canWritePlaylists}
+                        canFavorites={canFavorites}
+                        csrfToken={state.session.csrfToken}
+                      />
+                    )
+                  ) : currentPlaylistRoute ? (
+                    <div className={styles.settings}>
+                      <h1 tabIndex={-1} data-page-heading>
+                        {
+                          copy[
+                            playlistCapability === 'denied' ? 'status.denied' : 'status.unavailable'
+                          ]
+                        }
+                      </h1>
+                      <p>
+                        {
+                          copy[
+                            playlistCapability === 'denied'
+                              ? 'playlists.deniedHelp'
+                              : 'playlists.unavailableHelp'
+                          ]
+                        }
+                      </p>
+                      <a href={canBrowse ? `${base}music` : `${base}settings`}>
+                        {copy[canBrowse ? 'playlists.browseMusic' : 'status.back']}
+                      </a>
+                    </div>
+                  ) : currentListening && canListening ? (
+                    <ListeningHistoryPage
+                      key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}:${currentListening}`}
+                      kind={currentListening}
+                      locale={locale}
+                      base={base}
+                      fetcher={fetcher}
+                      apiOrigin={apiOrigin}
+                      onUnauthenticated={store.expire}
+                      onLocale={onLocale}
+                      canStream={canStream}
+                      sections={musicSections}
+                    />
+                  ) : currentMix && canMixes ? (
+                    <MixesPage
+                      key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}:${currentMix.id ?? ''}`}
+                      {...currentMix}
+                      onLocale={onLocale}
+                      base={base}
+                      locale={locale}
+                      fetcher={fetcher}
+                      apiOrigin={apiOrigin}
+                      csrfToken={state.session.csrfToken}
+                      onUnauthenticated={store.expire}
+                      canStream={canStream}
+                      sections={musicSections}
+                    />
+                  ) : musicRoute(location, base) && canBrowse ? (
+                    <MusicPage
+                      location={location}
+                      base={base}
+                      locale={locale}
+                      onLocale={onLocale}
+                      fetcher={fetcher}
+                      apiOrigin={apiOrigin}
+                      onUnauthenticated={store.expire}
+                      canStream={canStream}
+                      canRandom={canRandom}
+                      canArtistInfo={canArtistInfo}
+                      canWritePlaylists={canWritePlaylists}
+                      canFavorites={canFavorites}
+                      sections={musicSections}
+                      csrfToken={state.session.csrfToken}
+                    />
+                  ) : isSettingsPath(path, base) || path === `${base}login` || path === base ? (
+                    <SettingsPage
+                      playbackQuality={{ enabled: canQuality, preference: playbackPreference }}
+                      state={state}
+                      locale={locale}
+                      onLocale={onLocale}
+                      fetcher={fetcher}
+                      apiOrigin={apiOrigin}
+                      onRetryCapabilities={() => void store.restore()}
                       onUnauthenticated={store.expire}
                     />
                   ) : (
                     <div className={styles.settings}>
                       <h1 tabIndex={-1} data-page-heading>
-                        {copy['curation.title']}
+                        {copy['status.unavailable']}
                       </h1>
-                      <StatusSurface
-                        state={
-                          curationCapability === 'unknown' && !state.capabilityUnavailable
-                            ? 'loading'
-                            : 'error'
-                        }
-                        title={
-                          copy[
-                            curationCapability === 'denied'
-                              ? 'status.denied'
-                              : curationCapability === 'unknown' && !state.capabilityUnavailable
-                                ? 'status.loading'
-                                : 'status.unavailable'
-                          ]
-                        }
-                        description={copy['curation.unavailableHelp']}
-                        action={
-                          <Action onClick={() => void store.restore()}>
-                            {copy['status.retry']}
-                          </Action>
-                        }
-                      />
-                      <a href={`${base}music`}>{copy['curation.back']}</a>
+                      <p>{copy['status.unavailableHelp']}</p>
+                      <a href={`${base}settings`}>{copy['status.back']}</a>
                     </div>
-                  )
-                ) : metadataRoute ? (
-                  metadataRoute.kind === 'list' ? (
-                    <MetadataJobsPage />
-                  ) : (
-                    <MetadataJobPage jobId={metadataRoute.id} />
-                  )
-                ) : currentRecentPath &&
-                  recentCapability === 'unknown' &&
-                  !state.capabilityUnavailable ? (
-                  <div className={styles.settings}>
-                    <h1 tabIndex={-1} data-page-heading>
-                      {copy['recent.title']}
-                    </h1>
-                    <StatusSurface
-                      state="loading"
-                      title={copy['recent.loading']}
-                      description={copy['status.loadingHelp']}
-                    />
-                  </div>
-                ) : currentRecentPath && (canRecent || recentCapability === 'unavailable') ? (
-                  <RecentDownloadsPage
-                    key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}`}
-                    base={base}
-                    locale={locale}
-                    onLocale={onLocale}
-                    fetcher={fetcher}
-                    apiOrigin={apiOrigin}
-                    onUnauthenticated={store.expire}
-                    canStream={canStream}
-                    canWritePlaylists={canWritePlaylists}
-                    csrfToken={state.session.csrfToken}
-                    unavailable={recentCapability === 'unavailable'}
-                    onCapabilityRetry={() => void store.restore()}
-                    sections={musicSections}
-                  />
-                ) : currentRecentPath ? (
-                  <div className={styles.settings}>
-                    <h1 tabIndex={-1} data-page-heading>
-                      {copy[recentCapability === 'denied' ? 'recent.denied' : 'recent.unsupported']}
-                    </h1>
-                    <p>{copy['recent.deniedHelp']}</p>
-                    <a href={canBrowse ? `${base}music` : `${base}settings`}>
-                      {copy[canBrowse ? 'recent.back' : 'status.back']}
-                    </a>
-                  </div>
-                ) : currentImportsPath && canImport ? (
-                  <ImportPage
-                    key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}`}
-                    locale={locale}
-                    onLocale={onLocale}
-                    fetcher={fetcher}
-                    apiOrigin={apiOrigin}
-                    csrfToken={state.session.csrfToken}
-                    onUnauthenticated={store.expire}
-                  />
-                ) : currentImportsPath ? (
-                  <div className={styles.settings}>
-                    <h1 tabIndex={-1} data-page-heading>
-                      {
-                        copy[
-                          importCapability === 'denied'
-                            ? 'imports.denied'
-                            : importCapability === 'unavailable'
-                              ? 'imports.unavailable'
-                              : 'imports.unsupported'
-                        ]
-                      }
-                    </h1>
-                    <p>
-                      {
-                        copy[
-                          importCapability === 'denied'
-                            ? 'imports.deniedHelp'
-                            : importCapability === 'unavailable'
-                              ? 'imports.unavailableHelp'
-                              : 'imports.unsupportedHelp'
-                        ]
-                      }
-                    </p>
-                    {importCapability === 'unavailable' && (
-                      <Action onClick={() => void store.restore()}>{copy['status.retry']}</Action>
-                    )}
-                    <a href={canBrowse ? `${base}music` : `${base}settings`}>
-                      {copy[canBrowse ? 'favorites.back' : 'status.back']}
-                    </a>
-                  </div>
-                ) : currentFavoritesPath && canFavorites ? (
-                  <FavoritesPage
-                    base={base}
-                    locale={locale}
-                    onLocale={onLocale}
-                    fetcher={fetcher}
-                    apiOrigin={apiOrigin}
-                    onUnauthenticated={store.expire}
-                    canStream={canStream}
-                    sections={musicSections}
-                    canWritePlaylists={canWritePlaylists}
-                    csrfToken={state.session.csrfToken}
-                  />
-                ) : currentFavoritesPath ? (
-                  <div className={styles.settings}>
-                    <h1 tabIndex={-1} data-page-heading>
-                      {
-                        copy[
-                          favoritesCapability === 'denied' ? 'status.denied' : 'status.unavailable'
-                        ]
-                      }
-                    </h1>
-                    <p>
-                      {
-                        copy[
-                          favoritesCapability === 'denied'
-                            ? 'favorites.deniedHelp'
-                            : 'favorites.unavailableHelp'
-                        ]
-                      }
-                    </p>
-                    <a href={canBrowse ? `${base}music` : `${base}settings`}>
-                      {copy[canBrowse ? 'favorites.back' : 'status.back']}
-                    </a>
-                  </div>
-                ) : currentPlaylistRoute && canReadPlaylists ? (
-                  currentPlaylistRoute.kind === 'list' ? (
-                    <PlaylistsPage
-                      base={base}
-                      locale={locale}
-                      onLocale={onLocale}
-                      fetcher={fetcher}
-                      apiOrigin={apiOrigin}
-                      onUnauthenticated={store.expire}
-                      canWrite={canWritePlaylists}
-                      csrfToken={state.session.csrfToken}
-                    />
-                  ) : (
-                    <PlaylistDetailPage
-                      id={currentPlaylistRoute.id}
-                      base={base}
-                      locale={locale}
-                      onLocale={onLocale}
-                      fetcher={fetcher}
-                      apiOrigin={apiOrigin}
-                      onUnauthenticated={store.expire}
-                      canStream={canStream}
-                      canWrite={canWritePlaylists}
-                      canFavorites={canFavorites}
-                      csrfToken={state.session.csrfToken}
-                    />
-                  )
-                ) : currentPlaylistRoute ? (
-                  <div className={styles.settings}>
-                    <h1 tabIndex={-1} data-page-heading>
-                      {
-                        copy[
-                          playlistCapability === 'denied' ? 'status.denied' : 'status.unavailable'
-                        ]
-                      }
-                    </h1>
-                    <p>
-                      {
-                        copy[
-                          playlistCapability === 'denied'
-                            ? 'playlists.deniedHelp'
-                            : 'playlists.unavailableHelp'
-                        ]
-                      }
-                    </p>
-                    <a href={canBrowse ? `${base}music` : `${base}settings`}>
-                      {copy[canBrowse ? 'playlists.browseMusic' : 'status.back']}
-                    </a>
-                  </div>
-                ) : currentListening && canListening ? (
-                  <ListeningHistoryPage
-                    key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}:${currentListening}`}
-                    kind={currentListening}
-                    locale={locale}
-                    base={base}
-                    fetcher={fetcher}
-                    apiOrigin={apiOrigin}
-                    onUnauthenticated={store.expire}
-                    onLocale={onLocale}
-                    canStream={canStream}
-                    sections={musicSections}
-                  />
-                ) : currentMix && canMixes ? (
-                  <MixesPage
-                    key={`${state.capabilities?.instanceId}:${state.session.username}:${state.session.csrfToken}:${currentMix.id ?? ''}`}
-                    {...currentMix}
-                    onLocale={onLocale}
-                    base={base}
-                    locale={locale}
-                    fetcher={fetcher}
-                    apiOrigin={apiOrigin}
-                    csrfToken={state.session.csrfToken}
-                    onUnauthenticated={store.expire}
-                    canStream={canStream}
-                    sections={musicSections}
-                  />
-                ) : musicRoute(location, base) && canBrowse ? (
-                  <MusicPage
-                    location={location}
-                    base={base}
-                    locale={locale}
-                    onLocale={onLocale}
-                    fetcher={fetcher}
-                    apiOrigin={apiOrigin}
-                    onUnauthenticated={store.expire}
-                    canStream={canStream}
-                    canRandom={canRandom}
-                    canArtistInfo={canArtistInfo}
-                    canWritePlaylists={canWritePlaylists}
-                    canFavorites={canFavorites}
-                    sections={musicSections}
-                    csrfToken={state.session.csrfToken}
-                  />
-                ) : isSettingsPath(path, base) || path === `${base}login` || path === base ? (
-                  <SettingsPage
-                    playbackQuality={{ enabled: canQuality, preference: playbackPreference }}
-                    state={state}
-                    locale={locale}
-                    onLocale={onLocale}
-                    onLogout={() => void store.logout()}
-                    fetcher={fetcher}
-                    apiOrigin={apiOrigin}
-                    onRetryCapabilities={() => void store.restore()}
-                    onUnauthenticated={store.expire}
-                  />
-                ) : (
-                  <div className={styles.settings}>
-                    <h1 tabIndex={-1} data-page-heading>
-                      {copy['status.unavailable']}
-                    </h1>
-                    <p>{copy['status.unavailableHelp']}</p>
-                    <a href={`${base}settings`}>{copy['status.back']}</a>
-                  </div>
-                )}
-              </AppShell>
-            </MetadataUIProvider>
-          </SelectionProvider>
-        </PlayerProvider>
-      </FavoritesProvider>
-    </MetadataSyncProvider>
+                  )}
+                </AppShell>
+              </MetadataUIProvider>
+            </SelectionProvider>
+          </PlayerProvider>
+        </FavoritesProvider>
+      </MetadataSyncProvider>
+    </AccountSummaryProvider>
   );
 }

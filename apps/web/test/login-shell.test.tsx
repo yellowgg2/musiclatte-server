@@ -184,13 +184,14 @@ describe('login shell', () => {
     expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe('draft-password');
   });
 
-  /** Music layout is inspectable only in development and does not activate music navigation. */
-  it('should render the music shell fixture with shared status and no unfinished navigation', async () => {
+  /** The development shell renders the same account consumer as authenticated routes. */
+  it('should render the music shell fixture with the production account consumer', async () => {
     const { ShellFixture } = await moduleAt('dev/ShellFixture.tsx');
     render(<ShellFixture />);
     expect(screen.getByRole('heading', { name: 'Music shell fixture' })).toBeTruthy();
-    expect(screen.getByRole('status')).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Music' })).toBeNull();
+    expect(screen.getByText('Page unavailable')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Current account' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Music' })).toBeTruthy();
   });
 
   /** Cookie transport keeps credentials in the request body and restores CSRF before logout. */

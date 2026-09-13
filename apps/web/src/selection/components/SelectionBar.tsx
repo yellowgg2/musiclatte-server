@@ -7,6 +7,7 @@ import { ApiError } from '../../auth/client';
 import { Action } from '../../design/components/Action';
 import { formatCount, messages, type Locale } from '../../i18n';
 import { createPlaylistClient } from '../../playlists/client';
+import { useInvalidateAccountSummary } from '../../account/AccountSummaryProvider';
 import { PlaylistForm } from '../../playlists/components/PlaylistForm';
 import { useModalFocus } from '../../playlists/components/modal-focus';
 import { newPlaylistOperationId } from '../../playlists/operation-id';
@@ -147,6 +148,7 @@ function PlaylistPicker({
   const copy = messages[locale];
   const { state, dispatch } = useSelection();
   const client = useRef(createPlaylistClient({ fetcher, apiOrigin })).current;
+  const invalidateAccountSummary = useInvalidateAccountSummary();
   const dialog = useRef<HTMLDivElement>(null);
   const controller = useRef<AbortController | undefined>(undefined);
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
@@ -253,6 +255,7 @@ function PlaylistPicker({
         onDismiss={() => setCreating(false)}
         onSubmit={async (name, operationId, signal) => {
           const created = await client.create(name, { csrfToken, operationId, signal });
+          invalidateAccountSummary();
           setCreating(false);
           await addTo(created.playlist);
           return false;

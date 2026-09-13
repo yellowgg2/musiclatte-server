@@ -11,6 +11,7 @@ import {
 import { createFavoritesClient } from './client';
 import { useMetadataSync } from '../metadata/MetadataSyncProvider';
 import { createFavoritesStore, type FavoritesStore } from './state';
+import { useInvalidateAccountSummary } from '../account/AccountSummaryProvider';
 
 interface FavoritesContextValue {
   store: FavoritesStore;
@@ -37,7 +38,10 @@ export function FavoritesProvider({
   onUnauthenticated: () => void;
 }) {
   const client = useMemo(() => createFavoritesClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
-  const [store] = useState(() => createFavoritesStore({ client, onUnauthenticated }));
+  const invalidateAccountSummary = useInvalidateAccountSummary();
+  const [store] = useState(() =>
+    createFavoritesStore({ client, onUnauthenticated, onCountChanged: invalidateAccountSummary }),
+  );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const metadata = useMetadataSync();
   const previousClient = useRef(metadata.client);

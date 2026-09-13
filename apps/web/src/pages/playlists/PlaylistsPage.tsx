@@ -9,6 +9,7 @@ import { createPlaylistClient } from '../../playlists/client';
 import { PlaylistCard } from '../../playlists/components/PlaylistCard';
 import { PlaylistForm } from '../../playlists/components/PlaylistForm';
 import styles from './Playlist.module.css';
+import { useInvalidateAccountSummary } from '../../account/AccountSummaryProvider';
 
 function countLabel(count: number, locale: Locale, key: 'playlists.count' | 'playlists.songCount') {
   const suffix = count === 1 ? '.one' : '.many';
@@ -51,6 +52,7 @@ export function PlaylistsPage({
   csrfToken: string;
 }) {
   const client = useMemo(() => createPlaylistClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
+  const invalidateAccountSummary = useInvalidateAccountSummary();
   const [attempt, retry] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [state, setState] = useState<{
@@ -180,6 +182,7 @@ export function PlaylistsPage({
                 ],
                 loading: false,
               }));
+              invalidateAccountSummary();
               retry((value) => value + 1);
             } catch (error) {
               if (error instanceof ApiError && error.code === 'unauthenticated')

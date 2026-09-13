@@ -22,3 +22,15 @@ In a separate terminal run `npm run dev:web -- --host 127.0.0.1`. Ports 3000 and
 For viewport overrides, screenshots with an explicit viewport-sized `clip` preserve readable pixels. During this run the extension's whole-window screenshot scaled the mobile region down; native Chrome accessibility clicks were used to verify mobile pointer activation. This is browser-tool behavior, not a layout failure.
 
 Stop only the owned API/Vite processes, remove the owned control file, reset zoom/viewport/reduced-motion, and close the owned tab. Fixture shutdown deletes its temporary databases and closes its upstream listener. See [S06 evidence](../../docs/verification/phase-1/step-06/README.md).
+
+## Phase 16 account-shell additions
+
+After synthetic login, verify the production `AccountDock` on `/music`, `/playlists`, and
+`/settings`. Desktop exposes the username, capability-filtered favorite/playlist count links, and a
+direct logout button below navigation. At 390px and 320px, open the brand account trigger and verify
+initial dialog focus, Tab wrap, Escape/outside dismissal with trigger focus return, and the busy
+dismissal guard.
+
+The development route accepts `account=normal|loading|error|long-name|logout-busy|logout-error|mobile-open|player`
+for deterministic supplemental states. These are not a substitute for the normal Router/API login
+flow. See [Phase 16 S01 evidence](../../docs/verification/phase-16/step-01.md).

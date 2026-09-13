@@ -29,6 +29,7 @@ import { FavoriteAction } from '../../favorites/components/FavoriteAction';
 import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
 import { useMetadataSelectionRebase } from '../../metadata/selection';
 import styles from './Playlist.module.css';
+import { useInvalidateAccountSummary } from '../../account/AccountSummaryProvider';
 
 function songCountLabel(count: number, locale: Locale) {
   const key = count === 1 ? 'playlists.songCount.one' : 'playlists.songCount.many';
@@ -65,6 +66,7 @@ export function PlaylistDetailPage({
   const metadata = useMetadataSync();
   const selection = useSelection();
   const client = useMemo(() => createPlaylistClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
+  const invalidateAccountSummary = useInvalidateAccountSummary();
   const [attempt, retry] = useState(0);
   const [overlay, setOverlay] = useState<'rename' | 'delete' | undefined>(undefined);
   const [mutation, setMutation] = useState<{ position: number; kind: 'move' | 'remove' }>();
@@ -518,6 +520,7 @@ export function PlaylistDetailPage({
                     operationId,
                     signal,
                   });
+                  invalidateAccountSummary();
                   window.history.replaceState(null, '', playlistHref(base));
                   window.dispatchEvent(new PopStateEvent('popstate'));
                 } catch (error) {

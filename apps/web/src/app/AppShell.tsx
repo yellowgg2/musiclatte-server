@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { CapabilitiesResponse } from '@musiclatte/contracts';
 import { availableEntries } from '../capabilities/client-features';
 import { messages, type Locale } from '../i18n';
+import { AccountDock, type AccountDockProps } from './AccountDock';
 import styles from './Shell.module.css';
 export function AppShell({
   locale,
@@ -9,12 +10,14 @@ export function AppShell({
   capabilities,
   children,
   player,
+  account,
 }: {
   locale: Locale;
   base: string;
   capabilities: CapabilitiesResponse | null;
   children: ReactNode;
   player?: ReactNode;
+  account?: Omit<AccountDockProps, 'locale' | 'base' | 'capabilities'>;
 }) {
   const copy = messages[locale];
   // Both direct route guards and the navigation registry stay closed until a consumer exists.
@@ -133,6 +136,9 @@ export function AppShell({
             {copy['shell.settings']}
           </a>
         </nav>
+        {account && (
+          <AccountDock locale={locale} base={base} capabilities={capabilities} {...account} />
+        )}
       </div>
       <main id="main" tabIndex={-1} className={styles.content}>
         {children}
