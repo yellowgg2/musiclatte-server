@@ -1,7 +1,7 @@
 import { posix } from 'node:path';
 import type { SubsonicClient } from './client.js';
 import type { RegistrationDirectory } from './protocol.js';
-import { validateRelativeKey } from '../imports/policy.js';
+import { validateExistingRelativeKey } from '../imports/policy.js';
 export type PathFailure = 'registration_path' | 'registration_pending' | 'registration_ambiguous';
 export class ExactPathFailure extends Error {
   constructor(readonly code: PathFailure) {
@@ -17,7 +17,7 @@ function normalizePath(path: string): string {
   )
     throw new ExactPathFailure('registration_path');
   try {
-    return validateRelativeKey(posix.normalize(path));
+    return validateExistingRelativeKey(posix.normalize(path));
   } catch {
     throw new ExactPathFailure('registration_path');
   }
@@ -43,7 +43,7 @@ export function createExactPathLookup(
     options.assertOwned();
     if (!fileKey.startsWith(library.relativeRoot + '/'))
       throw new ExactPathFailure('registration_path');
-    validateRelativeKey(fileKey);
+    validateExistingRelativeKey(fileKey);
     const parts = fileKey.split('/');
     let index = roots.get(library.musicFolderId);
     if (!index) {
