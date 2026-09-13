@@ -16,6 +16,28 @@ export const organizationStages = [
   'recovery_required',
 ] as const;
 export type OrganizationStage = (typeof organizationStages)[number];
+export const organizationStates = [
+  'organized',
+  'needs_organization',
+  'processing',
+  'attention',
+  'unknown',
+] as const;
+export type OrganizationState = (typeof organizationStates)[number];
+export const organizationStateReasons = [
+  'verified',
+  'never_organized',
+  'path_metadata_changed',
+  'path_binding_changed',
+  'policy_changed',
+  'job_active',
+  'job_failed',
+  'job_conflict',
+  'recovery_required',
+  'identity_unavailable',
+  'verification_missing',
+] as const;
+export type OrganizationStateReason = (typeof organizationStateReasons)[number];
 export const organizationPreviewErrors = [
   'account_unmapped',
   'library_denied',
@@ -89,6 +111,32 @@ export interface OrganizationJob {
 export interface OrganizationJobResponse {
   schemaVersion: 1;
   job: OrganizationJob;
+}
+export type OrganizationStatusTarget =
+  { kind: 'track'; trackId: string } | { kind: 'media_link'; mediaLinkId: string };
+export interface OrganizationStatusRequest {
+  schemaVersion: 1;
+  targets: OrganizationStatusTarget[];
+}
+export interface OrganizationStatusItem {
+  target: OrganizationStatusTarget;
+  state: OrganizationState;
+  reason: OrganizationStateReason;
+  stage: OrganizationStage | null;
+  changedAt: number | null;
+}
+export interface OrganizationStatusResponse {
+  schemaVersion: 1;
+  capturedAt: number;
+  items: OrganizationStatusItem[];
+}
+export interface OrganizationStateFacts {
+  stage: OrganizationStage | null;
+  identityAvailable: boolean;
+  verificationComplete: boolean;
+  pathMetadataChanged: boolean;
+  bindingMatches: boolean;
+  policyMatches: boolean;
 }
 export type OrganizationSelectionRequest = {
   source: { kind: 'favorites' } | { kind: 'playlist'; playlistId: string };
@@ -254,6 +302,34 @@ const job = {
     },
   },
 } as const;
+const organizationStatusTarget = {
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'trackId'],
+      properties: { kind: { const: 'track' }, trackId: id },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'mediaLinkId'],
+      properties: { kind: { const: 'media_link' }, mediaLinkId: id },
+    },
+  ],
+} as const;
+const organizationStatusItem = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['target', 'state', 'reason', 'stage', 'changedAt'],
+  properties: {
+    target: organizationStatusTarget,
+    state: { enum: organizationStates },
+    reason: { enum: organizationStateReasons },
+    stage: { enum: [...organizationStages, null] },
+    changedAt: { anyOf: [{ type: 'integer', minimum: 0 }, { type: 'null' }] },
+  },
+} as const;
 export const organizationRequestSchemas = {
   empty,
   params,
@@ -312,6 +388,20 @@ export const organizationRequestSchemas = {
     required: ['operationId'],
     properties: {
       operationId: { type: 'string', minLength: 21, maxLength: 128, pattern: '^[A-Za-z0-9_-]+$' },
+    },
+  },
+  statuses: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schemaVersion', 'targets'],
+    properties: {
+      schemaVersion: { const: 1 },
+      targets: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 100,
+        items: organizationStatusTarget,
+      },
     },
   },
 } as const;
@@ -428,6 +518,16 @@ export const organizationResponseSchemas = {
     required: ['schemaVersion', 'job'],
     properties: { schemaVersion: { const: 1 }, job },
   },
+  statuses: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schemaVersion', 'capturedAt', 'items'],
+    properties: {
+      schemaVersion: { const: 1 },
+      capturedAt: { type: 'integer', minimum: 0 },
+      items: { type: 'array', maxItems: 100, items: organizationStatusItem },
+    },
+  },
 } as const;
 
 function record(value: unknown, keys: readonly string[]) {
@@ -441,6 +541,26 @@ function record(value: unknown, keys: readonly string[]) {
 const nonempty = (value: unknown): value is string => typeof value === 'string' && !!value;
 function stringList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(nonempty);
+}
+function decodeOrganizationStatusTarget(value: unknown): OrganizationStatusTarget {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid organization status target');
+  const target = value as Record<string, unknown>;
+  if (target.kind === 'track') {
+    const row = record(target, ['kind', 'trackId']);
+    if (!nonempty(row.trackId)) throw new Error('Invalid organization status target');
+    return { kind: 'track', trackId: row.trackId };
+  }
+  if (target.kind === 'media_link') {
+    const row = record(target, ['kind', 'mediaLinkId']);
+    if (!nonempty(row.mediaLinkId)) throw new Error('Invalid organization status target');
+    return { kind: 'media_link', mediaLinkId: row.mediaLinkId };
+  }
+  throw new Error('Invalid organization status target');
+}
+
+function organizationStatusTargetKey(target: OrganizationStatusTarget) {
+  return target.kind === 'track' ? `track:${target.trackId}` : `media_link:${target.mediaLinkId}`;
 }
 function decodeOrganizationSelectionSource(value: unknown): OrganizationSelectionSource {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -609,4 +729,125 @@ export function decodeOrganizationJobResponse(value: unknown): OrganizationJobRe
   const row = record(value, ['schemaVersion', 'job']);
   if (row.schemaVersion !== 1) throw new Error('Invalid organization response');
   return { schemaVersion: 1, job: decodeOrganizationJob(row.job) };
+}
+
+export function decodeOrganizationStatusRequest(value: unknown): OrganizationStatusRequest {
+  const row = record(value, ['schemaVersion', 'targets']);
+  if (
+    row.schemaVersion !== 1 ||
+    !Array.isArray(row.targets) ||
+    row.targets.length < 1 ||
+    row.targets.length > 100
+  )
+    throw new Error('Invalid organization status request');
+  const targets = row.targets.map(decodeOrganizationStatusTarget);
+  if (new Set(targets.map(organizationStatusTargetKey)).size !== targets.length)
+    throw new Error('Invalid organization status request');
+  return { schemaVersion: 1, targets };
+}
+
+function isOrganizationStatusCombination(
+  state: OrganizationState,
+  reason: OrganizationStateReason,
+  stage: OrganizationStage | null,
+) {
+  if (state === 'organized') return reason === 'verified' && stage === 'succeeded';
+  if (state === 'needs_organization')
+    return (
+      (reason === 'never_organized' && stage === null) ||
+      ((['path_metadata_changed', 'path_binding_changed', 'policy_changed'] as const).includes(
+        reason as 'path_metadata_changed',
+      ) &&
+        stage === 'succeeded')
+    );
+  if (state === 'processing')
+    return (
+      reason === 'job_active' &&
+      stage !== null &&
+      !['succeeded', 'failed', 'conflict', 'recovery_required'].includes(stage)
+    );
+  if (state === 'attention')
+    return (
+      (reason === 'job_failed' && stage === 'failed') ||
+      (reason === 'job_conflict' && stage === 'conflict') ||
+      (reason === 'recovery_required' && stage === 'recovery_required')
+    );
+  return (
+    (reason === 'identity_unavailable' && stage === null) ||
+    (reason === 'verification_missing' && stage === 'succeeded')
+  );
+}
+
+export function decodeOrganizationStatusResponse(value: unknown): OrganizationStatusResponse {
+  const row = record(value, ['schemaVersion', 'capturedAt', 'items']);
+  if (
+    row.schemaVersion !== 1 ||
+    !Number.isSafeInteger(row.capturedAt) ||
+    Number(row.capturedAt) < 0 ||
+    !Array.isArray(row.items) ||
+    row.items.length > 100
+  )
+    throw new Error('Invalid organization status response');
+  const items = row.items.map((value) => {
+    const item = record(value, ['target', 'state', 'reason', 'stage', 'changedAt']);
+    const target = decodeOrganizationStatusTarget(item.target);
+    if (
+      !organizationStates.includes(item.state as OrganizationState) ||
+      !organizationStateReasons.includes(item.reason as OrganizationStateReason) ||
+      !(item.stage === null || organizationStages.includes(item.stage as OrganizationStage)) ||
+      !(
+        item.changedAt === null ||
+        (Number.isSafeInteger(item.changedAt) && Number(item.changedAt) >= 0)
+      ) ||
+      !isOrganizationStatusCombination(
+        item.state as OrganizationState,
+        item.reason as OrganizationStateReason,
+        item.stage as OrganizationStage | null,
+      )
+    )
+      throw new Error('Invalid organization status response');
+    return {
+      target,
+      state: item.state,
+      reason: item.reason,
+      stage: item.stage,
+      changedAt: item.changedAt,
+    } as OrganizationStatusItem;
+  });
+  if (new Set(items.map((item) => organizationStatusTargetKey(item.target))).size !== items.length)
+    throw new Error('Invalid organization status response');
+  return { schemaVersion: 1, capturedAt: Number(row.capturedAt), items };
+}
+
+export function mapOrganizationState(
+  facts: OrganizationStateFacts,
+): Pick<OrganizationStatusItem, 'state' | 'reason'> {
+  if (!facts.identityAvailable) return { state: 'unknown', reason: 'identity_unavailable' };
+  if (facts.stage === null) return { state: 'needs_organization', reason: 'never_organized' };
+  switch (facts.stage) {
+    case 'queued':
+    case 'validating':
+    case 'references_captured':
+    case 'moving':
+    case 'moved':
+    case 'scanning':
+    case 'rebound':
+    case 'migrating_references':
+    case 'verifying':
+      return { state: 'processing', reason: 'job_active' };
+    case 'failed':
+      return { state: 'attention', reason: 'job_failed' };
+    case 'conflict':
+      return { state: 'attention', reason: 'job_conflict' };
+    case 'recovery_required':
+      return { state: 'attention', reason: 'recovery_required' };
+    case 'succeeded':
+      if (!facts.verificationComplete) return { state: 'unknown', reason: 'verification_missing' };
+      if (facts.pathMetadataChanged)
+        return { state: 'needs_organization', reason: 'path_metadata_changed' };
+      if (!facts.bindingMatches)
+        return { state: 'needs_organization', reason: 'path_binding_changed' };
+      if (!facts.policyMatches) return { state: 'needs_organization', reason: 'policy_changed' };
+      return { state: 'organized', reason: 'verified' };
+  }
 }

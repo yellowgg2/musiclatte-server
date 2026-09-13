@@ -16,3 +16,4 @@ export type { SubsonicScenario } from './fake-subsonic.js';
 
 export { recentFixtures, recentErrorFixture } from './recent-fixtures.js';
 export * from './metadata-fixtures.js';
+export * from './metadata-organization-fixtures.js';
