@@ -14,6 +14,11 @@ it('queues stale claim targets for prioritized inventory verification', async ()
     c.storage.db.connection
       .prepare("UPDATE curation_tracks SET validation='stale' WHERE id=?")
       .run(c.trackRef);
+    c.storage.db.connection
+      .prepare(
+        "INSERT INTO curation_inventory_queue(library_id,generation,opaque_id,kind,status,attempt_count,next_attempt_at,last_error_code,terminal) VALUES(?,?,?,'track','error',5,NULL,'inventory_upstream',1)",
+      )
+      .run('music', 'generation-1', 'track-1');
     const response = await c.post(
       'curation-claims',
       {
@@ -30,10 +35,16 @@ it('queues stale claim targets for prioritized inventory verification', async ()
     expect(
       c.storage.db.connection
         .prepare(
-          "SELECT status FROM curation_inventory_queue WHERE library_id=? AND generation=? AND opaque_id=? AND kind='track'",
+          "SELECT status,attempt_count,next_attempt_at,last_error_code,terminal FROM curation_inventory_queue WHERE library_id=? AND generation=? AND opaque_id=? AND kind='track'",
         )
-        .get('music', 'generation-1', 'track-1')?.status,
-    ).toBe('pending');
+        .get('music', 'generation-1', 'track-1'),
+    ).toEqual({
+      status: 'pending',
+      attempt_count: 0,
+      next_attempt_at: null,
+      last_error_code: null,
+      terminal: 0,
+    });
     expect(
       c.storage.db.connection
         .prepare(

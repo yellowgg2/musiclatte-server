@@ -320,7 +320,7 @@ export function createCurationRepository(options: {
           .get(row.library_id!);
         if (!run) return false;
         db.prepare(
-          "INSERT INTO curation_inventory_queue(library_id,generation,opaque_id,kind,status) VALUES(?,?,?,'track','pending') ON CONFLICT(library_id,generation,kind,opaque_id) DO UPDATE SET status='pending'",
+          "INSERT INTO curation_inventory_queue(library_id,generation,opaque_id,kind,status) VALUES(?,?,?,'track','pending') ON CONFLICT(library_id,generation,kind,opaque_id) DO UPDATE SET status='pending',attempt_count=0,next_attempt_at=NULL,last_error_code=NULL,terminal=0",
         ).run(row.library_id!, run.generation!, row.track_id!);
         db.prepare(
           "INSERT OR IGNORE INTO curation_source_events(library_id,media_link_id,track_id,kind,source_key,created_at) VALUES(?,?,?,'claim_verification_requested',?,?)",
