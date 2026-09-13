@@ -964,6 +964,7 @@ it.runIf(existsSync(join(installedSkillRoot, 'SKILL.md')))(
     const description = /^description:\s*(.+)$/m.exec(skill)?.[1] ?? '';
     expect(description).toMatch(/one user-selected Musiclatte .* or .*current-account collection/i);
     expect(skill).toContain('(references/batch-operation.md)');
+    expect(skill).toContain('(references/unorganized-sweep.md)');
 
     const batch = readFileSync(
       join(installedSkillRoot, 'references', 'batch-operation.md'),
@@ -1000,5 +1001,15 @@ it.runIf(existsSync(join(installedSkillRoot, 'SKILL.md')))(
     expect(batch).toMatch(/accepted[\s\S]*immediately[\s\S]*journal/i);
     expect(batch).toMatch(/succeeded[\s\S]*never[\s\S]*(research|mutat)/i);
     expect(batch).toMatch(/lyrics[\s\S]*(never|do not)/i);
+
+    const sweep = readFileSync(
+      join(installedSkillRoot, 'references', 'unorganized-sweep.md'),
+      'utf8',
+    );
+    for (const command of ['sweep-start', 'sweep-next', 'sweep-status'])
+      expect(sweep).toMatch(new RegExp('`' + command + '(?:`|\\s)'));
+    expect(sweep).toMatch(/explicit[\s\S]*unorganized/i);
+    expect(sweep).toMatch(/never (?:accept|replace|parallelize|adopt)/i);
+    expect(sweep).toMatch(/completed_with_summary[\s\S]*not[\s\S]*every file/i);
   },
 );

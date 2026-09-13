@@ -178,6 +178,35 @@ item again. Final output contains total/succeeded/skipped/blocked counts and onl
 names plus short reasons for unsuccessful items. Do not print stable operation IDs, opaque account
 identifiers, source responses, evidence bodies, or private paths.
 
+## Explicit unorganized-library sweep
+
+Use this mode only when the user explicitly requests all currently unorganized songs for the PAT's
+principal. Do not accept an account, username, library, or filesystem-path selector. Use a new
+private parent path, or the exact existing parent when resuming:
+
+```sh
+npm run id3:organize -- sweep-start --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/unorganized-sweep.json
+npm run id3:organize -- sweep-status --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/unorganized-sweep.json
+npm run id3:organize -- sweep-next --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/unorganized-sweep.json
+```
+
+`sweep-start` captures every immutable snapshot page into mode-`0600` child journals of at most
+1,000 items before processing can begin. An existing capturing parent resumes its bound cursor only
+when the API and credential fingerprints match. Expiry, scope change, malformed/incomplete capture,
+or count mismatch never becomes runnable.
+
+`sweep-next` selects exactly one child/item. A live media-link state of `organized`, `processing`,
+`attention`, or `unknown` records `already_organized`, `deferred_processing`,
+`deferred_attention`, or `blocked_identity` without a metadata or organization request. Only
+`needs_organization` enters the existing batch-bound research and mutation workflow. Resolve the
+returned relative child file beneath the validated parent directory and use that child as the
+existing commands' `--state-file`; never accept an arbitrary child path.
+
+Use `sweep-status` for aggregate progress. `completed_with_summary` means every frozen item has an
+outcome, not necessarily that every file is organized. Keep succeeded, already, skipped, deferred,
+attention, unknown/identity-blocked, blocked, and remaining counts distinct. Do not expose the
+parent/child paths, PAT, item-title list, operation/job IDs, or source responses.
+
 ## Deployment and recovery
 
 Apply `compose.imports.yaml`, `compose.metadata.yaml`, then `compose.automation.yaml`. Organization

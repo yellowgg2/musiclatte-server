@@ -193,6 +193,32 @@ describe('unorganized ID3 organization sweep journal', () => {
 });
 
 describe('unorganized sweep client orchestration', () => {
+  it('finishes an empty complete selection without status or mutation requests', async () => {
+    const { stateFile, tokenFile } = paths();
+    const calls: string[] = [];
+    const fetcher = async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      calls.push(url.pathname);
+      if (url.pathname.endsWith('/unorganized-selections'))
+        return Response.json(page({ items: [], nextCursor: null, needs: 0 }));
+      throw new Error('unexpected request');
+    };
+    expect(
+      await runId3OrganizeCommand({
+        api,
+        tokenFile,
+        stateFile,
+        command: 'sweep-start',
+        fetch: fetcher,
+      }),
+    ).toMatchObject({
+      state: 'completed_with_summary',
+      capturedItemCount: 0,
+      aggregate: { total: 0, pending: 0 },
+    });
+    expect(calls).toEqual(['/api/v1/metadata-organization/unorganized-selections']);
+  });
+
   it('captures every page and classifies four stale live states without creating jobs', async () => {
     const { stateFile, tokenFile } = paths();
     const capturedAt = Date.now();
