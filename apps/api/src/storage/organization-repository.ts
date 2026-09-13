@@ -1,6 +1,6 @@
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
 import type { ManagementDatabase } from './database.js';
-import { validateRelativeKey } from '../imports/policy.js';
+import { validateExistingRelativeKey, validateRelativeKey } from '../imports/policy.js';
 import {
   advanceOrganizationState,
   conflictOrganizationState,
@@ -118,7 +118,7 @@ export function validateOrganizationStorage(db: DatabaseSync): void {
     const row = raw as Row;
     const item = decodeItem(row);
     if (!hex(row.identity_key) || !hex(row.request_hash)) throw new Error('Storage unavailable');
-    validateRelativeKey(item.sourceKey);
+    validateExistingRelativeKey(item.sourceKey);
     validateRelativeKey(item.targetKey);
     const evidence = JSON.parse(text(row.source_evidence_json)) as unknown;
     if (!Array.isArray(evidence) || Buffer.byteLength(text(row.source_evidence_json)) > 65536)
@@ -257,7 +257,7 @@ export function createOrganizationRepository(options: {
           Buffer.byteLength(JSON.stringify(input.sourceEvidence)) > 65536
         )
           throw new Error('invalid_organization_intent');
-        validateRelativeKey(input.sourceKey);
+        validateExistingRelativeKey(input.sourceKey);
         validateRelativeKey(input.targetKey);
         const timestamp = now();
         db.prepare(

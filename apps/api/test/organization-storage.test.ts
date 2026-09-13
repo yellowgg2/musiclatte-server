@@ -98,6 +98,17 @@ async function setup() {
 }
 
 describe('organization storage', () => {
+  it('accepts an exact existing source beneath a whitespace-ending directory', async () => {
+    const s = await setup();
+
+    const job = s.repository.createOrReplay({
+      ...s.input,
+      sourceKey: 'jojo-music/account/Legacy Artist /source.mp3',
+    });
+
+    expect(job.item.sourceKey).toBe('jojo-music/account/Legacy Artist /source.mp3');
+  });
+
   it('accepts consecutive periods inside safe path components', async () => {
     const s = await setup();
     const job = s.repository.createOrReplay({
