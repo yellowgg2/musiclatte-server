@@ -327,6 +327,7 @@ export function Router({
         enabled={state.capabilities?.features['metadata.write']?.supported === true}
         fetcher={fetcher}
         apiOrigin={apiOrigin}
+        csrfToken={state.session.csrfToken}
         onUnauthenticated={store.expire}
       >
         <FavoritesProvider

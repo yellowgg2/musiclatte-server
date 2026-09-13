@@ -8,8 +8,10 @@ import {
   decodeAutomationJobResponse,
   decodeMetadataPreview,
   decodeMetadataSnapshot,
+  decodeOrganizationStatusResponse,
   type MetadataJobRequest,
   type MetadataPreviewRequest,
+  type OrganizationStatusTarget,
 } from '@musiclatte/contracts';
 import { ApiError } from '../auth/client';
 import { metadataRoutes as routes } from './routes';
@@ -157,6 +159,14 @@ export function createMetadataClient({
     },
     preview(body: MetadataPreviewRequest, options: MetadataMutationOptions) {
       return request(routes.previews, decodeMetadataPreview, options.signal, { ...options, body });
+    },
+    organizationStatuses(targets: OrganizationStatusTarget[], options: MetadataMutationOptions) {
+      return request(
+        routes.organizationStatuses,
+        decodeOrganizationStatusResponse,
+        options.signal,
+        { ...options, body: { schemaVersion: 1, targets } },
+      );
     },
     submit(body: MetadataJobRequest, options: MetadataMutationOptions) {
       return request(routes.jobs, detail, options.signal, { ...options, body });

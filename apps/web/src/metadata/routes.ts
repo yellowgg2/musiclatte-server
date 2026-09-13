@@ -20,6 +20,7 @@ export const metadataRoutes = {
   upload: (id: string) => `${root}/metadata-covers/${segment(id)}`,
   changes: `${root}/metadata-changes`,
   previews: `${root}/metadata-previews`,
+  organizationStatuses: `${root}/metadata-organization/statuses`,
   cover: (id: string, generation: string) => {
     if (generation.length > 1024 || !/^[A-Za-z0-9_.:-]+$/.test(generation))
       throw new TypeError('Invalid cover generation');

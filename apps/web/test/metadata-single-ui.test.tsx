@@ -193,6 +193,7 @@ it('should lazily read per-song editability and not expose an enabled edit butto
       enabled={false}
       fetcher={fetcher}
       apiOrigin=""
+      csrfToken="synthetic-csrf"
       onUnauthenticated={vi.fn()}
     >
       <MetadataUIProvider
@@ -542,6 +543,7 @@ it('should dismiss row options on outside activation and Escape while preserving
       enabled={false}
       fetcher={async () => Response.json(snapshot)}
       apiOrigin=""
+      csrfToken="synthetic-csrf"
       onUnauthenticated={vi.fn()}
     >
       <MetadataUIProvider

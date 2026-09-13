@@ -14,6 +14,10 @@ import { mediaRoutes } from '@musiclatte/contracts';
 import { createMetadataClient, type MetadataClient } from './client';
 import { createMetadataSyncStore, initialMetadataState, type MetadataSyncState } from './state';
 import { metadataRoutes } from './routes';
+import {
+  createOrganizationStateStore,
+  type OrganizationStateStore,
+} from './organization-state-store';
 
 interface MetadataContextValue {
   state: MetadataSyncState;
@@ -21,11 +25,14 @@ interface MetadataContextValue {
   curationClient?: CurationClient;
   coverUrl(id: string): string;
   refresh(): void;
+  organizationStore?: OrganizationStateStore;
+  refreshOrganization(trackId?: string): void;
 }
 const MetadataContext = createContext<MetadataContextValue>({
   state: initialMetadataState,
   coverUrl: mediaRoutes.cover,
   refresh: () => undefined,
+  refreshOrganization: () => undefined,
 });
 export function MetadataSyncProvider({
   children,
@@ -33,6 +40,7 @@ export function MetadataSyncProvider({
   enabled,
   fetcher,
   apiOrigin,
+  csrfToken,
   onUnauthenticated,
 }: {
   children: ReactNode;
@@ -40,6 +48,7 @@ export function MetadataSyncProvider({
   enabled: boolean;
   fetcher: typeof fetch;
   apiOrigin: string;
+  csrfToken: string;
   onUnauthenticated: () => void;
 }) {
   const current = useRef({ scope, active: true });
@@ -61,6 +70,14 @@ export function MetadataSyncProvider({
     () => createMetadataSyncStore({ client, onUnauthenticated }),
     [client, onUnauthenticated],
   );
+  const organizationStore = useMemo(
+    () =>
+      createOrganizationStateStore({
+        load: (targets, signal) => client.organizationStatuses(targets, { csrfToken, signal }),
+        onUnauthenticated,
+      }),
+    [client, csrfToken, onUnauthenticated],
+  );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   useLayoutEffect(() => {
     current.current.active = true;
@@ -69,7 +86,11 @@ export function MetadataSyncProvider({
     };
   }, [client]);
   useEffect(() => {
-    const visibility = () => store.setVisible(document.visibilityState === 'visible');
+    const visibility = () => {
+      const visible = document.visibilityState === 'visible';
+      store.setVisible(visible);
+      organizationStore.setVisible(visible);
+    };
     const connectivity = () => store.setOnline(navigator.onLine);
     visibility();
     connectivity();
@@ -79,11 +100,21 @@ export function MetadataSyncProvider({
     window.addEventListener('offline', connectivity);
     return () => {
       store.stop();
+      organizationStore.dispose();
       document.removeEventListener('visibilitychange', visibility);
       window.removeEventListener('online', connectivity);
       window.removeEventListener('offline', connectivity);
     };
-  }, [store, enabled]);
+  }, [store, organizationStore, enabled]);
+  useEffect(() => {
+    if (!state.statusVersion) return;
+    const trackIds = new Set<string>();
+    for (const change of state.latest.values()) {
+      trackIds.add(change.oldTrackId);
+      trackIds.add(change.newTrackId);
+    }
+    trackIds.forEach((trackId) => organizationStore.refresh(trackId));
+  }, [state.statusVersion, state.latest, organizationStore]);
   const coverUrl = useCallback(
     (id: string) => {
       const generation = state.coverVersions.get(id);
@@ -93,11 +124,32 @@ export function MetadataSyncProvider({
     [apiOrigin, state.coverVersions],
   );
   const value = useMemo(
-    () => ({ state, client, curationClient, coverUrl, refresh: store.refresh }),
-    [state, client, curationClient, coverUrl, store],
+    () => ({
+      state,
+      client,
+      curationClient,
+      coverUrl,
+      refresh: store.refresh,
+      organizationStore,
+      refreshOrganization: organizationStore.refresh,
+    }),
+    [state, client, curationClient, coverUrl, store, organizationStore],
   );
   return <MetadataContext.Provider value={value}>{children}</MetadataContext.Provider>;
 }
 export function useMetadataSync() {
   return useContext(MetadataContext);
+}
+
+export function useOrganizationState(trackId: string) {
+  const { organizationStore } = useContext(MetadataContext);
+  const subscribe = useCallback(
+    (listener: () => void) => organizationStore?.subscribe(trackId, listener) ?? (() => undefined),
+    [organizationStore, trackId],
+  );
+  const snapshot = useCallback(
+    () => organizationStore?.getSnapshot(trackId) ?? ({ phase: 'loading' } as const),
+    [organizationStore, trackId],
+  );
+  return useSyncExternalStore(subscribe, snapshot, snapshot);
 }

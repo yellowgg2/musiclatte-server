@@ -36,6 +36,77 @@ async function makeSUT(fetcher: typeof fetch, isCurrent = () => true) {
   });
 }
 describe('metadata client transport', () => {
+  /** Organization status reads use the cookie CSRF boundary and strict public response decoding. */
+  it('should post bounded organization targets with CSRF and reject malformed results', async () => {
+    const sent: { url: string; init: RequestInit }[] = [];
+    let value: unknown = {
+      schemaVersion: 1,
+      capturedAt: 1000,
+      items: [
+        {
+          target: { kind: 'track', trackId: 'song' },
+          state: 'organized',
+          reason: 'verified',
+          stage: 'succeeded',
+          changedAt: 900,
+        },
+      ],
+    };
+    const client = await makeSUT(async (input, init) => {
+      sent.push({ url: String(input), init: init! });
+      return Response.json(value);
+    });
+    const targets = [{ kind: 'track' as const, trackId: 'song' }];
+    expect(await client.organizationStatuses(targets, { csrfToken: 'synthetic-csrf' })).toEqual(
+      value,
+    );
+    expect(sent[0]!.url).toBe('https://api.example.test/api/v1/metadata-organization/statuses');
+    expect(sent[0]!.init).toMatchObject({
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    expect(new Headers(sent[0]!.init.headers).get('x-csrf-token')).toBe('synthetic-csrf');
+    expect(JSON.parse(String(sent[0]!.init.body))).toEqual({ schemaVersion: 1, targets });
+
+    value = { ...(value as object), privatePath: '/private/music.mp3' };
+    await expect(
+      client.organizationStatuses(targets, { csrfToken: 'synthetic-csrf' }),
+    ).rejects.toMatchObject({ code: 'internal_error' });
+  });
+
+  /** Status transport preserves auth/error distinctions and caller cancellation. */
+  it('should distinguish organization status auth server and abort failures', async () => {
+    const targets = [{ kind: 'track' as const, trackId: 'song' }];
+    for (const [status, code] of [
+      [401, 'unauthenticated'],
+      [403, 'forbidden'],
+      [500, 'internal_error'],
+    ] as const) {
+      const client = await makeSUT(async () =>
+        Response.json({ schemaVersion: 1, error: { code: 'internal_error' } }, { status }),
+      );
+      await expect(
+        client.organizationStatuses(targets, { csrfToken: 'synthetic-csrf' }),
+      ).rejects.toMatchObject({ code });
+    }
+    const controller = new AbortController();
+    const client = await makeSUT(
+      (_, init) =>
+        new Promise((_, reject) =>
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), {
+            once: true,
+          }),
+        ),
+    );
+    const pending = client.organizationStatuses(targets, {
+      csrfToken: 'synthetic-csrf',
+      signal: controller.signal,
+    });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
   /** Mutations reuse caller-owned operation IDs and never replay after an uncertain network result. */
   it('should keep submit retry recheck and restore operation bodies intact with CSRF fencing', async () => {
     const sent: { url: string; init: RequestInit }[] = [];

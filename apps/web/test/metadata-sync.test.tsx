@@ -3,11 +3,17 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlayerProvider, usePlayer } from '../src/player/PlayerProvider';
 import { useEffect, useState } from 'react';
-import { MetadataSyncProvider, useMetadataSync } from '../src/metadata/MetadataSyncProvider';
+import {
+  MetadataSyncProvider,
+  useMetadataSync,
+  useOrganizationState,
+} from '../src/metadata/MetadataSyncProvider';
 import type { MetadataChangesPage, MusicEntry } from '@musiclatte/contracts';
 import { SelectionProvider, useSelection } from '../src/selection/SelectionProvider';
 import { MusicPage } from '../src/pages/music/MusicPage';
 import { Router } from '../src/app/Router';
+import { createOrganizationStateStore } from '../src/metadata/organization-state-store';
+import { ApiError } from '../src/auth/client';
 
 const song: MusicEntry = {
   id: 'one',
@@ -79,6 +85,18 @@ function PlayerProbe() {
 function SelectionCountProbe() {
   return <output data-testid="selection-count">{useSelection().state.items.length}</output>;
 }
+function OrganizationProbe({ trackId }: { trackId: string }) {
+  const state = useOrganizationState(trackId);
+  const metadata = useMetadataSync();
+  return (
+    <>
+      <output data-testid="organization-state">
+        {state.phase === 'ready' ? `${state.value.state}:${state.value.reason}` : state.phase}
+      </output>
+      <output data-testid="metadata-status-version">{metadata.state.statusVersion}</output>
+    </>
+  );
+}
 beforeEach(() => {
   vi.useFakeTimers();
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
@@ -93,6 +111,266 @@ async function tick(ms = 0) {
     await vi.advanceTimersByTimeAsync(ms);
   });
 }
+describe('organization state batch store', () => {
+  /** StrictMode-style transient mounts do not issue an empty request or duplicate a shared target. */
+  it('should discard an unsubscribed pending target and fetch one remounted shared entry', async () => {
+    const load = vi.fn(async (targets: Array<{ kind: 'track'; trackId: string }>) => ({
+      schemaVersion: 1 as const,
+      capturedAt: 1000,
+      items: targets.map((target) => ({
+        target,
+        state: 'unknown' as const,
+        reason: 'identity_unavailable' as const,
+        stage: null,
+        changedAt: null,
+      })),
+    }));
+    const store = createOrganizationStateStore({ load, onUnauthenticated: vi.fn() });
+    store.subscribe('song', vi.fn())();
+    await tick();
+    expect(load).not.toHaveBeenCalled();
+    const first = store.subscribe('song', vi.fn());
+    const second = store.subscribe('song', vi.fn());
+    await tick();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(load.mock.calls[0]![0]).toEqual([{ kind: 'track', trackId: 'song' }]);
+    first();
+    second();
+    const remounted = store.subscribe('song', vi.fn());
+    await tick();
+    expect(load).toHaveBeenCalledTimes(1);
+    remounted();
+    store.dispose();
+  });
+
+  /** Visible consumers are deduplicated and split into bounded requests keyed by returned target. */
+  it('should batch 302 unique tracks into four requests and share duplicate subscribers', async () => {
+    const requests: string[][] = [];
+    const store = createOrganizationStateStore({
+      load: async (targets) => {
+        requests.push(targets.map((target) => target.trackId));
+        return {
+          schemaVersion: 1,
+          capturedAt: 1000,
+          items: [...targets].reverse().map((target) => ({
+            target,
+            state: 'organized' as const,
+            reason: 'verified' as const,
+            stage: 'succeeded' as const,
+            changedAt: 900,
+          })),
+        };
+      },
+      onUnauthenticated: vi.fn(),
+      now: () => 1000,
+    });
+    const listeners = Array.from({ length: 302 }, (_, index) =>
+      store.subscribe(`track-${index}`, vi.fn()),
+    );
+    listeners.push(store.subscribe('track-0', vi.fn()));
+    await tick();
+
+    expect(requests.map((request) => request.length)).toEqual([100, 100, 100, 2]);
+    expect(new Set(requests.flat()).size).toBe(302);
+    expect(store.getSnapshot('track-0')).toMatchObject({
+      phase: 'ready',
+      value: { target: { kind: 'track', trackId: 'track-0' } },
+    });
+    expect(store.getSnapshot('track-301')).toMatchObject({
+      phase: 'ready',
+      value: { target: { kind: 'track', trackId: 'track-301' } },
+    });
+    listeners.forEach((unsubscribe) => unsubscribe());
+    store.dispose();
+  });
+
+  /** Retry, visibility regain, and stale expiry converge through server reads without local guesses. */
+  it('should distinguish errors and refresh visible state on retry visibility and stale expiry', async () => {
+    let now = 1000;
+    let calls = 0;
+    const store = createOrganizationStateStore({
+      load: async (targets) => {
+        calls++;
+        if (calls === 1) throw new Error('private transport failure');
+        return {
+          schemaVersion: 1,
+          capturedAt: now,
+          items: targets.map((target) => ({
+            target,
+            state: calls === 2 ? ('needs_organization' as const) : ('organized' as const),
+            reason: calls === 2 ? ('path_metadata_changed' as const) : ('verified' as const),
+            stage: 'succeeded' as const,
+            changedAt: now,
+          })),
+        };
+      },
+      onUnauthenticated: vi.fn(),
+      now: () => now,
+      staleMs: 100,
+    });
+    const unsubscribe = store.subscribe('song', vi.fn());
+    await tick();
+    expect(store.getSnapshot('song')).toMatchObject({ phase: 'error' });
+    const failed = store.getSnapshot('song');
+    if (failed.phase !== 'error') throw new Error('Expected error state');
+    failed.retry();
+    await tick();
+    expect(store.getSnapshot('song')).toMatchObject({
+      phase: 'ready',
+      value: { state: 'needs_organization' },
+    });
+    store.setVisible(false);
+    now += 100;
+    await tick(100);
+    expect(calls).toBe(2);
+    store.setVisible(true);
+    await tick();
+    expect(store.getSnapshot('song')).toMatchObject({
+      phase: 'ready',
+      value: { state: 'organized' },
+    });
+    unsubscribe();
+    store.dispose();
+  });
+
+  /** Only an authentication failure expires the session; other transport errors remain local. */
+  it('should forward unauthenticated status failures without escalating forbidden errors', async () => {
+    const onUnauthenticated = vi.fn();
+    let error: ApiError = new ApiError('forbidden');
+    const store = createOrganizationStateStore({
+      load: async () => Promise.reject(error),
+      onUnauthenticated,
+    });
+    const unsubscribe = store.subscribe('song', vi.fn());
+    await tick();
+    expect(store.getSnapshot('song').phase).toBe('error');
+    expect(onUnauthenticated).not.toHaveBeenCalled();
+    error = new ApiError('unauthenticated');
+    store.refresh('song');
+    await tick();
+    expect(onUnauthenticated).toHaveBeenCalledTimes(1);
+    unsubscribe();
+    store.dispose();
+  });
+
+  /** A replaced provider aborts the old scope and ignores a transport that still resolves late. */
+  it('should keep an old account response out of the current organization cache', async () => {
+    let resolveOld!: (response: Response) => void;
+    let statusCalls = 0;
+    const fetcher: typeof fetch = async (input) => {
+      if (!String(input).endsWith('/metadata-organization/statuses'))
+        throw new Error('Unexpected fixture route');
+      statusCalls++;
+      if (statusCalls === 1)
+        return new Promise((resolve) => {
+          resolveOld = resolve;
+        });
+      return Response.json({
+        schemaVersion: 1,
+        capturedAt: 2000,
+        items: [
+          {
+            target: { kind: 'track', trackId: 'song' },
+            state: 'organized',
+            reason: 'verified',
+            stage: 'succeeded',
+            changedAt: 1900,
+          },
+        ],
+      });
+    };
+    const tree = (scope: string, csrfToken: string) => (
+      <MetadataSyncProvider
+        scope={scope}
+        enabled={false}
+        fetcher={fetcher}
+        apiOrigin=""
+        csrfToken={csrfToken}
+        onUnauthenticated={vi.fn()}
+      >
+        <OrganizationProbe trackId="song" />
+      </MetadataSyncProvider>
+    );
+    const view = render(tree('instance:account-a:1', 'csrf-a'));
+    await tick();
+    view.rerender(tree('instance:account-b:2', 'csrf-b'));
+    await tick();
+    expect(screen.getByTestId('organization-state').textContent).toBe('organized:verified');
+
+    resolveOld(
+      Response.json({
+        schemaVersion: 1,
+        capturedAt: 1000,
+        items: [
+          {
+            target: { kind: 'track', trackId: 'song' },
+            state: 'needs_organization',
+            reason: 'path_metadata_changed',
+            stage: 'succeeded',
+            changedAt: 900,
+          },
+        ],
+      }),
+    );
+    await tick();
+    expect(screen.getByTestId('organization-state').textContent).toBe('organized:verified');
+  });
+
+  /** Metadata completion invalidates status and trusts the subsequent server freshness projection. */
+  it('should re-read organization state after metadata completion without assuming organized', async () => {
+    let published = false;
+    let statusCalls = 0;
+    let changesCalls = 0;
+    const fetcher: typeof fetch = async (input) => {
+      const path = String(input);
+      if (path.includes('/metadata-changes')) {
+        changesCalls++;
+        return Response.json({ ...page, changes: published ? page.changes : [] });
+      }
+      if (path.endsWith('/metadata-organization/statuses')) {
+        statusCalls++;
+        return Response.json({
+          schemaVersion: 1,
+          capturedAt: statusCalls,
+          items: [
+            {
+              target: { kind: 'track', trackId: 'one' },
+              state: statusCalls === 1 ? 'organized' : 'needs_organization',
+              reason: statusCalls === 1 ? 'verified' : 'path_metadata_changed',
+              stage: 'succeeded',
+              changedAt: statusCalls,
+            },
+          ],
+        });
+      }
+      throw new Error('Unexpected fixture route');
+    };
+    render(
+      <MetadataSyncProvider
+        scope="instance:account:policy"
+        enabled
+        fetcher={fetcher}
+        apiOrigin=""
+        csrfToken="synthetic-csrf"
+        onUnauthenticated={vi.fn()}
+      >
+        <OrganizationProbe trackId="one" />
+      </MetadataSyncProvider>,
+    );
+    await tick();
+    expect(screen.getByTestId('organization-state').textContent).toBe('organized:verified');
+    published = true;
+    await tick(3000);
+    await tick();
+    await tick(1);
+    expect(changesCalls).toBeGreaterThanOrEqual(2);
+    expect(screen.getByTestId('metadata-status-version').textContent).toBe('1');
+    expect(statusCalls).toBe(2);
+    expect(screen.getByTestId('organization-state').textContent).toBe(
+      'needs_organization:path_metadata_changed',
+    );
+  });
+});
 describe('metadata player integration', () => {
   /** A policy scope change discards old display responses without remounting the active player. */
   it('should fence a late song response and clear old cover generations while audio continues', async () => {
@@ -112,6 +390,7 @@ describe('metadata player integration', () => {
         enabled
         fetcher={fetcher}
         apiOrigin=""
+        csrfToken="synthetic-csrf"
         onUnauthenticated={expire}
       >
         <PlayerProvider
@@ -274,6 +553,7 @@ describe('metadata player integration', () => {
         enabled
         fetcher={fetcher}
         apiOrigin=""
+        csrfToken="synthetic-csrf"
         onUnauthenticated={expired}
       >
         <PlayerProvider
@@ -340,6 +620,7 @@ describe('metadata player integration', () => {
         enabled
         fetcher={fetcher}
         apiOrigin=""
+        csrfToken="synthetic-csrf"
         onUnauthenticated={() => {}}
       >
         <PlayerProvider
@@ -400,6 +681,7 @@ it('should read history after capability discovery replaces the metadata scope',
       enabled={false}
       fetcher={fetcher}
       apiOrigin=""
+      csrfToken="synthetic-csrf"
       onUnauthenticated={expire}
     >
       <HistoryProbe />
