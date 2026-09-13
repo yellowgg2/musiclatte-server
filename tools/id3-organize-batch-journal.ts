@@ -10,7 +10,11 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
-import type { OrganizationSelection, OrganizationSelectionSource } from '@musiclatte/contracts';
+import type {
+  OrganizationSelection,
+  OrganizationSelectionSource,
+  UnorganizedSelectionItem,
+} from '@musiclatte/contracts';
 
 export const id3OrganizationBatchItemStates = [
   'pending',
@@ -20,6 +24,10 @@ export const id3OrganizationBatchItemStates = [
   'succeeded',
   'skipped',
   'blocked',
+  'already_organized',
+  'deferred_processing',
+  'deferred_attention',
+  'blocked_identity',
 ] as const;
 export type Id3OrganizationBatchItemState = (typeof id3OrganizationBatchItemStates)[number];
 export type Id3OrganizationMetadataStepKind = 'required' | 'optional';
@@ -49,6 +57,7 @@ export interface Id3OrganizationMetadataStep {
 }
 
 export interface Id3OrganizationBatchItem {
+  mediaLinkId?: string;
   trackId: string;
   title: string;
   artist: string | null;
@@ -65,17 +74,19 @@ export interface Id3OrganizationBatchItem {
 }
 
 export interface Id3OrganizationBatchJournal {
-  schemaVersion: 2;
+  schemaVersion: 2 | 3;
   apiFingerprint: string;
   credentialFingerprint: string;
   selectionRevision: string;
-  source: OrganizationSelectionSource;
+  source: OrganizationSelectionSource | { kind: 'unorganized'; selectionId: string };
   stopped: boolean;
   stopCode: string | null;
   items: Id3OrganizationBatchItem[];
 }
 
 type CrashPoint = 'before_write' | 'after_temp_fsync' | 'after_rename';
+
+export type Id3OrganizationBatchCrashPoint = CrashPoint;
 
 function failure(code: string): never {
   throw new Error(`client_failed:${code}`);
@@ -103,6 +114,17 @@ function decodeSource(value: unknown): OrganizationSelectionSource {
   )
     failure('journal_invalid');
   return { kind: 'playlist', playlistId: value.playlistId, name: value.name };
+}
+
+function decodeUnorganizedSource(value: unknown) {
+  if (
+    !object(value) ||
+    !exact(value, ['kind', 'selectionId']) ||
+    value.kind !== 'unorganized' ||
+    !opaque(value.selectionId)
+  )
+    failure('journal_invalid');
+  return { kind: 'unorganized' as const, selectionId: value.selectionId };
 }
 
 function decodeMetadataStep(value: unknown): Id3OrganizationMetadataStep {
@@ -155,7 +177,15 @@ function decodeItemV2(value: unknown): Id3OrganizationBatchItem {
         (position > 0 &&
           Number(index) <= Number((value.occurrenceIndexes as unknown[])[position - 1])),
     ) ||
-    !id3OrganizationBatchItemStates.includes(value.state as never) ||
+    ![
+      'pending',
+      'researching',
+      'metadata_accepted',
+      'organization_accepted',
+      'succeeded',
+      'skipped',
+      'blocked',
+    ].includes(value.state as string) ||
     !(value.errorCode === null || nonempty(value.errorCode)) ||
     !object(value.operations) ||
     !exact(value.operations, ['cover', 'organization']) ||
@@ -193,6 +223,57 @@ function decodeItemV2(value: unknown): Id3OrganizationBatchItem {
   )
     failure('journal_invalid');
   return value as unknown as Id3OrganizationBatchItem;
+}
+
+function decodeItemV3(value: unknown): Id3OrganizationBatchItem {
+  if (
+    !object(value) ||
+    !exact(value, [
+      'mediaLinkId',
+      'trackId',
+      'title',
+      'artist',
+      'album',
+      'occurrenceIndexes',
+      'state',
+      'errorCode',
+      'operations',
+      'coverUploadId',
+      'metadataSteps',
+      'organizationJobId',
+      'newTrackId',
+      'serverStage',
+    ])
+  )
+    failure('journal_invalid');
+  if (!opaque(value.mediaLinkId)) failure('journal_invalid');
+  const legacyShape = { ...value };
+  delete legacyShape.mediaLinkId;
+  const terminalOutcome = {
+    already_organized: 'already_organized',
+    deferred_processing: 'deferred_processing',
+    deferred_attention: 'deferred_attention',
+    blocked_identity: 'blocked_identity',
+  } as const;
+  const state = value.state as Id3OrganizationBatchItemState;
+  const outcome = state in terminalOutcome;
+  const item = decodeItemV2(
+    outcome ? { ...legacyShape, state: 'pending', errorCode: null } : legacyShape,
+  );
+  if (outcome) {
+    if (
+      value.errorCode !== terminalOutcome[state as keyof typeof terminalOutcome] ||
+      item.coverUploadId !== null ||
+      Object.values(item.metadataSteps).some(({ jobId }) => jobId !== null) ||
+      item.organizationJobId !== null ||
+      item.newTrackId !== null ||
+      item.serverStage !== null
+    )
+      failure('journal_invalid');
+    item.state = state;
+    item.errorCode = value.errorCode as string;
+  }
+  return { mediaLinkId: value.mediaLinkId, ...item };
 }
 
 function normalizeV1Item(value: unknown): Id3OrganizationBatchItem {
@@ -263,7 +344,7 @@ export function decodeId3OrganizationBatchJournal(value: unknown): Id3Organizati
       'stopCode',
       'items',
     ]) ||
-    ![1, 2].includes(value.schemaVersion as number) ||
+    ![1, 2, 3].includes(value.schemaVersion as number) ||
     typeof value.apiFingerprint !== 'string' ||
     !/^[a-f0-9]{64}$/.test(value.apiFingerprint) ||
     typeof value.credentialFingerprint !== 'string' ||
@@ -277,18 +358,27 @@ export function decodeId3OrganizationBatchJournal(value: unknown): Id3Organizati
     value.items.length > 1000
   )
     failure('journal_invalid');
-  const source = decodeSource(value.source);
-  const items = value.items.map(value.schemaVersion === 1 ? normalizeV1Item : decodeItemV2);
-  const tracks = new Set(items.map(({ trackId }) => trackId));
+  const source =
+    value.schemaVersion === 3 ? decodeUnorganizedSource(value.source) : decodeSource(value.source);
+  const items = value.items.map(
+    value.schemaVersion === 1
+      ? normalizeV1Item
+      : value.schemaVersion === 2
+        ? decodeItemV2
+        : decodeItemV3,
+  );
+  const identities = new Set(
+    items.map((item) => (value.schemaVersion === 3 ? item.mediaLinkId : item.trackId)),
+  );
   const operations = items.flatMap((item) => [
     ...Object.values(item.operations),
     item.metadataSteps.required.operationId,
     item.metadataSteps.optional.operationId,
   ]);
-  if (tracks.size !== items.length || new Set(operations).size !== operations.length)
+  if (identities.size !== items.length || new Set(operations).size !== operations.length)
     failure('journal_invalid');
   return {
-    schemaVersion: 2,
+    schemaVersion: value.schemaVersion === 3 ? 3 : 2,
     apiFingerprint: value.apiFingerprint,
     credentialFingerprint: value.credentialFingerprint,
     selectionRevision: value.selectionRevision,
@@ -323,6 +413,7 @@ function validatePrivateState(path: string) {
     if (
       stat.isSymbolicLink() ||
       !stat.isFile() ||
+      stat.nlink !== 1 ||
       (stat.mode & 0o777) !== 0o600 ||
       stat.uid !== process.getuid?.() ||
       stat.size < 2 ||
@@ -489,6 +580,7 @@ function atomicWrite(path: string, journal: Id3OrganizationBatchJournal, crashAt
       if (
         stale.isSymbolicLink() ||
         !stale.isFile() ||
+        stale.nlink !== 1 ||
         (stale.mode & 0o777) !== 0o600 ||
         stale.uid !== process.getuid?.()
       )
@@ -523,6 +615,130 @@ function atomicWrite(path: string, journal: Id3OrganizationBatchJournal, crashAt
   }
 }
 
+export function createId3OrganizationSweepChildJournal(input: {
+  path: string;
+  api: string;
+  token: string;
+  selectionId: string;
+  selectionRevision: string;
+  items: Array<{ ordinal: number; item: UnorganizedSelectionItem }>;
+}): Id3OrganizationBatchJournal {
+  validateParent(input.path);
+  if (!opaque(input.selectionId) || !/^[a-f0-9]{64}$/.test(input.selectionRevision))
+    failure('journal_invalid');
+  const journal: Id3OrganizationBatchJournal = {
+    schemaVersion: 3,
+    apiFingerprint: fingerprint(['api', input.api]),
+    credentialFingerprint: fingerprint(['credential', input.token]),
+    selectionRevision: input.selectionRevision,
+    source: { kind: 'unorganized', selectionId: input.selectionId },
+    stopped: false,
+    stopCode: null,
+    items: input.items.map(({ ordinal, item }) =>
+      sweepItem(input.selectionRevision, ordinal, item),
+    ),
+  };
+  decodeId3OrganizationBatchJournal(journal);
+  try {
+    const fd = openSync(input.path, 'wx', 0o600);
+    try {
+      writeFileSync(fd, JSON.stringify(journal) + '\n');
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    syncDirectory(input.path);
+  } catch {
+    failure('journal_exists');
+  }
+  return journal;
+}
+
+function sweepItem(
+  selectionRevision: string,
+  ordinal: number,
+  item: UnorganizedSelectionItem,
+): Id3OrganizationBatchItem {
+  if (!Number.isSafeInteger(ordinal) || ordinal < 0) failure('journal_invalid');
+  const operation = (step: string) =>
+    `${step}-${fingerprint(['unorganized', selectionRevision, item.mediaLinkId, step])}`;
+  return {
+    mediaLinkId: item.mediaLinkId,
+    trackId: item.trackId,
+    title: item.title,
+    artist: item.artist,
+    album: item.album,
+    occurrenceIndexes: [ordinal],
+    state: 'pending',
+    errorCode: null,
+    operations: { cover: operation('cover'), organization: operation('organization') },
+    coverUploadId: null,
+    metadataSteps: {
+      required: {
+        operationId: operation('required'),
+        jobId: null,
+        resultRevision: null,
+        serverStage: null,
+      },
+      optional: {
+        operationId: operation('optional'),
+        jobId: null,
+        resultRevision: null,
+        serverStage: null,
+      },
+    },
+    organizationJobId: null,
+    newTrackId: null,
+    serverStage: null,
+  };
+}
+
+export function appendId3OrganizationSweepChildItems(
+  path: string,
+  items: Array<{ ordinal: number; item: UnorganizedSelectionItem }>,
+  options: { crashAt?: CrashPoint } = {},
+) {
+  return updateJournal(
+    path,
+    (journal) => {
+      if (journal.schemaVersion !== 3 || journal.source.kind !== 'unorganized')
+        failure('journal_binding');
+      for (const entry of items) {
+        const existing = journal.items.find(
+          ({ mediaLinkId }) => mediaLinkId === entry.item.mediaLinkId,
+        );
+        if (existing) {
+          if (
+            existing.occurrenceIndexes[0] !== entry.ordinal ||
+            existing.trackId !== entry.item.trackId
+          )
+            failure('journal_binding');
+          continue;
+        }
+        if (journal.items.length >= 1000) failure('journal_capacity');
+        journal.items.push(sweepItem(journal.selectionRevision, entry.ordinal, entry.item));
+      }
+    },
+    options.crashAt,
+  );
+}
+
+export function finalizeId3OrganizationSweepItem(
+  path: string,
+  mediaLinkId: string,
+  outcome: 'already_organized' | 'deferred_processing' | 'deferred_attention' | 'blocked_identity',
+) {
+  return updateJournal(path, (journal) => {
+    if (journal.schemaVersion !== 3 || journal.source.kind !== 'unorganized')
+      failure('journal_binding');
+    const item = journal.items.find((candidate) => candidate.mediaLinkId === mediaLinkId);
+    const current = journal.items.find((candidate) => !terminal(candidate.state));
+    if (!item || current !== item || item.state !== 'pending') failure('journal_transition');
+    item.state = outcome;
+    item.errorCode = outcome;
+  });
+}
+
 function updateJournal(
   path: string,
   update: (journal: Id3OrganizationBatchJournal) => void,
@@ -542,14 +758,49 @@ function updateJournal(
 
 const transitions: Record<Id3OrganizationBatchItemState, readonly Id3OrganizationBatchItemState[]> =
   {
-    pending: ['researching'],
+    pending: [
+      'researching',
+      'already_organized',
+      'deferred_processing',
+      'deferred_attention',
+      'blocked_identity',
+    ],
     researching: ['metadata_accepted', 'skipped', 'blocked'],
     metadata_accepted: ['organization_accepted', 'blocked'],
     organization_accepted: ['succeeded', 'blocked'],
     succeeded: [],
     skipped: [],
     blocked: [],
+    already_organized: [],
+    deferred_processing: [],
+    deferred_attention: [],
+    blocked_identity: [],
   };
+
+export const terminalId3OrganizationBatchState = (state: Id3OrganizationBatchItemState) =>
+  terminal(state);
+
+function terminal(state: Id3OrganizationBatchItemState) {
+  return [
+    'succeeded',
+    'skipped',
+    'blocked',
+    'already_organized',
+    'deferred_processing',
+    'deferred_attention',
+    'blocked_identity',
+  ].includes(state);
+}
+
+function currentItem(journal: Id3OrganizationBatchJournal) {
+  return journal.items.find((item) => !terminal(item.state));
+}
+
+function currentBoundItem(journal: Id3OrganizationBatchJournal, trackId: string) {
+  const item = currentItem(journal);
+  if (!item || item.trackId !== trackId) failure('journal_binding');
+  return item;
+}
 
 export function advanceId3OrganizationBatch(
   path: string,
@@ -561,7 +812,7 @@ export function advanceId3OrganizationBatch(
     path,
     (journal) => {
       if (journal.stopped) failure('batch_stopped');
-      const item = journal.items.find((candidate) => candidate.trackId === trackId);
+      const item = currentBoundItem(journal, trackId);
       if (!item || !transitions[item.state].includes(state)) failure('journal_transition');
       item.state = state;
     },
@@ -576,15 +827,13 @@ export function nextId3OrganizationBatchItem(path: string) {
       journal.stopped = false;
       journal.stopCode = null;
     });
-  const unfinished = current.items.find(
-    (item) => !['succeeded', 'skipped', 'blocked'].includes(item.state),
-  );
+  const unfinished = currentItem(current);
   if (!unfinished) return null;
   const journal =
     unfinished.state === 'pending'
       ? advanceId3OrganizationBatch(path, unfinished.trackId, 'researching')
       : current;
-  const item = journal.items.find(({ trackId }) => trackId === unfinished.trackId)!;
+  const item = currentItem(journal)!;
   return {
     trackId: item.trackId,
     title: item.title,
@@ -610,7 +859,7 @@ export function skipId3OrganizationBatchItem(
   if (!id3OrganizationBatchSkipReasons.includes(reason as never)) failure('skip_reason');
   return updateJournal(path, (journal) => {
     if (journal.stopped) failure('batch_stopped');
-    const item = journal.items.find((candidate) => candidate.trackId === trackId);
+    const item = currentBoundItem(journal, trackId);
     if (
       !item ||
       !['pending', 'researching'].includes(item.state) ||
@@ -632,10 +881,8 @@ export function completeId3OrganizationBatchSharedItem(
   if (!opaque(newTrackId) || newTrackId === trackId) failure('journal_binding');
   return updateJournal(path, (journal) => {
     if (journal.stopped || journal.source.kind !== 'favorites') failure('journal_binding');
-    const item = journal.items.find((candidate) => candidate.trackId === trackId);
-    const current = journal.items.find(
-      (candidate) => !['succeeded', 'skipped', 'blocked'].includes(candidate.state),
-    );
+    const current = currentItem(journal);
+    const item = current;
     if (
       !item ||
       current?.trackId !== trackId ||
@@ -654,9 +901,8 @@ export function completeId3OrganizationBatchSharedItem(
 export function recordId3OrganizationBatchFailure(path: string, trackId: string, code: string) {
   if (!nonempty(code)) failure('journal_invalid');
   return updateJournal(path, (journal) => {
-    const item = journal.items.find((candidate) => candidate.trackId === trackId);
-    if (!item || ['succeeded', 'skipped', 'blocked'].includes(item.state))
-      failure('journal_transition');
+    const item = currentBoundItem(journal, trackId);
+    if (!item || terminal(item.state)) failure('journal_transition');
     if (id3OrganizationBatchSystemFailures.includes(code as never)) {
       journal.stopped = true;
       journal.stopCode = code;
@@ -689,7 +935,7 @@ export function checkpointId3OrganizationBatch(
 ) {
   return updateJournal(path, (journal) => {
     if (journal.stopped) failure('batch_stopped');
-    const item = journal.items.find((candidate) => candidate.trackId === trackId);
+    const item = currentBoundItem(journal, trackId);
     if (!item) failure('journal_binding');
     if (checkpoint.kind === 'cover') {
       const afterRequired =
@@ -745,10 +991,8 @@ export function checkpointId3OrganizationBatch(
 export function id3OrganizationBatchBinding(path: string, trackId: string) {
   const journal = readId3OrganizationBatchJournal(path);
   if (journal.stopped) failure('batch_stopped');
-  const item = journal.items.find((candidate) => candidate.trackId === trackId);
-  const current = journal.items.find(
-    (candidate) => !['succeeded', 'skipped', 'blocked'].includes(candidate.state),
-  );
+  const current = currentItem(journal);
+  const item = current;
   if (!item || current?.trackId !== trackId) failure('journal_binding');
   return item;
 }
@@ -812,9 +1056,11 @@ export function id3OrganizationBatchStatus(path: string) {
     succeeded: count('succeeded'),
     skipped: count('skipped'),
     blocked: count('blocked'),
-    pending: journal.items.filter(
-      (item) => !['succeeded', 'skipped', 'blocked'].includes(item.state),
-    ).length,
+    alreadyOrganized: count('already_organized'),
+    deferredProcessing: count('deferred_processing'),
+    deferredAttention: count('deferred_attention'),
+    blockedIdentity: count('blocked_identity'),
+    pending: journal.items.filter((item) => !terminal(item.state)).length,
     stopped: journal.stopped,
     stopCode: journal.stopCode,
     current: nextSafeCurrent(journal),
@@ -822,9 +1068,7 @@ export function id3OrganizationBatchStatus(path: string) {
 }
 
 function nextSafeCurrent(journal: Id3OrganizationBatchJournal) {
-  const item = journal.items.find(
-    (candidate) => !['succeeded', 'skipped', 'blocked'].includes(candidate.state),
-  );
+  const item = journal.items.find((candidate) => !terminal(candidate.state));
   return item
     ? {
         trackId: item.trackId,

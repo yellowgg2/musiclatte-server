@@ -1,4 +1,11 @@
-import { chmodSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  linkSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -7,6 +14,7 @@ import {
   createId3ReferenceSnapshot,
   planId3PlaylistReferenceRestore,
   readId3ReferenceSnapshot,
+  verifyId3ReferenceContext,
 } from '../../tools/id3-organize-reference-guard.js';
 
 const root = () => mkdtempSync(join(tmpdir(), 'musiclatte-reference-guard-'));
@@ -73,5 +81,27 @@ describe('private multi-account ID3 reference guard', () => {
     expect(() =>
       planId3PlaylistReferenceRestore(['old', 'B', 'old'], ['B', 'C'], 'old', 'new'),
     ).toThrow('client_failed:reference_conflict');
+  });
+
+  it('keeps an unorganized child reference snapshot bound to its API and PAT', () => {
+    const directory = root();
+    const path = join(directory, 'unorganized-reference.json');
+    const token = 'mlpat_' + 'u'.repeat(48);
+    createId3ReferenceSnapshot({
+      path,
+      api: 'https://music.example/api/v1',
+      token,
+      trackId: 'unorganized-track',
+      starred: false,
+      playlists: [],
+    });
+    expect(verifyId3ReferenceContext(path, 'https://music.example/api/v1', token)).toMatchObject({
+      trackId: 'unorganized-track',
+    });
+    expect(() =>
+      verifyId3ReferenceContext(path, 'https://music.example/api/v1', 'mlpat_' + 'v'.repeat(48)),
+    ).toThrow('client_failed:reference_context');
+    linkSync(path, join(directory, 'hardlink.json'));
+    expect(() => readId3ReferenceSnapshot(path)).toThrow('client_failed:reference_private');
   });
 });

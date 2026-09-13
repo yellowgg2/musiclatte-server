@@ -1,6 +1,7 @@
 import {
   chmodSync,
   existsSync,
+  linkSync,
   lstatSync,
   mkdtempSync,
   mkdirSync,
@@ -49,6 +50,53 @@ function paths() {
 }
 
 describe('private ID3 organization batch journal', () => {
+  it('adds media-link identity and deterministic operations only to unorganized v3 children', async () => {
+    const module = await batchModule();
+    expect(module).toHaveProperty('createId3OrganizationSweepChildJournal');
+    if (!('createId3OrganizationSweepChildJournal' in module)) return;
+    const first = paths().stateFile;
+    const second = paths().stateFile;
+    const input = {
+      api: 'https://music.example/api/v1',
+      token: 'mlpat_' + 's'.repeat(48),
+      selectionId: 'selection-1',
+      selectionRevision: 'f'.repeat(64),
+      items: [
+        {
+          ordinal: 0,
+          item: {
+            mediaLinkId: 'media-1',
+            trackId: 'track-1',
+            title: 'Track one',
+            artist: null,
+            album: null,
+          },
+        },
+      ],
+    };
+    const one = module.createId3OrganizationSweepChildJournal({ ...input, path: first });
+    const two = module.createId3OrganizationSweepChildJournal({ ...input, path: second });
+    expect(one).toMatchObject({
+      schemaVersion: 3,
+      source: { kind: 'unorganized', selectionId: 'selection-1' },
+      items: [{ mediaLinkId: 'media-1', state: 'pending' }],
+    });
+    expect(one.items[0]!.operations).toEqual(two.items[0]!.operations);
+    expect(one.items[0]!.metadataSteps).toEqual(two.items[0]!.metadataSteps);
+    module.finalizeId3OrganizationSweepItem(first, 'media-1', 'already_organized');
+    expect(module.readId3OrganizationBatchJournal(first).items[0]).toMatchObject({
+      state: 'already_organized',
+      errorCode: 'already_organized',
+    });
+    expect(() =>
+      module.decodeId3OrganizationBatchJournal({
+        ...selection,
+        schemaVersion: 2,
+        source: { kind: 'unorganized', selectionId: 'selection-1' },
+      }),
+    ).toThrow('client_failed:journal_invalid');
+  });
+
   /** Upgrades a live v1 journal without losing its stable metadata operation or accepted checkpoint. */
   it('normalizes a v1 journal into ordered required and optional metadata checkpoints', async () => {
     const module = await batchModule();
@@ -263,6 +311,18 @@ describe('private ID3 organization batch journal', () => {
     writeFileSync(realState, '{}', { mode: 0o600 });
     symlinkSync(realState, linkedState.stateFile);
     expect(() => module.readId3OrganizationBatchJournal(linkedState.stateFile)).toThrow(
+      'client_failed:journal_private',
+    );
+
+    const hardLinkedState = paths();
+    module.createId3OrganizationBatchJournal({
+      path: hardLinkedState.stateFile,
+      api: 'https://music.example/api/v1',
+      token: 'mlpat_' + 'x'.repeat(48),
+      selection,
+    });
+    linkSync(hardLinkedState.stateFile, join(hardLinkedState.root, 'hardlink.json'));
+    expect(() => module.readId3OrganizationBatchJournal(hardLinkedState.stateFile)).toThrow(
       'client_failed:journal_private',
     );
 

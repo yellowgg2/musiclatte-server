@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstatSync, readFileSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
@@ -15,6 +15,8 @@ import {
   decodeOrganizationJobResponse,
   decodeOrganizationPreview,
   decodeOrganizationSelection,
+  decodeOrganizationStatusResponse,
+  decodeUnorganizedSelectionPage,
   metadataFields,
   organizationEvidenceKinds,
   type MetadataField,
@@ -26,6 +28,7 @@ import {
   checkpointId3OrganizationBatch,
   completeId3OrganizationBatchSharedItem,
   createId3OrganizationBatchJournal,
+  finalizeId3OrganizationSweepItem,
   id3OrganizationBatchBinding,
   id3OrganizationFinalMetadataBinding,
   id3OrganizationMetadataBinding,
@@ -36,6 +39,14 @@ import {
   skipId3OrganizationBatchItem,
   verifyId3OrganizationBatchContext,
 } from './id3-organize-batch-journal.js';
+import {
+  appendId3OrganizationSweepPage,
+  blockId3OrganizationSweep,
+  createId3OrganizationSweepJournal,
+  id3OrganizationSweepStatus,
+  nextId3OrganizationSweepItem,
+  verifyId3OrganizationSweepContext,
+} from './id3-organize-sweep-journal.js';
 import {
   checkpointId3ReferenceRestore,
   createId3ReferenceSnapshot,
@@ -81,6 +92,9 @@ export interface Id3OrganizeCommandOptions {
     | 'batch-next'
     | 'batch-skip'
     | 'batch-status'
+    | 'sweep-start'
+    | 'sweep-next'
+    | 'sweep-status'
     | 'references-snapshot'
     | 'references-restore'
     | 'batch-adopt-successor';
@@ -341,6 +355,158 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     trackId: required(options.trackId, 'target'),
     expectedRevision: required(options.revision, 'target'),
   });
+
+  const sweepCall = async (path: string, init: RequestInit = {}) => {
+    let response: Response;
+    try {
+      response = await request(base + path, {
+        ...init,
+        headers: { ...headers, ...(init.headers ?? {}) },
+      });
+    } catch {
+      return fail('network');
+    }
+    if (response.status !== 200) {
+      let code: unknown;
+      try {
+        const body = (await response.json()) as { error?: { code?: unknown } };
+        code = body.error?.code;
+      } catch {
+        // Error bodies are intentionally not reflected into stderr.
+      }
+      if (
+        typeof code === 'string' &&
+        ['snapshot_expired', 'snapshot_scope_changed', 'selection_too_large'].includes(code)
+      )
+        fail(code);
+      if (response.status === 401) fail('unauthenticated');
+      if (response.status === 403) fail('forbidden');
+      if ([502, 503, 504].includes(response.status)) fail('upstream_unavailable');
+      fail(`http_${response.status}`);
+    }
+    try {
+      return await response.json();
+    } catch {
+      return fail('response');
+    }
+  };
+
+  if (options.command === 'sweep-start') {
+    const stateFile = required(options.stateFile, 'state_file');
+    const capture = async (pageValue: unknown) => {
+      const page = decodeUnorganizedSelectionPage(pageValue);
+      if (!existsSync(stateFile)) {
+        createId3OrganizationSweepJournal({ path: stateFile, api: base, token, page });
+        return;
+      }
+      appendId3OrganizationSweepPage(stateFile, base, token, page);
+    };
+    try {
+      if (!existsSync(stateFile)) {
+        await capture(
+          await sweepCall('/metadata-organization/unorganized-selections', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ schemaVersion: 1 }),
+          }),
+        );
+      } else {
+        verifyId3OrganizationSweepContext(stateFile, base, token);
+      }
+      while (true) {
+        const journal = verifyId3OrganizationSweepContext(stateFile, base, token);
+        if (journal.state !== 'capturing') break;
+        if (Date.now() >= journal.expiresAt) fail('snapshot_expired');
+        if (journal.nextCursor === null) fail('capture_checkpoint_missing');
+        const query = new URLSearchParams({ cursor: journal.nextCursor, limit: '100' });
+        await capture(
+          await sweepCall(
+            '/metadata-organization/unorganized-selections/' +
+              encodeURIComponent(journal.selectionId) +
+              '/pages?' +
+              query.toString(),
+          ),
+        );
+      }
+    } catch (error) {
+      const code =
+        error instanceof Error && error.message.startsWith('client_failed:')
+          ? error.message.slice('client_failed:'.length)
+          : 'unknown';
+      if (
+        existsSync(stateFile) &&
+        [
+          'snapshot_expired',
+          'snapshot_scope_changed',
+          'selection_too_large',
+          'capture_checkpoint_missing',
+        ].includes(code)
+      ) {
+        const journal = verifyId3OrganizationSweepContext(stateFile, base, token);
+        if (journal.state === 'capturing') blockId3OrganizationSweep(stateFile, code);
+      } else {
+        throw error;
+      }
+    }
+    return id3OrganizationSweepStatus(stateFile);
+  }
+  if (options.command === 'sweep-next') {
+    const stateFile = required(options.stateFile, 'state_file');
+    verifyId3OrganizationSweepContext(stateFile, base, token);
+    const targetItem = nextId3OrganizationSweepItem(stateFile);
+    if (!targetItem) return null;
+    const childPath = join(dirname(stateFile), targetItem.childFile);
+    if (targetItem.state !== 'pending' || targetItem.hasRecordedJob) {
+      const item = nextId3OrganizationBatchItem(childPath);
+      return item
+        ? { ...item, mediaLinkId: targetItem.mediaLinkId, childFile: targetItem.childFile }
+        : null;
+    }
+    const statuses = decodeOrganizationStatusResponse(
+      await jsonPost(
+        '/metadata-organization/statuses',
+        {
+          schemaVersion: 1,
+          targets: [{ kind: 'media_link', mediaLinkId: targetItem.mediaLinkId }],
+        },
+        [200],
+      ),
+    );
+    const status = statuses.items[0];
+    if (
+      statuses.items.length !== 1 ||
+      status?.target.kind !== 'media_link' ||
+      status.target.mediaLinkId !== targetItem.mediaLinkId
+    )
+      fail('response');
+    if (status.state === 'needs_organization') {
+      const item = nextId3OrganizationBatchItem(childPath);
+      return item
+        ? { ...item, mediaLinkId: targetItem.mediaLinkId, childFile: targetItem.childFile }
+        : null;
+    }
+    const outcome =
+      status.state === 'organized'
+        ? 'already_organized'
+        : status.state === 'processing'
+          ? 'deferred_processing'
+          : status.state === 'attention'
+            ? 'deferred_attention'
+            : 'blocked_identity';
+    finalizeId3OrganizationSweepItem(childPath, targetItem.mediaLinkId, outcome);
+    const refreshed = id3OrganizationSweepStatus(stateFile);
+    return {
+      schemaVersion: 1 as const,
+      mediaLinkId: targetItem.mediaLinkId,
+      outcome,
+      aggregate: refreshed.aggregate,
+    };
+  }
+  if (options.command === 'sweep-status') {
+    const stateFile = required(options.stateFile, 'state_file');
+    verifyId3OrganizationSweepContext(stateFile, base, token);
+    return id3OrganizationSweepStatus(stateFile);
+  }
 
   if (options.command === 'batch-start') {
     const stateFile = required(options.stateFile, 'state_file');

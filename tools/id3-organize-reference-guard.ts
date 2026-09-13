@@ -68,6 +68,7 @@ function validateFile(path: string) {
     if (
       stat.isSymbolicLink() ||
       !stat.isFile() ||
+      stat.nlink !== 1 ||
       (stat.mode & 0o777) !== 0o600 ||
       stat.uid !== process.getuid?.() ||
       stat.size < 2 ||
@@ -153,7 +154,12 @@ function atomicWrite(path: string, snapshot: Id3ReferenceSnapshot) {
   try {
     try {
       const stale = lstatSync(temporary);
-      if (stale.isSymbolicLink() || !stale.isFile() || (stale.mode & 0o777) !== 0o600)
+      if (
+        stale.isSymbolicLink() ||
+        !stale.isFile() ||
+        stale.nlink !== 1 ||
+        (stale.mode & 0o777) !== 0o600
+      )
         fail('reference_private');
       unlinkSync(temporary);
     } catch (error) {
