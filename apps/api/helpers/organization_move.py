@@ -28,8 +28,10 @@ def equivalent(left, right):
     return unicodedata.normalize("NFC", left).casefold() == unicodedata.normalize("NFC", right).casefold()
 
 
-def named(parent, name):
+def named(parent, name, allow_exact=False):
     matches = [entry for entry in os.listdir(parent) if equivalent(entry, name)]
+    if allow_exact and name in matches:
+        return True
     if len(matches) > 1 or (matches and matches[0] != name):
         raise MoveError("destination_conflict")
     return bool(matches)
@@ -40,7 +42,7 @@ def directory_chain(root_fd, names, create, target):
     current = root_fd
     try:
         for name in names:
-            exists = named(current, name)
+            exists = named(current, name, not target)
             if not exists:
                 if not create:
                     return None, opened

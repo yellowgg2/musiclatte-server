@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -65,6 +66,28 @@ function setup(
   });
   return { musicRoot, sourceKey, targetKey, digest, store };
 }
+
+it('allows an exact source parent while keeping equivalent target parents conflicting', () => {
+  const helper = resolve('apps/api/helpers/organization_move.py');
+  const script = `
+import importlib.util
+from unittest.mock import patch
+
+spec = importlib.util.spec_from_file_location("organization_move", ${JSON.stringify(helper)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+with patch.object(module.os, "listdir", return_value=["Legacy", "LEGACY"]):
+    assert module.named(0, "Legacy", True)
+    try:
+        module.named(0, "Legacy", False)
+    except module.MoveError as error:
+        assert str(error) == "destination_conflict"
+    else:
+        raise AssertionError("equivalent target collision was accepted")
+`;
+  const result = spawnSync(python, ['-I', '-B', '-c', script], { encoding: 'utf8' });
+  expect(result.status, result.stderr).toBe(0);
+});
 
 it('atomically moves one regular file while preserving identity, mode, owner, and bytes', async () => {
   const s = setup();
