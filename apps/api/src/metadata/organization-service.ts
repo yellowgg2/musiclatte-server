@@ -9,6 +9,7 @@ import {
   type OrganizationSelectionSource,
   type OrganizationReferenceRestoreRequest,
   type OrganizationStatusRequest,
+  type UnorganizedSelectionRequest,
   decodeOrganizationStatusResponse,
 } from '@musiclatte/contracts';
 import { ApiError, type SessionService } from '../auth/session-service.js';
@@ -28,6 +29,9 @@ import { createOrganizationCandidates } from './organization-candidates.js';
 import { rejectMetadataUpstream } from '../auth/metadata-principal.js';
 import { isOrganizationAlbumProjectionPending } from './organization-album-projection.js';
 import { createOrganizationSelection } from './organization-selection.js';
+import { createUnorganizedLibrarySelection } from './organization-selection.js';
+import { createOrganizationSelectionRepository } from '../storage/organization-selection-repository.js';
+import { defaultOrganizationSelectionLimits } from '../automation/config.js';
 import { captureMetadataReferences, decodeMetadataReferences } from './reference-check.js';
 import { restoreMetadataReferencesForSuccessor } from './reference-restoration.js';
 
@@ -54,6 +58,14 @@ export function createOrganizationService(service: SessionService) {
     database: automation.database,
     clock: automation.clock,
   });
+  const selectionSnapshots = automation.curation
+    ? createOrganizationSelectionRepository({
+        database: automation.database,
+        clock: automation.clock,
+        cursorKey: service.options.signingKey,
+        limits: organization.policy.selection ?? defaultOrganizationSelectionLimits,
+      })
+    : null;
   const grants = createMetadataJobAuthorizer({
     database: automation.database,
     vault: automation.vault,
@@ -67,6 +79,27 @@ export function createOrganizationService(service: SessionService) {
     if (!metadataReady(metadata) || organization.ready?.() !== true)
       throw new ApiError(503, 'upstream_unavailable');
   };
+  const selectionError = (error: unknown): never => {
+    if (error instanceof ApiError) throw error;
+    const code = error instanceof Error ? error.message : '';
+    if (['invalid_cursor', 'invalid_limit'].includes(code))
+      throw new ApiError(400, 'invalid_request');
+    if (code === 'snapshot_scope_changed') throw new ApiError(409, code);
+    if (code === 'snapshot_expired') throw new ApiError(409, code);
+    if (code === 'snapshot_capacity') throw new ApiError(503, code);
+    throw error;
+  };
+  const selectionScope = (principal: Principal, allowedLibraryIds: readonly string[]) => ({
+    actorTokenId: principal.accessToken.id,
+    scopeHash: hash('unorganized-selection-scope', [
+      principal.instanceId,
+      principal.actorIdentityKey,
+      principal.accessToken.id,
+      [...principal.accessToken.scopes].sort(),
+      [...allowedLibraryIds].sort(),
+      principal.policyRevision,
+    ]),
+  });
   const publicJob = (job: NonNullable<ReturnType<typeof repository.getJob>>) => ({
     id: job.id,
     itemId: job.item.itemId,
@@ -119,6 +152,52 @@ export function createOrganizationService(service: SessionService) {
     return { file, snapshot, plan };
   };
   return {
+    async unorganizedSelection(
+      principal: Principal,
+      _body: UnorganizedSelectionRequest,
+      signal?: AbortSignal,
+    ) {
+      available();
+      if (!selectionSnapshots) throw new ApiError(503, 'upstream_unavailable');
+      const allowedLibraryIds = await provider.allowedLibraries(principal, signal);
+      await revalidateMetadataPrincipal(service, principal);
+      try {
+        return createUnorganizedLibrarySelection({
+          database: automation.database,
+          organization: repository,
+          snapshots: selectionSnapshots,
+          allowedLibraryIds,
+          actorTokenId: principal.accessToken.id,
+          scopeHash: selectionScope(principal, allowedLibraryIds).scopeHash,
+          currentPolicyVersion: organization.policy.policyVersion,
+          revision: (value) => hash('unorganized-inventory', value),
+          ...(signal ? { signal } : {}),
+        });
+      } catch (error) {
+        return selectionError(error);
+      }
+    },
+    async unorganizedSelectionPage(
+      principal: Principal,
+      input: { selectionId: string; cursor: string; limit?: string },
+      signal?: AbortSignal,
+    ) {
+      available();
+      if (!selectionSnapshots) throw new ApiError(503, 'upstream_unavailable');
+      signal?.throwIfAborted();
+      const allowedLibraryIds = await provider.allowedLibraries(principal, signal);
+      await revalidateMetadataPrincipal(service, principal);
+      try {
+        return selectionSnapshots.page({
+          scope: selectionScope(principal, allowedLibraryIds),
+          selectionId: input.selectionId,
+          cursor: input.cursor,
+          ...(input.limit ? { limit: Number(input.limit) } : {}),
+        });
+      } catch (error) {
+        return selectionError(error);
+      }
+    },
     async statuses(
       principal: MetadataPrincipal,
       body: OrganizationStatusRequest,

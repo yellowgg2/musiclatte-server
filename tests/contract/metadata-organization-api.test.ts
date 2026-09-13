@@ -116,6 +116,67 @@ describe('metadata organization public contract', () => {
       expect(() => decodeOrganizationSelection(invalid)).toThrow();
   });
 
+  /** Whole-library pages are immutable, bounded, and expose only the minimum current projection. */
+  it('should strictly decode unorganized selection requests and pages', async () => {
+    const contract =
+      (await import('../../packages/contracts/src/metadata-organization.js')) as Record<
+        string,
+        unknown
+      >;
+    const decodeRequest = contract.decodeUnorganizedSelectionRequest;
+    const decodePage = contract.decodeUnorganizedSelectionPage;
+    expect(decodeRequest).toBeTypeOf('function');
+    expect(decodePage).toBeTypeOf('function');
+    if (typeof decodeRequest !== 'function' || typeof decodePage !== 'function') return;
+
+    expect(decodeRequest({ schemaVersion: 1 })).toEqual({
+      schemaVersion: 1,
+    });
+    const page = {
+      schemaVersion: 1,
+      selectionId: 'selection-1',
+      capturedAt: 1000,
+      expiresAt: 2000,
+      inventoryRevision: 'a'.repeat(64),
+      completeCoverage: true,
+      summary: {
+        total: 5,
+        organized: 1,
+        needsOrganization: 1,
+        processing: 1,
+        attention: 1,
+        unknown: 1,
+      },
+      items: [
+        {
+          mediaLinkId: 'media-1',
+          trackId: 'track-1',
+          title: 'Synthetic title',
+          artist: 'Synthetic artist',
+          album: null,
+        },
+      ],
+      nextCursor: 'opaque.cursor',
+    };
+    expect(decodePage(page)).toEqual(page);
+    for (const invalid of [
+      { schemaVersion: 1, libraryId: 'private-selector' },
+      { schemaVersion: 1, account: 'foreign-account' },
+      {},
+    ])
+      expect(() => decodeRequest(invalid)).toThrow();
+    for (const invalid of [
+      { ...page, sourceKey: 'private/path.mp3' },
+      { ...page, completeCoverage: false },
+      { ...page, expiresAt: 999 },
+      { ...page, inventoryRevision: 'not-a-revision' },
+      { ...page, summary: { ...page.summary, total: 4 } },
+      { ...page, items: [...page.items, page.items[0]] },
+      { ...page, items: [{ ...page.items[0], title: '' }] },
+    ])
+      expect(() => decodePage(invalid)).toThrow();
+  });
+
   /** Bulk status DTOs preserve target identity and order while rejecting malformed or private fields. */
   it('should strictly decode bounded organization status requests and responses', async () => {
     const contract =

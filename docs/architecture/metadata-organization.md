@@ -179,3 +179,28 @@ positions. The caller cannot supply it. The server revalidates the PAT after the
 read, propagates client disconnect cancellation, and returns a strict DTO containing no path,
 token, proof, upstream payload, or unrelated playlist data. Selection creates no metadata or
 organization job and performs no filesystem, playlist, or favorite mutation.
+
+## Whole-library unorganized snapshot
+
+`POST /api/v1/metadata-organization/unorganized-selections` is a separate PAT-only boundary that
+requires `metadata:read` and `media:organize`. Its body is exactly `{ "schemaVersion": 1 }`; account,
+library, path, and filter selectors are rejected. The server uses only the principal's current
+allowed-library intersection and requires every corresponding curation inventory run to be
+`ready` with completed discovery. Otherwise it returns `inventory_incomplete` with only the
+affected public library IDs and bounded coverage states, and creates no snapshot.
+
+Schema v29 stores this selection in dedicated bounded parent/item tables, independent of the
+legacy curation query snapshot pool. Organization policy may set `selection.snapshotMaxAgeMs`,
+`selection.snapshotMaxItems`, and `selection.snapshotMaxCount`; safe defaults preserve older
+private policy files. Creation walks current non-tombstoned inventory in stable library/track order,
+classifies MediaLinks through the canonical organization-state projection in chunks of 100, and
+stores only `needs_organization` rows. The parent retains the immutable inventory revision and all
+five state counts. A capacity failure rolls back the parent and every ordinal instead of returning
+a partial result.
+
+Pages contain only MediaLink ID, current track ID, title, artist, and album. The cursor MAC binds
+selection ID, next ordinal, principal scope, and inventory revision. A changed token, library or
+policy scope fails with `snapshot_scope_changed`; expiry or a missing ordinal fails closed. Status
+changes after capture do not rewrite the snapshot, so a sweep must revalidate each MediaLink through
+the live status endpoint immediately before work. This boundary creates no jobs and touches no
+filesystem or gonic endpoint.

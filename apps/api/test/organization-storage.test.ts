@@ -399,7 +399,7 @@ describe('organization storage', () => {
   /** The additive migration installs the dedicated deterministic latest-state lookup index. */
   it('should migrate the organization status lookup index and use it in the bounded plan', async () => {
     const s = await setup();
-    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 28 });
+    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 29 });
     const plan = s.c.db.connection
       .prepare(
         'EXPLAIN QUERY PLAN SELECT id FROM organization_items WHERE media_link_id=? ORDER BY stage_changed_at DESC,id DESC LIMIT 1',
@@ -439,7 +439,7 @@ describe('organization storage', () => {
 
   it('migrates through the organization schemas and keeps immutable intent idempotent', async () => {
     const s = await setup();
-    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 28 });
+    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 29 });
     const first = s.repository.createOrReplay(s.input);
     expect(
       s.repository.createOrReplay({ ...s.input, id: 'discarded', itemId: 'discarded-item' }),

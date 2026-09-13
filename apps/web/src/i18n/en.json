@@ -169,6 +169,7 @@
   "error.conflict": "This playlist changed. Refresh it before trying again.",
   "error.outcome_unknown": "The result could not be confirmed. Refresh before trying again.",
   "error.selection_too_large": "This collection is too large to process at once.",
+  "error.inventory_incomplete": "The library inventory is still incomplete. Try again after its scan finishes.",
   "music.title": "Music",
   "music.eyebrow": "A little space for your music",
   "music.description": "Explore your folders or find a favorite.",

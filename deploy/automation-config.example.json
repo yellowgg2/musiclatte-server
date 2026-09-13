@@ -22,6 +22,11 @@
   },
   "organization": {
     "policyVersion": "id3-managed-v1",
+    "selection": {
+      "snapshotMaxAgeMs": 60000,
+      "snapshotMaxItems": 100000,
+      "snapshotMaxCount": 10
+    },
     "accounts": [
       {
         "username": "example-user",

@@ -81,6 +81,7 @@ export function createApp(options?: AuthOptions) {
         code: safe.code,
         retryable: safe.status >= 500,
         ...(safe.reason ? { reason: safe.reason } : {}),
+        ...(safe.details ? { details: safe.details } : {}),
       },
     });
   });

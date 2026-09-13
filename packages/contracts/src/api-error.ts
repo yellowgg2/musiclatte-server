@@ -28,14 +28,27 @@ export const apiErrorCodes = [
   'snapshot_expired',
   'snapshot_scope_changed',
   'snapshot_capacity',
+  'inventory_incomplete',
   'selection_too_large',
   'outcome_unknown',
   'internal_error',
 ] as const;
 export type ApiErrorCode = (typeof apiErrorCodes)[number];
+export interface InventoryIncompleteDetails {
+  libraries: Array<{
+    libraryId: string;
+    status: 'missing' | 'discovering' | 'partial' | 'stale' | 'error' | 'retry_pending';
+  }>;
+}
+export type ApiErrorDetails = InventoryIncompleteDetails;
 export interface ApiErrorResponse {
   schemaVersion: 1;
-  error: { code: ApiErrorCode; retryable: boolean; reason?: ApiFailureReason };
+  error: {
+    code: ApiErrorCode;
+    retryable: boolean;
+    reason?: ApiFailureReason;
+    details?: ApiErrorDetails;
+  };
 }
 export const apiErrorSchema = {
   type: 'object',
@@ -51,6 +64,29 @@ export const apiErrorSchema = {
         code: { type: 'string', enum: apiErrorCodes },
         retryable: { type: 'boolean' },
         reason: { type: 'string', enum: [...curationFailureReasons, ...mixFailureReasons] },
+        details: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['libraries'],
+          properties: {
+            libraries: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 100,
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['libraryId', 'status'],
+                properties: {
+                  libraryId: { type: 'string', minLength: 1, maxLength: 256 },
+                  status: {
+                    enum: ['missing', 'discovering', 'partial', 'stale', 'error', 'retry_pending'],
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     },
   },

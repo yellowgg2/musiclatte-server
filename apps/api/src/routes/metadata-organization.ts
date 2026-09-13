@@ -7,8 +7,10 @@ import {
   type OrganizationSelectionRequest,
   type OrganizationReferenceRestoreRequest,
   type OrganizationStatusRequest,
+  type UnorganizedSelectionRequest,
   type AccessTokenScope,
   decodeOrganizationStatusRequest,
+  decodeUnorganizedSelectionRequest,
 } from '@musiclatte/contracts';
 import { requiredCredentials } from '../auth/guards.js';
 import { cookieMutation, requireJSON } from '../auth/csrf.js';
@@ -124,6 +126,60 @@ export function registerMetadataOrganizationRoutes(
         request,
         { json: true, scopes: ['metadata:read', 'collections:read'] },
         (principal, signal) => getService().selection(principal, request.body, signal),
+      ),
+  );
+  app.post<{ Body: UnorganizedSelectionRequest }>(
+    '/api/v1/metadata-organization/unorganized-selections',
+    {
+      attachValidation: true,
+      schema: {
+        querystring: requests.empty,
+        body: requests.unorganizedSelection,
+        response: { 200: responses.unorganizedSelection },
+      },
+    },
+    (request) =>
+      boundary(
+        request,
+        { json: true, scopes: ['metadata:read', 'media:organize'] },
+        (principal, signal) => {
+          let body: UnorganizedSelectionRequest;
+          try {
+            body = decodeUnorganizedSelectionRequest(request.body);
+          } catch {
+            throw new ApiError(400, 'invalid_request');
+          }
+          return getService().unorganizedSelection(principal, body, signal);
+        },
+      ),
+  );
+  app.get<{
+    Params: { id: string };
+    Querystring: { cursor: string; limit?: string };
+  }>(
+    '/api/v1/metadata-organization/unorganized-selections/:id/pages',
+    {
+      attachValidation: true,
+      schema: {
+        params: requests.params,
+        querystring: requests.unorganizedSelectionPage,
+        response: { 200: responses.unorganizedSelection },
+      },
+    },
+    (request) =>
+      boundary(
+        request,
+        { json: false, scopes: ['metadata:read', 'media:organize'] },
+        (principal, signal) =>
+          getService().unorganizedSelectionPage(
+            principal,
+            {
+              selectionId: request.params.id,
+              cursor: request.query.cursor,
+              ...(request.query.limit ? { limit: request.query.limit } : {}),
+            },
+            signal,
+          ),
       ),
   );
   app.post<{ Body: { trackId: string } }>(

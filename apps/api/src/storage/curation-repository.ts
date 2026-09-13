@@ -49,6 +49,7 @@ export interface CurationObservation {
   trusted: boolean;
   title: string | null;
   artist: string[];
+  album?: string | null;
   fields: Record<CurationField, boolean>;
   changedFields: readonly CurationField[];
   fingerprints?: Record<CurationField, string>;
@@ -355,10 +356,11 @@ export function createCurationRepository(options: {
         const next = reduceCuration(state(row), { type: 'observed', ...observation });
         saveState(id, next);
         db.prepare(
-          'UPDATE curation_tracks SET title=?,artist_json=?,last_verified_at=? WHERE id=?',
+          'UPDATE curation_tracks SET title=?,artist_json=?,album=?,last_verified_at=? WHERE id=?',
         ).run(
           observation.title,
           JSON.stringify(observation.artist),
+          observation.album ?? null,
           observation.trusted ? clock() : row.last_verified_at!,
           id,
         );

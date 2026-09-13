@@ -34,7 +34,7 @@ describe('metadata storage', () => {
       raw.close();
     }
     const upgraded = context.open(directory);
-    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 28 });
+    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 29 });
     expect(
       upgraded.connection.prepare('SELECT revision,gonic_song_id FROM media_links').get(),
     ).toEqual({ revision: 7, gonic_song_id: 'song-1' });
@@ -276,7 +276,7 @@ describe('metadata storage', () => {
   it('should create the current schema with every metadata ledger table', async () => {
     context = await createTestContext();
     expect(context.db.connection.prepare('PRAGMA user_version').get()).toEqual({
-      user_version: 28,
+      user_version: 29,
     });
     expect(
       context.db.connection

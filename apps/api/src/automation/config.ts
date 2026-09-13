@@ -38,7 +38,15 @@ export interface CurationRuntimePolicy {
 export interface OrganizationRuntimePolicy {
   policyVersion: 'id3-managed-v1';
   accounts: readonly { username: string; accountDirectory: string }[];
+  selection?: import('../storage/organization-selection-repository.js').OrganizationSelectionSnapshotLimits;
 }
+export const defaultOrganizationSelectionLimits: Readonly<
+  import('../storage/organization-selection-repository.js').OrganizationSelectionSnapshotLimits
+> = Object.freeze({
+  snapshotMaxAgeMs: 60_000,
+  snapshotMaxItems: 100_000,
+  snapshotMaxCount: 10,
+});
 export function readAutomationConfig(env: Record<string, string | undefined>):
   | { enabled: false }
   | {
@@ -151,10 +159,15 @@ export function readAutomationConfig(env: Record<string, string | undefined>):
     if (Number(inventory.sweepIntervalMs) < Number(inventory.batchTimeMs)) throw new Error();
     let organization: OrganizationRuntimePolicy | undefined;
     if (Object.hasOwn(config, 'organization')) {
-      const value = curationRecord((config as Record<string, unknown>).organization, [
-        'policyVersion',
-        'accounts',
-      ]);
+      const organizationInput = (config as Record<string, unknown>).organization;
+      const value = curationRecord(
+        organizationInput,
+        organizationInput &&
+          typeof organizationInput === 'object' &&
+          Object.hasOwn(organizationInput, 'selection')
+          ? ['policyVersion', 'accounts', 'selection']
+          : ['policyVersion', 'accounts'],
+      );
       if (value.policyVersion !== 'id3-managed-v1' || !Array.isArray(value.accounts))
         throw new Error();
       const accounts = value.accounts.map((item) => {
@@ -186,9 +199,28 @@ export function readAutomationConfig(env: Record<string, string | undefined>):
         new Set(directories).size !== directories.length
       )
         throw new Error();
+      let selection = defaultOrganizationSelectionLimits;
+      if (Object.hasOwn(value, 'selection')) {
+        const decoded = curationRecord(value.selection, [
+          'snapshotMaxAgeMs',
+          'snapshotMaxItems',
+          'snapshotMaxCount',
+        ]);
+        for (const [key, entry] of Object.entries(decoded)) {
+          const maximum = key.endsWith('Ms') ? 86_400_000 : 1_000_000;
+          if (!Number.isSafeInteger(entry) || Number(entry) < 1 || Number(entry) > maximum)
+            throw new Error();
+        }
+        selection = Object.freeze({
+          snapshotMaxAgeMs: Number(decoded.snapshotMaxAgeMs),
+          snapshotMaxItems: Number(decoded.snapshotMaxItems),
+          snapshotMaxCount: Number(decoded.snapshotMaxCount),
+        });
+      }
       organization = Object.freeze({
         policyVersion: 'id3-managed-v1',
         accounts: Object.freeze(accounts),
+        selection,
       });
     }
     return {

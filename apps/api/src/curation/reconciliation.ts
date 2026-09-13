@@ -47,6 +47,7 @@ export function curationSnapshot(snapshot: MetadataTagSnapshot) {
   return {
     title,
     artist,
+    album: values.album,
     fields,
     fingerprints,
     requiredFingerprint: requiredFingerprint(title, artist),

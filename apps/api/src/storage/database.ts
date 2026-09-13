@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 28;
+export const SCHEMA_VERSION = 29;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -33,6 +33,7 @@ const MIGRATIONS = [
   new URL('./migrations/026-curation-inventory-retries.sql', import.meta.url),
   new URL('./migrations/027-organization-relative-paths.sql', import.meta.url),
   new URL('./migrations/028-organization-status-lookup.sql', import.meta.url),
+  new URL('./migrations/029-unorganized-selection-snapshots.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -82,11 +83,14 @@ export function validateSchema(db: DatabaseSync): void {
     'organization_source_locations',
     'organization_events',
     'organization_identity_publications',
+    'organization_selection_snapshots',
+    'organization_selection_snapshot_items',
   ])
     db.prepare(`SELECT * FROM ${table} LIMIT 0`);
   db.prepare(
     'SELECT attempt_count,next_attempt_at,last_error_code,terminal FROM curation_inventory_queue LIMIT 0',
   );
+  db.prepare('SELECT album FROM curation_tracks LIMIT 0');
   db.prepare(
     'SELECT library_id,kind,opaque_id,failure_count,last_error_code,last_cause,first_failed_at,last_failed_at,resolved_at FROM curation_inventory_failures LIMIT 0',
   );

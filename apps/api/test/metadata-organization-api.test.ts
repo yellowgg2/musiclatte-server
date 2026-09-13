@@ -10,6 +10,7 @@ import { createApp } from '../src/app.js';
 import { createSessionService } from '../src/auth/session-service.js';
 import { verifyAccessTokenPrincipal } from '../src/auth/metadata-principal.js';
 import { createOrganizationRepository } from '../src/storage/organization-repository.js';
+import { createCurationRepository } from '../src/storage/curation-repository.js';
 import { decodeMetadataChanges } from '../../../packages/contracts/src/metadata.js';
 
 const toolchain = join(homedir(), '.cache/musiclatte-toolchain');
@@ -79,9 +80,24 @@ async function setup({
     clock: () => recentNow,
     policy,
     maxTokenAgeMs: 86400000,
+    curation: {
+      limits: {
+        claimLeaseMs: 1000,
+        maxTargets: 10,
+        snapshotMaxAgeMs: 60_000,
+        snapshotMaxItems: 1000,
+        snapshotMaxCount: 10,
+      },
+      ready: () => true,
+    },
     organization: {
       policy: {
         policyVersion: 'id3-managed-v1' as const,
+        selection: {
+          snapshotMaxAgeMs: 60_000,
+          snapshotMaxItems: 10_000,
+          snapshotMaxCount: 10,
+        },
         accounts: [
           { username: password.username, accountDirectory: actorAccountDirectory },
           ...(sourceAccountDirectory === actorAccountDirectory
@@ -127,6 +143,47 @@ async function setup({
   const media = c.storage.db.connection
     .prepare('SELECT id FROM media_links WHERE library_id=? AND gonic_song_id=?')
     .get('music', trackId)!;
+  const curation = createCurationRepository({
+    database: c.storage.db,
+    clock: () => recentNow,
+    cursorKey: options.signingKey,
+    limits: automation.curation.limits,
+  });
+  const trackRef = curation.discover({
+    libraryId: 'music',
+    trackId,
+    format: 'mp3',
+    mediaLinkId: String(media.id),
+    fileIdentity: 'f'.repeat(64),
+    bindingRevision: 1,
+  });
+  curation.observe(trackRef, {
+    revision,
+    requiredFingerprint: 'required',
+    audioIdentity: 'audio',
+    policyVersion: 'required-v1',
+    trusted: true,
+    title: 'Original synthetic',
+    artist: ['Original artist'],
+    album: 'Original album',
+    fields: {
+      title: true,
+      artist: true,
+      album: true,
+      albumArtist: true,
+      trackNumber: true,
+      year: false,
+      genre: false,
+      cover: false,
+      lyrics: false,
+    },
+    changedFields: [],
+  });
+  c.storage.db.connection
+    .prepare(
+      "INSERT INTO curation_inventory_runs(library_id,generation,status,last_discovery_at,last_reconciled_at,event_sequence,checkpoint_json) VALUES('music','generation-1','ready',?,?,0,'{\"discoveryComplete\":true}')",
+    )
+    .run(recentNow, recentNow);
   c.storage.db.connection
     .prepare(
       "INSERT INTO metadata_jobs(id,identity_key,library_id,operation_id_hash,request_hash,kind,created_at) VALUES('completed-metadata',?,'music',?,?,'edit',?)",
@@ -163,10 +220,191 @@ async function setup({
     trackId,
     revision,
     login,
+    curation,
+    actorIdentityKey: principal.actorIdentityKey,
   };
 }
 
 describe('metadata organization PAT API', () => {
+  /** Whole-library selection is an explicit PAT-only endpoint, separate from collection selection. */
+  it('should expose the unorganized selection endpoint', async () => {
+    const s = await setup();
+    const db = s.c.storage.db.connection;
+    for (let index = 0; index < 100; index++) {
+      const mediaLinkId = `selection-media-${index}`;
+      const trackId = `selection-track-${String(index).padStart(3, '0')}`;
+      db.prepare(
+        "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at) VALUES(?,'music',?,?,1,'available',?)",
+      ).run(mediaLinkId, `imports/account/selection-${index}.mp3`, trackId, recentNow);
+      db.prepare(
+        "INSERT INTO curation_tracks(id,library_id,track_id,media_link_id,binding_revision,format,title,artist_json,album,base_status,policy_version,validation) VALUES(?,'music',?,?,1,'mp3',?,'[\"Selection artist\"]','Selection album','unreviewed','required-v1','verified')",
+      ).run(`selection-ref-${index}`, trackId, mediaLinkId, `Selection ${index}`);
+    }
+    const response = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/unorganized-selections',
+      headers: s.headers,
+      payload: { schemaVersion: 1 },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({
+      schemaVersion: 1,
+      completeCoverage: true,
+      summary: {
+        total: 101,
+        organized: 0,
+        needsOrganization: 101,
+        processing: 0,
+        attention: 0,
+        unknown: 0,
+      },
+    });
+    expect(response.json().items).toHaveLength(100);
+    expect(response.json().nextCursor).toBeTypeOf('string');
+    expect(response.body).not.toMatch(/source\.mp3|relativeFileKey|actor|token|path/i);
+
+    db.prepare(
+      "INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES('selection-active-job',?,'music',?,?,?,1,'id3-managed-v1','completed-metadata','revision','[]',?)",
+    ).run(s.actorIdentityKey, 'c'.repeat(64), 'd'.repeat(64), s.accessTokenId, recentNow);
+    db.prepare(
+      "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('selection-active-item','selection-active-job','selection-media-99','imports/account/selection-99.mp3','imports/account/ID3-managed/selection-99.mp3','selection-track-099',?,?,'queued',?)",
+    ).run('e'.repeat(64), 'f'.repeat(64), recentNow);
+    const live = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/statuses',
+      headers: s.headers,
+      payload: {
+        schemaVersion: 1,
+        targets: [{ kind: 'media_link', mediaLinkId: 'selection-media-99' }],
+      },
+    });
+    expect(live.json().items[0]).toMatchObject({ state: 'processing', stage: 'queued' });
+
+    const next = await s.app.inject({
+      method: 'GET',
+      url: `/api/v1/metadata-organization/unorganized-selections/${response.json().selectionId}/pages?cursor=${encodeURIComponent(response.json().nextCursor)}`,
+      headers: { authorization: `Bearer ${s.token}` },
+    });
+    expect(next.statusCode, next.body).toBe(200);
+    expect(next.json().items).toHaveLength(1);
+    expect(next.json().items[0].mediaLinkId).toBe('selection-media-99');
+    expect(next.json().nextCursor).toBeNull();
+    expect([...response.json().items, ...next.json().items]).toHaveLength(101);
+
+    const tampered = await s.app.inject({
+      method: 'GET',
+      url: `/api/v1/metadata-organization/unorganized-selections/${response.json().selectionId}/pages?cursor=${encodeURIComponent(response.json().nextCursor + 'x')}`,
+      headers: { authorization: `Bearer ${s.token}` },
+    });
+    expect(tampered.statusCode).toBe(400);
+    expect(tampered.json().error.code).toBe('invalid_request');
+
+    const foreign = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/access-tokens',
+      headers: {
+        ...browserHeaders,
+        cookie: cookieOf(s.login),
+        'x-csrf-token': s.login.json().csrfToken,
+      },
+      payload: {
+        name: 'Other selection token',
+        scopes: ['metadata:read', 'metadata:write', 'media:organize'],
+        libraryIds: ['music'],
+        expiresAt: recentNow + 60000,
+      },
+    });
+    const foreignPage = await s.app.inject({
+      method: 'GET',
+      url: `/api/v1/metadata-organization/unorganized-selections/${response.json().selectionId}/pages?cursor=${encodeURIComponent(response.json().nextCursor)}`,
+      headers: { authorization: `Bearer ${foreign.json().token}` },
+    });
+    expect(foreignPage.statusCode).toBe(409);
+    expect(foreignPage.json().error.code).toBe('snapshot_scope_changed');
+  });
+
+  /** Selection requires explicit current-principal PAT authority and complete inventory coverage. */
+  it('should reject selectors, browser sessions, missing scope, and incomplete inventory', async () => {
+    const s = await setup();
+    const endpoint = '/api/v1/metadata-organization/unorganized-selections';
+    for (const payload of [
+      { schemaVersion: 1, libraryId: 'music' },
+      { schemaVersion: 1, username: password.username },
+      { schemaVersion: 1, filter: 'needs' },
+    ]) {
+      const response = await s.app.inject({
+        method: 'POST',
+        url: endpoint,
+        headers: s.headers,
+        payload,
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: endpoint,
+          headers: {
+            ...browserHeaders,
+            cookie: cookieOf(s.login),
+            'x-csrf-token': s.login.json().csrfToken,
+          },
+          payload: { schemaVersion: 1 },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const limited = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/access-tokens',
+      headers: {
+        ...browserHeaders,
+        cookie: cookieOf(s.login),
+        'x-csrf-token': s.login.json().csrfToken,
+      },
+      payload: {
+        name: 'Selection read only',
+        scopes: ['metadata:read'],
+        libraryIds: ['music'],
+        expiresAt: recentNow + 60000,
+      },
+    });
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: endpoint,
+          headers: {
+            authorization: `Bearer ${limited.json().token}`,
+            'content-type': 'application/json',
+          },
+          payload: { schemaVersion: 1 },
+        })
+      ).statusCode,
+    ).toBe(403);
+    s.c.storage.db.connection
+      .prepare(
+        "UPDATE curation_inventory_runs SET status='partial',last_error_code='inventory_pending' WHERE library_id='music'",
+      )
+      .run();
+    const incomplete = await s.app.inject({
+      method: 'POST',
+      url: endpoint,
+      headers: s.headers,
+      payload: { schemaVersion: 1 },
+    });
+    expect(incomplete.statusCode).toBe(409);
+    expect(incomplete.json().error.code).toBe('inventory_incomplete');
+    expect(incomplete.json().error.details).toEqual({
+      libraries: [{ libraryId: 'music', status: 'partial' }],
+    });
+    expect(
+      s.c.storage.db.connection
+        .prepare('SELECT count(*) AS n FROM organization_selection_snapshots')
+        .get()!.n,
+    ).toBe(0);
+  });
+
   /** The status read is the only organization endpoint shared by browser sessions and read PATs. */
   it('should return the same scoped ordered statuses for cookie and PAT principals', async () => {
     const s = await setup();

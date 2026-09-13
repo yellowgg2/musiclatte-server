@@ -49,8 +49,34 @@ function read(value: unknown) {
 it('loads explicit username to single-segment organization accounts', () => {
   expect(read(policy)).toMatchObject({
     enabled: true,
-    organization: policy.organization,
+    organization: {
+      ...policy.organization,
+      selection: {
+        snapshotMaxAgeMs: 60_000,
+        snapshotMaxItems: 100_000,
+        snapshotMaxCount: 10,
+      },
+    },
   });
+});
+
+it('loads bounded dedicated organization selection limits', () => {
+  const selection = {
+    snapshotMaxAgeMs: 30_000,
+    snapshotMaxItems: 10_001,
+    snapshotMaxCount: 4,
+  };
+  expect(read({ ...policy, organization: { ...policy.organization, selection } })).toMatchObject({
+    organization: { selection },
+  });
+  for (const invalid of [
+    { ...selection, snapshotMaxAgeMs: 0 },
+    { ...selection, snapshotMaxItems: 1_000_001 },
+    { ...selection, unexpected: 1 },
+  ])
+    expect(() =>
+      read({ ...policy, organization: { ...policy.organization, selection: invalid } }),
+    ).toThrow('Invalid automation configuration');
 });
 
 /** Keeps the original four-key inventory policy valid while making its implicit retry behavior explicit. */

@@ -159,6 +159,35 @@ export interface OrganizationSelection {
   uniqueTrackCount: number;
   items: OrganizationSelectionItem[];
 }
+export interface UnorganizedSelectionRequest {
+  schemaVersion: 1;
+}
+export interface UnorganizedSelectionSummary {
+  total: number;
+  organized: number;
+  needsOrganization: number;
+  processing: number;
+  attention: number;
+  unknown: number;
+}
+export interface UnorganizedSelectionItem {
+  mediaLinkId: string;
+  trackId: string;
+  title: string;
+  artist: string | null;
+  album: string | null;
+}
+export interface UnorganizedSelectionPage {
+  schemaVersion: 1;
+  selectionId: string;
+  capturedAt: number;
+  expiresAt: number;
+  inventoryRevision: string;
+  completeCoverage: true;
+  summary: UnorganizedSelectionSummary;
+  items: UnorganizedSelectionItem[];
+  nextCursor: string | null;
+}
 export interface OrganizationReferencePlaylist {
   id: string;
   name: string;
@@ -265,6 +294,29 @@ const selectionItem = {
     },
   },
 } as const;
+const unorganizedSelectionSummary = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['total', 'organized', 'needsOrganization', 'processing', 'attention', 'unknown'],
+  properties: Object.fromEntries(
+    ['total', 'organized', 'needsOrganization', 'processing', 'attention', 'unknown'].map((key) => [
+      key,
+      { type: 'integer', minimum: 0 },
+    ]),
+  ),
+} as const;
+const unorganizedSelectionItem = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['mediaLinkId', 'trackId', 'title', 'artist', 'album'],
+  properties: {
+    mediaLinkId: id,
+    trackId: id,
+    title: text,
+    artist: { anyOf: [text, { type: 'null' }] },
+    album: { anyOf: [text, { type: 'null' }] },
+  },
+} as const;
 const referencePlaylist = {
   type: 'object',
   additionalProperties: false,
@@ -338,6 +390,21 @@ export const organizationRequestSchemas = {
     additionalProperties: false,
     required: ['source'],
     properties: { source: selectionSourceRequest },
+  },
+  unorganizedSelection: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schemaVersion'],
+    properties: { schemaVersion: { const: 1 } },
+  },
+  unorganizedSelectionPage: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['cursor'],
+    properties: {
+      cursor: { type: 'string', minLength: 1, maxLength: 2048 },
+      limit: { type: 'string', pattern: '^(?:[1-9]|[1-9][0-9]|100)$' },
+    },
   },
   referenceSnapshot: {
     type: 'object',
@@ -427,6 +494,34 @@ export const organizationResponseSchemas = {
       occurrenceCount: { type: 'integer', minimum: 0, maximum: 1000 },
       uniqueTrackCount: { type: 'integer', minimum: 0, maximum: 1000 },
       items: { type: 'array', maxItems: 1000, items: selectionItem },
+    },
+  },
+  unorganizedSelection: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schemaVersion',
+      'selectionId',
+      'capturedAt',
+      'expiresAt',
+      'inventoryRevision',
+      'completeCoverage',
+      'summary',
+      'items',
+      'nextCursor',
+    ],
+    properties: {
+      schemaVersion: { const: 1 },
+      selectionId: id,
+      capturedAt: { type: 'integer', minimum: 0 },
+      expiresAt: { type: 'integer', minimum: 1 },
+      inventoryRevision: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+      completeCoverage: { const: true },
+      summary: unorganizedSelectionSummary,
+      items: { type: 'array', maxItems: 100, items: unorganizedSelectionItem },
+      nextCursor: {
+        anyOf: [{ type: 'string', minLength: 1, maxLength: 2048 }, { type: 'null' }],
+      },
     },
   },
   referenceSnapshot: {
@@ -646,6 +741,87 @@ export function decodeOrganizationSelection(value: unknown): OrganizationSelecti
     occurrenceCount: Number(row.occurrenceCount),
     uniqueTrackCount: Number(row.uniqueTrackCount),
     items,
+  };
+}
+export function decodeUnorganizedSelectionRequest(value: unknown): UnorganizedSelectionRequest {
+  const row = record(value, ['schemaVersion']);
+  if (row.schemaVersion !== 1) throw new Error('Invalid unorganized selection request');
+  return { schemaVersion: 1 };
+}
+
+export function decodeUnorganizedSelectionPage(value: unknown): UnorganizedSelectionPage {
+  const row = record(value, [
+    'schemaVersion',
+    'selectionId',
+    'capturedAt',
+    'expiresAt',
+    'inventoryRevision',
+    'completeCoverage',
+    'summary',
+    'items',
+    'nextCursor',
+  ]);
+  const summary = record(row.summary, [
+    'total',
+    'organized',
+    'needsOrganization',
+    'processing',
+    'attention',
+    'unknown',
+  ]);
+  const counts: unknown[] = [
+    summary.organized,
+    summary.needsOrganization,
+    summary.processing,
+    summary.attention,
+    summary.unknown,
+  ];
+  if (
+    row.schemaVersion !== 1 ||
+    !nonempty(row.selectionId) ||
+    !Number.isSafeInteger(row.capturedAt) ||
+    Number(row.capturedAt) < 0 ||
+    !Number.isSafeInteger(row.expiresAt) ||
+    Number(row.expiresAt) <= Number(row.capturedAt) ||
+    typeof row.inventoryRevision !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(row.inventoryRevision) ||
+    row.completeCoverage !== true ||
+    !Number.isSafeInteger(summary.total) ||
+    Number(summary.total) < 0 ||
+    counts.some((count) => !Number.isSafeInteger(count) || Number(count) < 0) ||
+    counts.map(Number).reduce((total, count) => total + count, 0) !== Number(summary.total) ||
+    !Array.isArray(row.items) ||
+    row.items.length > 100 ||
+    !(row.nextCursor === null || (nonempty(row.nextCursor) && row.nextCursor.length <= 2048))
+  )
+    throw new Error('Invalid unorganized selection response');
+  const seen = new Set<string>();
+  const items = row.items.map((value) => {
+    const item = record(value, ['mediaLinkId', 'trackId', 'title', 'artist', 'album']);
+    if (
+      !nonempty(item.mediaLinkId) ||
+      seen.has(item.mediaLinkId) ||
+      !nonempty(item.trackId) ||
+      !nonempty(item.title) ||
+      !(item.artist === null || nonempty(item.artist)) ||
+      !(item.album === null || nonempty(item.album))
+    )
+      throw new Error('Invalid unorganized selection response');
+    seen.add(item.mediaLinkId);
+    return item as unknown as UnorganizedSelectionItem;
+  });
+  if (items.length > Number(summary.needsOrganization))
+    throw new Error('Invalid unorganized selection response');
+  return {
+    schemaVersion: 1,
+    selectionId: row.selectionId,
+    capturedAt: Number(row.capturedAt),
+    expiresAt: Number(row.expiresAt),
+    inventoryRevision: row.inventoryRevision,
+    completeCoverage: true,
+    summary: summary as unknown as UnorganizedSelectionSummary,
+    items,
+    nextCursor: row.nextCursor as string | null,
   };
 }
 export function decodeOrganizationCandidates(value: unknown): OrganizationCandidates {

@@ -185,6 +185,8 @@ describe('durable engine requests', () => {
       DROP TRIGGER organization_identity_publications_no_delete;
       DROP TRIGGER organization_identity_publications_no_update;
       DROP TABLE organization_identity_publications;
+      DROP TABLE organization_selection_snapshot_items;
+      DROP TABLE organization_selection_snapshots;
       DROP TRIGGER organization_events_no_delete;
       DROP TRIGGER organization_events_no_update;
       DROP TABLE organization_events;
@@ -232,7 +234,7 @@ describe('durable engine requests', () => {
       PRAGMA user_version=7;
     `);
     const migrated = s.c.open();
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 28 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 29 });
     expect(s.c.enginesFor(migrated).get()).toEqual(before);
     expect(s.c.sessionsFor(migrated).find(session.token)?.proof).toEqual(proof);
     const mailbox = createEngineRequestRepository({ ...s.options, database: migrated });
