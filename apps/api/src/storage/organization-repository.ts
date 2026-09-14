@@ -294,7 +294,13 @@ export function createOrganizationRepository(options: {
           SELECT s.ordinal,m.id AS media_link_id,m.library_id,m.relative_file_key,m.gonic_song_id,
             m.revision AS media_link_revision,i.id AS item_id,i.stage,i.stage_changed_at,
             i.new_track_id,i.target_key,j.policy_version,
-            l.media_link_id AS source_location_media_link_id,l.managed_key,
+            (SELECT imported.source_id FROM import_items imported
+              WHERE imported.media_link_id=m.id
+                AND imported.stage IN ('registering','ready','duplicate')
+              ORDER BY imported.id LIMIT 1
+            ) AS import_source_id,
+            l.media_link_id AS source_location_media_link_id,
+            l.source_id AS source_location_source_id,l.managed_key,
             l.organization_item_id,
             (SELECT max(c.sequence)
               FROM metadata_changes c
@@ -338,17 +344,21 @@ export function createOrganizationRepository(options: {
         const identityAvailable =
           row.media_link_id !== null &&
           (!input.requireInventoryIdentity || row.inventory_matches === 1);
+        const importSourceId = row.import_source_id === null ? null : text(row.import_source_id);
         const hasSourceLocation = row.source_location_media_link_id !== null;
         const verificationComplete =
           stage !== 'succeeded' ||
-          (typeof row.metadata_watermark === 'number' && hasSourceLocation);
+          (typeof row.metadata_watermark === 'number' &&
+            (importSourceId === null || hasSourceLocation));
         const bindingMatches =
           stage !== 'succeeded' ||
           (row.new_track_id === row.gonic_song_id &&
             row.target_key === row.relative_file_key &&
-            row.source_location_media_link_id === row.media_link_id &&
-            row.managed_key === row.relative_file_key &&
-            row.organization_item_id === row.item_id);
+            (importSourceId === null ||
+              (row.source_location_media_link_id === row.media_link_id &&
+                row.source_location_source_id === importSourceId &&
+                row.managed_key === row.relative_file_key &&
+                row.organization_item_id === row.item_id)));
         const publicState = projectOrganizationState({
           stage,
           identityAvailable,

@@ -408,10 +408,33 @@ describe('metadata organization PAT API', () => {
   /** The status read is the only organization endpoint shared by browser sessions and read PATs. */
   it('should return the same scoped ordered statuses for cookie and PAT principals', async () => {
     const s = await setup();
+    const db = s.c.storage.db.connection;
     const mediaLinkId = String(
-      s.c.storage.db.connection
+      db
         .prepare('SELECT id FROM media_links WHERE library_id=? AND gonic_song_id=?')
         .get('music', s.trackId)!.id,
+    );
+    const relativeFileKey = String(
+      db.prepare('SELECT relative_file_key FROM media_links WHERE id=?').get(mediaLinkId)!
+        .relative_file_key,
+    );
+    db.prepare(
+      "INSERT INTO metadata_changes(item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at) VALUES('completed-item',?,?, 'music','old','new','{}','cover','[\"title\"]','verified',?)",
+    ).run(mediaLinkId, s.actorIdentityKey, recentNow);
+    db.prepare(
+      "INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES('legacy-status-job',?,'music',?,?,?,1,'id3-managed-v1','completed-metadata','revision','[]',?)",
+    ).run(s.actorIdentityKey, 'c'.repeat(64), 'd'.repeat(64), s.accessTokenId, recentNow);
+    db.prepare(
+      "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('legacy-status-item','legacy-status-job',?,?,?,?,?,?,?,'succeeded',?)",
+    ).run(
+      mediaLinkId,
+      relativeFileKey,
+      relativeFileKey,
+      s.trackId,
+      s.trackId,
+      'e'.repeat(64),
+      'f'.repeat(64),
+      recentNow,
     );
     const payload = {
       schemaVersion: 1,
@@ -447,17 +470,17 @@ describe('metadata organization PAT API', () => {
       items: [
         {
           target: payload.targets[0],
-          state: 'needs_organization',
-          reason: 'never_organized',
-          stage: null,
-          changedAt: null,
+          state: 'organized',
+          reason: 'verified',
+          stage: 'succeeded',
+          changedAt: recentNow,
         },
         {
           target: payload.targets[1],
-          state: 'needs_organization',
-          reason: 'never_organized',
-          stage: null,
-          changedAt: null,
+          state: 'organized',
+          reason: 'verified',
+          stage: 'succeeded',
+          changedAt: recentNow,
         },
         {
           target: payload.targets[2],
@@ -469,6 +492,42 @@ describe('metadata organization PAT API', () => {
       ],
     });
     expect(pat.body).not.toMatch(/source\.mp3|actor|operation|digest|token|errorCode/i);
+
+    db.prepare(
+      "INSERT INTO import_jobs(id,identity_key,library_id,operation_id_hash,request_hash,created_at) VALUES('status-import-job',?,'music',?,?,?)",
+    ).run('1'.repeat(64), '2'.repeat(64), '3'.repeat(64), recentNow);
+    db.prepare(
+      "INSERT INTO import_items(id,job_id,item_order,source_id,stage,media_link_id,stage_changed_at,ready_at) VALUES('status-import-item','status-import-job',0,'status-source','ready',?,?,?)",
+    ).run(mediaLinkId, recentNow, recentNow);
+    const importedPat = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/statuses',
+      headers: s.headers,
+      payload,
+    });
+    const importedCookie = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/statuses',
+      headers: {
+        ...browserHeaders,
+        cookie: cookieOf(s.login),
+        'x-csrf-token': s.login.json().csrfToken,
+      },
+      payload,
+    });
+    expect(importedCookie.json()).toEqual(importedPat.json());
+    expect(importedPat.json().items.slice(0, 2)).toEqual(
+      payload.targets.slice(0, 2).map((target) => ({
+        target,
+        state: 'unknown',
+        reason: 'verification_missing',
+        stage: 'succeeded',
+        changedAt: recentNow,
+      })),
+    );
+    expect(importedPat.body).not.toMatch(
+      /status-source|source\.mp3|actor|operation|digest|token|errorCode/i,
+    );
   });
 
   /** Status auth and validation fail before projection without weakening PAT-only writes. */

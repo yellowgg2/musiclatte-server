@@ -105,6 +105,14 @@ append-only receipt or event history. A fresh trusted snapshot reconciliation up
 field state. The import item that originally established the MediaLink supplies the YouTube source
 ID for `organization_source_locations`; no raw source or media payload is copied into this mapping.
 
+Organization status treats that source-location row as import provenance, not as universal success
+evidence. A succeeded item must always match the current MediaLink track ID, relative key, policy,
+and metadata watermark. When the same MediaLink has a qualifying import item in `registering`,
+`ready`, or `duplicate`, status additionally requires the source location to match the selected
+import source ID, managed key, and latest organization item. A legacy or externally imported
+MediaLink with no qualifying import row may therefore be verified from the organization ledger
+without creating a synthetic source ID or backfilling either provenance table.
+
 ## Account reference migration
 
 After rebound, reference work reopens only the accepted token owner's account and replaces every

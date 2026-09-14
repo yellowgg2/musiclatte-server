@@ -207,8 +207,8 @@ describe('organization storage', () => {
     ]);
   });
 
-  /** Succeeded status requires current binding, source location, policy, and metadata freshness. */
-  it('should keep succeeded organization state fresh only across non-path metadata changes', async () => {
+  /** Succeeded status requires import provenance only for Musiclatte-imported media links. */
+  it('should preserve legacy success while imported provenance stays fail closed', async () => {
     const s = await setup();
     s.repository.createOrReplay(s.input);
     const readOrganizationStatuses = (
@@ -239,12 +239,6 @@ describe('organization storage', () => {
         "UPDATE organization_items SET stage='succeeded',new_track_id='song-2',stage_changed_at=1100 WHERE id='organization-item'",
       )
       .run();
-    s.repository.bindSourceLocation({
-      itemId: 'organization-item',
-      mediaLinkId: 'media-1',
-      sourceId: 'synthetic-source',
-      managedKey: s.input.targetKey,
-    });
     const read = () =>
       readOrganizationStatuses({
         targets: [{ kind: 'track', trackId: 'song-2' }],
@@ -252,6 +246,50 @@ describe('organization storage', () => {
         currentPolicyVersion: 'id3-managed-v1',
       })[0]!;
     expect(read()).toMatchObject({ state: 'organized', reason: 'verified', stage: 'succeeded' });
+
+    connection
+      .prepare(
+        "INSERT INTO import_jobs(id,identity_key,library_id,operation_id_hash,request_hash,created_at) VALUES('import-job',?,'library-1',?,?,1000)",
+      )
+      .run('6'.repeat(64), '7'.repeat(64), '8'.repeat(64));
+    connection
+      .prepare(
+        "INSERT INTO import_items(id,job_id,item_order,source_id,stage,media_link_id,stage_changed_at) VALUES('import-item','import-job',0,'synthetic-source','queued','media-1',1000)",
+      )
+      .run();
+    expect(read()).toMatchObject({ state: 'organized', reason: 'verified' });
+    for (const stage of ['registering', 'ready', 'duplicate'] as const) {
+      connection
+        .prepare(
+          "UPDATE import_items SET stage=?,registering_at=1000,ready_at=CASE WHEN ?='ready' THEN 1000 ELSE ready_at END WHERE id='import-item'",
+        )
+        .run(stage, stage);
+      expect(read()).toMatchObject({
+        state: 'unknown',
+        reason: 'verification_missing',
+        stage: 'succeeded',
+      });
+    }
+
+    s.repository.bindSourceLocation({
+      itemId: 'organization-item',
+      mediaLinkId: 'media-1',
+      sourceId: 'synthetic-source',
+      managedKey: s.input.targetKey,
+    });
+    expect(read()).toMatchObject({ state: 'organized', reason: 'verified' });
+    connection
+      .prepare(
+        "UPDATE organization_source_locations SET source_id='different-source' WHERE media_link_id='media-1'",
+      )
+      .run();
+    expect(read()).toMatchObject({
+      state: 'needs_organization',
+      reason: 'path_binding_changed',
+    });
+    connection
+      .prepare('UPDATE organization_source_locations SET source_id=? WHERE media_link_id=?')
+      .run('synthetic-source', 'media-1');
     expect(
       readOrganizationStatuses({
         targets: [{ kind: 'track', trackId: 'song-2' }],
@@ -268,6 +306,34 @@ describe('organization storage', () => {
     connection
       .prepare('UPDATE organization_source_locations SET managed_key=? WHERE media_link_id=?')
       .run(s.input.targetKey, 'media-1');
+
+    s.repository.createOrReplay({
+      ...s.input,
+      id: 'older-organization-job',
+      itemId: 'older-organization-item',
+      identityKey: '9'.repeat(64),
+      operationIdHash: 'a'.repeat(64),
+      requestHash: 'b'.repeat(64),
+    });
+    connection
+      .prepare(
+        "UPDATE organization_items SET stage_changed_at=900 WHERE id='older-organization-item'",
+      )
+      .run();
+    connection
+      .prepare(
+        "UPDATE organization_source_locations SET organization_item_id='older-organization-item' WHERE media_link_id='media-1'",
+      )
+      .run();
+    expect(read()).toMatchObject({
+      state: 'needs_organization',
+      reason: 'path_binding_changed',
+    });
+    connection
+      .prepare(
+        'UPDATE organization_source_locations SET organization_item_id=? WHERE media_link_id=?',
+      )
+      .run('organization-item', 'media-1');
 
     const addMetadataChange = (id: string, fields: string[]) => {
       connection
