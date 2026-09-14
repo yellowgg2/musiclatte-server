@@ -62,6 +62,15 @@ is `recovery_required`, with a specific `filesystem`, `gonic`, `references`, or 
 owner. The repository uses a generation plus expiring owner lease, so an expired process cannot
 commit a later checkpoint.
 
+SQLite writer contention before the rename boundary is not a semantic operation failure. The
+worker leaves the current pre-rename stage and lease generation reclaimable instead of writing a
+terminal `failed` result. For jobs created by an older worker that already recorded one of the
+recognized SQLite contention messages as `failed`, an exact submit replay may requeue only the same
+job and item after current PAT, file, metadata revision, evidence, immutable intent, and absence of
+a successor are all revalidated. The replay reseals the accepted grant and resumes from
+`references_captured` when a baseline exists, otherwise from `queued`; every other terminal failure
+remains terminal.
+
 Accepted PAT work stores no raw token or upstream proof. A row-bound encrypted grant is tied to the
 automation credential epoch and immutable organization intent. Revoking the PAT blocks new work but
 does not erase an already accepted forward-recovery grant. Normal terminal completion clears it.

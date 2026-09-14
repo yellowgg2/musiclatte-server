@@ -40,6 +40,7 @@ export function createOrganizationWorker(options: {
   repository: RepositoryPort;
   authorize(claim: OrganizationClaim): Promise<{ client: unknown }>;
   captureReferences(client: unknown, trackId: string): Promise<MetadataReferences>;
+  transientContention?(error: unknown): boolean;
   fileStore: FileStorePort;
   fileIdentity(libraryId: string, key: string): string;
 }) {
@@ -71,6 +72,7 @@ export function createOrganizationWorker(options: {
         await options.fileStore.move(preimage);
         options.repository.transition({ ...fence(claim), stage: 'moved' });
       } catch (cause) {
+        if (!renameBoundary && options.transientContention?.(cause)) throw cause;
         const code = cause instanceof Error ? cause.message : 'worker_interrupted';
         options.repository.transition({
           ...fence(claim),

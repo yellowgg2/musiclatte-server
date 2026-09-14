@@ -13,6 +13,7 @@ import {
   type OrganizationStage,
 } from '../metadata/organization-state.js';
 import { decodeMetadataReferences, type MetadataReferences } from '../metadata/reference-check.js';
+import { transientSqliteContention } from './sqlite-contention.js';
 
 type Row = Record<string, SQLOutputValue>;
 const hex = (value: unknown) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -387,7 +388,53 @@ export function createOrganizationRepository(options: {
           .get(input.identityKey, input.operationIdHash);
         if (replay) {
           if (replay.request_hash !== input.requestHash) throw new Error('conflict');
-          return readJob(text(replay.id), input.identityKey)!;
+          const replayId = text(replay.id);
+          const job = db.prepare('SELECT * FROM organization_jobs WHERE id=?').get(replayId) as
+            Row | undefined;
+          const item = db
+            .prepare('SELECT * FROM organization_items WHERE job_id=?')
+            .get(replayId) as Row | undefined;
+          if (
+            job &&
+            item &&
+            item.stage === 'failed' &&
+            transientSqliteContention(item.error_code) &&
+            item.new_track_id === null
+          ) {
+            if (
+              input.id !== job.id ||
+              input.itemId !== item.id ||
+              input.identityKey !== job.identity_key ||
+              input.libraryId !== job.library_id ||
+              input.actorTokenId !== job.actor_token_id ||
+              input.policyRevision !== job.policy_revision ||
+              input.policyVersion !== job.policy_version ||
+              input.metadataJobId !== job.metadata_job_id ||
+              input.metadataRevision !== job.metadata_revision ||
+              JSON.stringify(input.sourceEvidence) !== job.source_evidence_json ||
+              input.mediaLinkId !== item.media_link_id ||
+              input.sourceKey !== item.source_key ||
+              input.targetKey !== item.target_key ||
+              input.oldTrackId !== item.old_track_id ||
+              input.fileIdentity !== item.file_identity ||
+              input.audioIdentity !== item.audio_identity ||
+              !input.encryptedJobGrant ||
+              !hex(input.grantEpoch)
+            )
+              throw new Error('conflict');
+            const stage = item.baseline_json === null ? 'queued' : 'references_captured';
+            const updated = db
+              .prepare(
+                "UPDATE organization_items SET stage=?,error_code=NULL,next_owner=NULL,stage_changed_at=?,lease_owner=NULL,lease_expires_at=NULL,encrypted_job_grant=?,grant_epoch=? WHERE id=? AND stage='failed' AND new_track_id IS NULL AND lease_owner IS NULL",
+              )
+              .run(stage, now(), input.encryptedJobGrant, input.grantEpoch, input.itemId);
+            if (Number(updated.changes) !== 1) throw new Error('conflict');
+            event(input.itemId, 'transient_requeued', {
+              stage,
+              reason: 'sqlite_contention',
+            });
+          }
+          return readJob(replayId, input.identityKey)!;
         }
         if (
           !input.id ||

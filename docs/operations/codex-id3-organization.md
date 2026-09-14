@@ -65,6 +65,13 @@ them, split the change into sequential manifests. Keep the last successful metad
 result revision for organization submission. Reuse the same operation ID after a lost response.
 If that replay is already `succeeded`, the client checkpoints the terminal response once and does
 not attempt a second identical journal transition.
+
+A deployed worker may have recorded pre-rename SQLite contention as a terminal failure before the
+contention recovery fix. Preserve the journal and replay `organization-submit` with the exact same
+operation-bound state, metadata job, revision, and evidence. The server revalidates the current
+principal and source before resealing only that existing job; it never creates a replacement intent.
+The replay is refused for a changed body, a non-contention failure, an existing successor, or a
+source/revision mismatch.
 `metadata-submit` is a single-shot flow: after the server accepts the job, or if submission fails
 after a claim was granted, the client idempotently releases that claim. The accepted job continues
 under its durable grant and file fence, so the next claim need not wait for the lease to expire.

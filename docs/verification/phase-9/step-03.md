@@ -20,3 +20,16 @@
 
 Final gates: project formatting, focused unit/contract tests, typecheck, build, `format:check`, and
 `git diff --check`.
+
+## 2026-09-14 production contention recovery
+
+- Incident: one pre-rename organization attempt reached terminal `failed` with SQLite writer
+  contention, no successor track, and the frozen client journal still bound to the accepted job.
+- RED: the organization worker terminalized injected `database is locked`; exact submit replay of a
+  legacy contention failure remained `failed` with its accepted grant cleared.
+- GREEN: pre-rename contention remains reclaimable, while an exact fully revalidated replay of the
+  same legacy job restores its grant and resumes from its durable reference baseline. Changed
+  requests, non-contention failures, and successor-bearing jobs remain closed.
+- Focused verification: organization worker/runtime/storage/API unit coverage and the metadata
+  organization contract; full typecheck, build, formatting, deployment health, and resumed runtime
+  evidence are recorded with the incident deployment.

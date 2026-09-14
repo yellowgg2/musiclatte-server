@@ -71,6 +71,34 @@ it('durably captures account references and preimage before moving', async () =>
   ]);
 });
 
+it('leaves pre-rename SQLite contention reclaimable instead of recording terminal failure', async () => {
+  const transitions: { stage: string; errorCode?: string }[] = [];
+  const worker = createOrganizationWorker({
+    repository: {
+      recordReferences: () => {
+        throw new Error('database is locked');
+      },
+      recordMovePreimage: () => {},
+      transition: (input) => transitions.push(input),
+      resumeRecovery: () => {},
+    },
+    authorize: async () => ({ client: {} }),
+    captureReferences: async () => ({ trackId: 'old', starred: false, playlists: [] }),
+    transientContention: (error) =>
+      error instanceof Error && error.message.includes('database is locked'),
+    fileIdentity: (_libraryId, key) =>
+      key === claim.sourceKey ? claim.fileIdentity : prepared.targetFenceIdentity,
+    fileStore: {
+      prepare: async () => prepared,
+      move: async () => {},
+      classify: async () => 'source_only' as const,
+    },
+  });
+
+  await expect(worker.process(claim)).rejects.toThrow('database is locked');
+  expect(transitions).toEqual([]);
+});
+
 it('leaves a post-rename crash for filesystem-owned forward recovery', async () => {
   const transitions: { stage: string; errorCode?: string }[] = [];
   const worker = createOrganizationWorker({

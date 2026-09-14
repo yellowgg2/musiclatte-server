@@ -30,6 +30,7 @@ import {
 import { createSubsonicClient } from './subsonic/client.js';
 import { createMetadataJobAuthorizer } from './auth/metadata-job-authorizer.js';
 import { createOrganizationRepository } from './storage/organization-repository.js';
+import { transientSqliteContention } from './storage/sqlite-contention.js';
 import { createOrganizationFileStore } from './metadata/organization-file-store.js';
 import { createOrganizationWorker } from './metadata/organization-worker.js';
 import { resolveOrganizationAccountScope } from './metadata/organization-path.js';
@@ -86,12 +87,7 @@ export function createMetadataScheduler(tasks: {
 }
 
 export function metadataWorkerContention(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    ['database is locked', 'database_is_locked', 'SQLITE_BUSY'].some((message) =>
-      error.message.includes(message),
-    )
-  );
+  return transientSqliteContention(error);
 }
 /** Read-only health inspection cannot initialize keys, execute tools, or refresh its own receipt. */
 export function metadataWorkerHealth(env: MetadataEnvironment, now = Date.now()): boolean {
@@ -450,6 +446,7 @@ export async function runMetadataWorker(env: MetadataEnvironment, external: Abor
                 trackId,
                 signal,
               ),
+            transientContention: metadataWorkerContention,
           })
         : undefined;
     const organizationCurationRepository =

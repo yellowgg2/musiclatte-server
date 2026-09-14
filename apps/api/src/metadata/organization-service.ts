@@ -34,6 +34,7 @@ import { createOrganizationSelectionRepository } from '../storage/organization-s
 import { defaultOrganizationSelectionLimits } from '../automation/config.js';
 import { captureMetadataReferences, decodeMetadataReferences } from './reference-check.js';
 import { restoreMetadataReferencesForSuccessor } from './reference-restoration.js';
+import { transientSqliteContention } from '../storage/sqlite-contention.js';
 
 type Principal = Awaited<ReturnType<typeof verifyAccessTokenPrincipal>>;
 
@@ -403,12 +404,21 @@ export function createOrganizationService(service: SessionService) {
           'SELECT id,request_hash FROM organization_jobs WHERE identity_key=? AND operation_id_hash=?',
         )
         .get(principal.actorIdentityKey, operationIdHash);
+      const replayJob = replay
+        ? repository.getJob(String(replay.id), principal.actorIdentityKey)
+        : null;
       if (replay) {
         if (replay.request_hash !== requestHash) throw new ApiError(409, 'conflict');
-        return {
-          schemaVersion: 1 as const,
-          job: publicJob(scopedJob(principal, String(replay.id))),
-        };
+        if (
+          !replayJob ||
+          replayJob.item.stage !== 'failed' ||
+          !transientSqliteContention(replayJob.item.errorCode) ||
+          replayJob.item.newTrackId !== null
+        )
+          return {
+            schemaVersion: 1 as const,
+            job: publicJob(scopedJob(principal, String(replay.id))),
+          };
       }
       const { file, snapshot, plan } = await inspect(principal, body);
       if (plan.status !== 'ready') throw new ApiError(422, 'invalid_request');
@@ -460,8 +470,8 @@ export function createOrganizationService(service: SessionService) {
       }
       await revalidateMetadataPrincipal(service, principal);
       const intent = {
-        id: randomUUID(),
-        itemId: randomUUID(),
+        id: replayJob?.id ?? randomUUID(),
+        itemId: replayJob?.item.itemId ?? randomUUID(),
         identityKey: principal.actorIdentityKey,
         libraryId: file.libraryId,
         operationIdHash,

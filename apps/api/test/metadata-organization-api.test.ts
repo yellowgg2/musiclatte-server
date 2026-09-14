@@ -1131,6 +1131,32 @@ describe('metadata organization PAT API', () => {
         })
       ).json(),
     ).toEqual(submit.json());
+    const job = submit.json().job;
+    s.c.storage.db.connection
+      .prepare(
+        "UPDATE organization_items SET baseline_json=?,stage='failed',error_code='database is locked',next_owner=NULL,lease_owner=NULL,lease_expires_at=NULL,encrypted_job_grant=NULL,grant_epoch=NULL WHERE id=?",
+      )
+      .run(JSON.stringify({ trackId: s.trackId, starred: false, playlists: [] }), job.itemId);
+    const contentionReplay = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization-jobs',
+      headers: s.headers,
+      payload: body,
+    });
+    expect(contentionReplay.statusCode).toBe(202);
+    expect(contentionReplay.json().job.stage).toBe('references_captured');
+    expect(
+      s.c.storage.db.connection
+        .prepare(
+          "SELECT count(*) AS count FROM organization_events WHERE kind='transient_requeued'",
+        )
+        .get()!.count,
+    ).toBe(1);
+    expect(
+      s.c.storage.db.connection
+        .prepare('SELECT encrypted_job_grant FROM organization_items WHERE id=?')
+        .get(job.itemId)!.encrypted_job_grant,
+    ).not.toBeNull();
     expect(
       (
         await s.app.inject({
@@ -1149,7 +1175,6 @@ describe('metadata organization PAT API', () => {
         })
       ).statusCode,
     ).toBe(409);
-    const job = submit.json().job;
     expect(
       (
         await s.app.inject({
@@ -1157,7 +1182,7 @@ describe('metadata organization PAT API', () => {
           headers: { authorization: `Bearer ${s.token}` },
         })
       ).json(),
-    ).toEqual(submit.json());
+    ).toEqual(contentionReplay.json());
     s.c.storage.db.connection
       .prepare(
         "UPDATE organization_items SET stage='recovery_required',error_code='worker_interrupted',next_owner='filesystem',lease_owner=NULL,lease_expires_at=NULL WHERE id=?",
