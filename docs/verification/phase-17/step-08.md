@@ -27,11 +27,24 @@
 - `npm run typecheck` and `npm run build` passed. The build retained only the existing Vite
   large-chunk warning.
 
-## Rollout boundary
+## Production rollout
 
-The production observation used to define this fix was aggregate-only: 230 latest succeeded rows
-matched the current track/path/policy/watermark evidence, had no qualifying import provenance, and
-had no source-location row. This TDD cycle did not reconnect to production, deploy, modify its
-database, create jobs, or touch music files. The pre-deploy aggregate refresh, private backup,
-deployment, post-deploy status convergence, row-count invariance, health checks, and final UI
-acceptance remain separate authorized work.
+- Deployed exact `main` commit `2b46ba030f8c8e9630ea02d605fbab6d3eb5caca` to Unraid with the
+  seven documented Compose overlays.
+- Before recreation, an online SQLite backup plus import, metadata, and automation policy snapshots
+  were stored owner-only under
+  `/mnt/user/appdata/musiclatte-server-private/backups/phase-17-step-08-20260914-092032`.
+- The pre-deploy aggregate was 230 latest succeeded rows, 230 common eligible rows, 230 eligible
+  non-import rows, zero qualifying import rows, and zero source-location rows. Schema was 29.
+- After deployment, the 230 eligible tracks were queried through the production PAT status endpoint
+  in three bounded batches. All 230 returned `organized / verified`, with exact input order.
+- Post-deploy aggregate and row counts were unchanged: 231 organization items, zero source
+  locations, zero import items, and schema 29. No backfill, metadata job, organization job, or music
+  file write was performed.
+- API, web, worker, metadata-worker, and Gonic health checks passed. Gateway live/readiness returned
+  200; a temporary browser session verified random-library access and a 1,024-byte Range response
+  with status 206, `Accept-Ranges`, and `Content-Range`. Scan, import, organization, saved mixes,
+  listening history, stream quality, and artist-info capabilities remained available; scrobbling
+  stayed enabled and session max age remained 2,592,000 seconds.
+
+Final visual and cross-route user acceptance remains pending in `P17-UA-001–002`.
