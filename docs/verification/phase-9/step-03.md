@@ -30,6 +30,14 @@ Final gates: project formatting, focused unit/contract tests, typecheck, build, 
 - GREEN: pre-rename contention remains reclaimable, while an exact fully revalidated replay of the
   same legacy job restores its grant and resumes from its durable reference baseline. Changed
   requests, non-contention failures, and successor-bearing jobs remain closed.
-- Focused verification: organization worker/runtime/storage/API unit coverage and the metadata
-  organization contract; full typecheck, build, formatting, deployment health, and resumed runtime
-  evidence are recorded with the incident deployment.
+- Focused verification: organization worker/runtime/storage/API unit coverage passed 44/44 and the
+  metadata organization contract passed 9/9; typecheck, build, formatting, and diff checks passed.
+- Deployment: exact `main` commit `d8d545d15954bfb52f912522efe89a51ff4cb34f` was built for and
+  deployed to only the production API and metadata worker after an owner-only online management
+  SQLite/key backup and import, metadata, and automation policy snapshots. API, metadata worker,
+  import worker, web, and Gonic were healthy; live/readiness returned 200 and recreated services had
+  zero restarts.
+- Resume: exact replay of the preserved operation revalidated and completed the same failed item,
+  created its successor, restored both account snapshots (including one playlist occurrence), and
+  passed final ID3, one-front-JPEG, and Gonic successor-binding checks. The frozen sweep then
+  advanced normally; no replacement intent, direct database edit, or manual file move was used.
