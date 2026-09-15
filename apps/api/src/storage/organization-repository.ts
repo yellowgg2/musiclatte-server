@@ -927,20 +927,116 @@ export function createOrganizationRepository(options: {
         const oldTrackId = text(row.old_track_id);
         const link = db.prepare('SELECT * FROM media_links WHERE id=?').get(mediaLinkId) as
           Row | undefined;
+        const conflictingLinks = db
+          .prepare(
+            'SELECT * FROM media_links WHERE library_id=? AND id<>? AND (relative_file_key=? OR gonic_song_id=?)',
+          )
+          .all(libraryId, mediaLinkId, targetKey, input.newTrackId) as Row[];
         if (
           !link ||
           link.library_id !== libraryId ||
           !(
             (link.relative_file_key === sourceKey && link.gonic_song_id === oldTrackId) ||
             (link.relative_file_key === targetKey && link.gonic_song_id === input.newTrackId)
-          ) ||
-          db
-            .prepare(
-              'SELECT 1 FROM media_links WHERE library_id=? AND id<>? AND (relative_file_key=? OR gonic_song_id=?) LIMIT 1',
-            )
-            .get(libraryId, mediaLinkId, targetKey, input.newTrackId)
+          )
         )
           throw new Error('conflict');
+        const curation = db
+          .prepare('SELECT * FROM curation_tracks WHERE media_link_id=?')
+          .all(mediaLinkId) as Row[];
+        if (curation.length > 1) throw new Error('conflict');
+        let trackRef = curation.length ? text(curation[0]!.id) : null;
+        let adoptedTrackRef: string | null = null;
+        if (conflictingLinks.length) {
+          const alias = conflictingLinks.length === 1 ? conflictingLinks[0]! : null;
+          const aliasId = alias ? text(alias.id) : '';
+          const aliases = alias
+            ? (db
+                .prepare('SELECT * FROM curation_tracks WHERE media_link_id=?')
+                .all(aliasId) as Row[])
+            : [];
+          const candidate = aliases.length === 1 ? aliases[0]! : null;
+          const retiredKey = validateRelativeKey(
+            `.musiclatte-retired/${input.targetFileIdentity}.mp3`,
+          );
+          const aliasOwned = alias
+            ? db
+                .prepare(
+                  `SELECT 1 WHERE
+                    EXISTS(SELECT 1 FROM metadata_items WHERE media_link_id=?) OR
+                    EXISTS(SELECT 1 FROM metadata_changes WHERE media_link_id=?) OR
+                    EXISTS(SELECT 1 FROM import_items WHERE media_link_id=?) OR
+                    EXISTS(SELECT 1 FROM organization_items WHERE media_link_id=?) OR
+                    EXISTS(SELECT 1 FROM organization_source_locations WHERE media_link_id=?) OR
+                    EXISTS(SELECT 1 FROM curation_source_events WHERE media_link_id=?) OR
+                    EXISTS(SELECT 1 FROM organization_selection_snapshot_items WHERE media_link_id=?)`,
+                )
+                .get(aliasId, aliasId, aliasId, aliasId, aliasId, aliasId, aliasId)
+            : null;
+          const activeClaim =
+            candidate && trackRef
+              ? (() => {
+                  const currentTime = now();
+                  return db
+                    .prepare(
+                      `SELECT 1 FROM curation_claim_items items
+                       JOIN curation_claims claims ON claims.id=items.claim_id
+                       WHERE items.track_ref IN (@trackRef,@candidateId)
+                         AND claims.released_at IS NULL
+                         AND claims.created_at<=@currentTime
+                         AND claims.lease_until>@currentTime LIMIT 1`,
+                    )
+                    .get({
+                      trackRef,
+                      candidateId: text(candidate.id),
+                      currentTime,
+                    });
+                })()
+              : null;
+          const retiredKeyConflict = alias
+            ? db
+                .prepare(
+                  'SELECT 1 FROM media_links WHERE library_id=? AND id<>? AND relative_file_key=?',
+                )
+                .get(libraryId, aliasId, retiredKey)
+            : null;
+          if (
+            !alias ||
+            alias.relative_file_key !== targetKey ||
+            alias.gonic_song_id !== input.newTrackId ||
+            alias.availability !== 'available' ||
+            !candidate ||
+            !trackRef ||
+            curation[0]!.library_id !== libraryId ||
+            curation[0]!.track_id !== oldTrackId ||
+            curation[0]!.file_identity !== row.file_identity ||
+            curation[0]!.audio_identity !== row.audio_identity ||
+            curation[0]!.validation !== 'verified' ||
+            curation[0]!.tombstoned !== 0 ||
+            curation[0]!.format !== 'mp3' ||
+            curation[0]!.base_status !== 'unreviewed' ||
+            curation[0]!.receipt_id !== null ||
+            candidate.library_id !== libraryId ||
+            candidate.track_id !== input.newTrackId ||
+            candidate.media_link_id !== aliasId ||
+            candidate.file_identity !== input.targetFileIdentity ||
+            candidate.binding_revision !== alias.revision ||
+            candidate.audio_identity !== row.audio_identity ||
+            candidate.validation !== 'verified' ||
+            candidate.tombstoned !== 0 ||
+            candidate.format !== 'mp3' ||
+            candidate.base_status !== 'unreviewed' ||
+            candidate.receipt_id !== null ||
+            aliasOwned ||
+            activeClaim ||
+            retiredKeyConflict
+          )
+            throw new Error('conflict');
+          db.prepare(
+            "UPDATE media_links SET relative_file_key=?,gonic_song_id=NULL,availability='unavailable',revision=revision+1,validated_at=? WHERE id=?",
+          ).run(retiredKey, now(), aliasId);
+          adoptedTrackRef = text(candidate.id);
+        }
         if (
           link.relative_file_key !== targetKey ||
           link.gonic_song_id !== input.newTrackId ||
@@ -958,12 +1054,16 @@ export function createOrganizationRepository(options: {
           input.newTrackId,
           input.itemId,
         );
-        const curation = db
-          .prepare('SELECT id FROM curation_tracks WHERE media_link_id=?')
-          .all(mediaLinkId);
-        if (curation.length > 1) throw new Error('conflict');
-        const trackRef = curation.length ? text(curation[0]!.id) : null;
-        if (trackRef) {
+        if (adoptedTrackRef && trackRef) {
+          db.prepare(
+            "UPDATE curation_tracks SET media_link_id=NULL,file_identity=NULL,binding_revision=NULL,validation='stale',tombstoned=1 WHERE id=?",
+          ).run(trackRef);
+          db.prepare(
+            "UPDATE curation_tracks SET media_link_id=?,file_identity=?,binding_revision=?,format='mp3',tombstoned=0 WHERE id=?",
+          ).run(mediaLinkId, input.targetFileIdentity, integer(rebound.revision), adoptedTrackRef);
+          trackRef = adoptedTrackRef;
+          event(input.itemId, 'target_alias_adopted', {});
+        } else if (trackRef) {
           const conflict = db
             .prepare(
               'SELECT 1 FROM curation_tracks WHERE library_id=? AND track_id=? AND id<>? LIMIT 1',

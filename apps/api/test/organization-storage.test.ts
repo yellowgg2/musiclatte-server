@@ -729,6 +729,144 @@ describe('organization storage', () => {
     });
   });
 
+  it('adopts an unowned verified target binding discovered while registration is recovering', async () => {
+    const s = await setup();
+    s.repository.createOrReplay(s.input);
+    const curation = createCurationRepository({
+      database: s.c.db,
+      clock: () => 1_000,
+      cursorKey: new Uint8Array(32),
+      limits: {
+        claimLeaseMs: 100,
+        maxTargets: 10,
+        snapshotMaxAgeMs: 100,
+        snapshotMaxItems: 10,
+        snapshotMaxCount: 10,
+      },
+    });
+    const originalTrackRef = curation.discover({
+      libraryId: 'library-1',
+      trackId: 'song-1',
+      format: 'mp3',
+      mediaLinkId: 'media-1',
+      fileIdentity: s.input.fileIdentity,
+      bindingRevision: 1,
+    });
+    s.c.mediaLinks.create({
+      id: 'media-target-alias',
+      libraryId: 'library-1',
+      relativeFileKey: s.input.targetKey,
+      gonicSongId: 'song-2',
+    });
+    const discoveredTrackRef = curation.discover({
+      libraryId: 'library-1',
+      trackId: 'song-2',
+      format: 'mp3',
+      mediaLinkId: 'media-target-alias',
+      fileIdentity: '5'.repeat(64),
+      bindingRevision: 1,
+    });
+    s.c.db.connection
+      .prepare(
+        "UPDATE curation_tracks SET audio_identity=?,validation='verified',last_verified_at=1000 WHERE id IN (?,?)",
+      )
+      .run(s.input.audioIdentity, originalTrackRef, discoveredTrackRef);
+
+    const move = s.repository.claimNext({ workerId: 'filesystem', leaseDurationMs: 100 })!;
+    s.repository.recordReferences({
+      ...move,
+      baseline: { trackId: 'song-1', starred: false, playlists: [] },
+    });
+    s.repository.recordMovePreimage({ ...move, preimage: s.preimage });
+    s.repository.transition({ ...move, stage: 'moving' });
+    s.repository.transition({ ...move, stage: 'moved' });
+    const registration = s.repository.claimNext({
+      workerId: 'gonic',
+      leaseDurationMs: 100,
+      registrationOnly: true,
+    })!;
+    s.repository.transition({ ...registration, stage: 'scanning' });
+    const claimEpoch = String(
+      s.c.db.connection.prepare('SELECT claim_epoch FROM curation_state').get()!.claim_epoch,
+    );
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO curation_claims(id,actor_key,purpose,fields_json,generation,claim_epoch,created_at,lease_until) VALUES('alias-claim','actor','optional_enrichment','[\"album\"]',1,?,900,1100)",
+      )
+      .run(claimEpoch);
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO curation_claim_items(claim_id,track_ref,file_identity,binding_revision,expected_revision) VALUES('alias-claim',?,?,1,'revision-1')",
+      )
+      .run(discoveredTrackRef, '5'.repeat(64));
+
+    expect(() =>
+      s.repository.rebindCurrent({
+        ...registration,
+        newTrackId: 'song-2',
+        targetFileIdentity: '5'.repeat(64),
+      }),
+    ).toThrow('conflict');
+    expect(s.c.mediaLinks.get('media-1')).toMatchObject({
+      relativeFileKey: s.input.sourceKey,
+      gonicSongId: 'song-1',
+      revision: 1,
+    });
+    expect(s.c.mediaLinks.get('media-target-alias')).toMatchObject({
+      relativeFileKey: s.input.targetKey,
+      gonicSongId: 'song-2',
+      revision: 1,
+      availability: 'available',
+    });
+    s.c.db.connection
+      .prepare("UPDATE curation_claims SET released_at=1000 WHERE id='alias-claim'")
+      .run();
+
+    expect(
+      s.repository.rebindCurrent({
+        ...registration,
+        newTrackId: 'song-2',
+        targetFileIdentity: '5'.repeat(64),
+      }),
+    ).toEqual({ trackRef: discoveredTrackRef });
+    expect(s.c.mediaLinks.get('media-1')).toMatchObject({
+      relativeFileKey: s.input.targetKey,
+      gonicSongId: 'song-2',
+      revision: 2,
+      availability: 'available',
+    });
+    expect(s.c.mediaLinks.get('media-target-alias')).toMatchObject({
+      relativeFileKey: `.musiclatte-retired/${'5'.repeat(64)}.mp3`,
+      gonicSongId: null,
+      revision: 2,
+      availability: 'unavailable',
+    });
+    expect(curation.rowFor(originalTrackRef)).toMatchObject({
+      track_id: 'song-1',
+      media_link_id: null,
+      file_identity: null,
+      binding_revision: null,
+      validation: 'stale',
+      tombstoned: 1,
+    });
+    expect(curation.rowFor(discoveredTrackRef)).toMatchObject({
+      track_id: 'song-2',
+      media_link_id: 'media-1',
+      file_identity: '5'.repeat(64),
+      binding_revision: 2,
+      validation: 'verified',
+      tombstoned: 0,
+    });
+    expect(
+      s.c.db.connection
+        .prepare('SELECT track_ref,kind FROM curation_events ORDER BY sequence')
+        .all(),
+    ).toEqual([
+      { track_ref: originalTrackRef, kind: 'discovered' },
+      { track_ref: discoveredTrackRef, kind: 'discovered' },
+    ]);
+  });
+
   /** Rebinding publishes one durable pending delta while preserving the original audit payload. */
   it('atomically rebinds the stable media link and every current projection', async () => {
     const s = await setup();
