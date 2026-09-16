@@ -168,7 +168,7 @@ export function createOrganizationStateStore({
     if (disposed) return;
     queued.add(trackId);
     const current = entries.get(trackId);
-    if (current && current.view.phase !== 'loading') {
+    if (current?.view.phase === 'error') {
       current.view = loading;
       notify(current);
     }

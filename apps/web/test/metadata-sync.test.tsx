@@ -8,7 +8,11 @@ import {
   useMetadataSync,
   useOrganizationState,
 } from '../src/metadata/MetadataSyncProvider';
-import type { MetadataChangesPage, MusicEntry } from '@musiclatte/contracts';
+import type {
+  MetadataChangesPage,
+  MusicEntry,
+  OrganizationStatusResponse,
+} from '@musiclatte/contracts';
 import { SelectionProvider, useSelection } from '../src/selection/SelectionProvider';
 import { MusicPage } from '../src/pages/music/MusicPage';
 import { Router } from '../src/app/Router';
@@ -181,6 +185,72 @@ describe('organization state batch store', () => {
       value: { target: { kind: 'track', trackId: 'track-301' } },
     });
     listeners.forEach((unsubscribe) => unsubscribe());
+    store.dispose();
+  });
+
+  /** Background freshness checks preserve the last verified button state until a replacement arrives. */
+  it('should keep a ready organization state visible during a stale refresh', async () => {
+    let now = 1000;
+    let calls = 0;
+    let resolveRefresh!: (response: OrganizationStatusResponse) => void;
+    const store = createOrganizationStateStore({
+      load: async (targets) => {
+        calls++;
+        if (calls === 2)
+          return new Promise((resolve) => {
+            resolveRefresh = resolve;
+          });
+        return {
+          schemaVersion: 1,
+          capturedAt: now,
+          items: targets.map((target) => ({
+            target,
+            state: 'needs_organization' as const,
+            reason: 'path_metadata_changed' as const,
+            stage: 'succeeded' as const,
+            changedAt: now,
+          })),
+        };
+      },
+      onUnauthenticated: vi.fn(),
+      now: () => now,
+      staleMs: 100,
+    });
+    const unsubscribe = store.subscribe('song', vi.fn());
+    await tick();
+    expect(store.getSnapshot('song')).toMatchObject({
+      phase: 'ready',
+      value: { state: 'needs_organization' },
+    });
+
+    now += 100;
+    store.refresh('song');
+    await tick();
+    expect(calls).toBe(2);
+    expect(store.getSnapshot('song')).toMatchObject({
+      phase: 'ready',
+      value: { state: 'needs_organization' },
+    });
+
+    resolveRefresh({
+      schemaVersion: 1,
+      capturedAt: now,
+      items: [
+        {
+          target: { kind: 'track', trackId: 'song' },
+          state: 'organized',
+          reason: 'verified',
+          stage: 'succeeded',
+          changedAt: now,
+        },
+      ],
+    });
+    await tick();
+    expect(store.getSnapshot('song')).toMatchObject({
+      phase: 'ready',
+      value: { state: 'organized' },
+    });
+    unsubscribe();
     store.dispose();
   });
 

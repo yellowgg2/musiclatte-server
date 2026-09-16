@@ -26,3 +26,12 @@
 - `git diff --check` — passed.
 
 Final visual, zoom, touch, and user expectation checks remain pending under `P17-UA-002`; no production or live credential work was performed.
+
+## 2026-09-16 background-refresh flicker regression
+
+- RED: a controlled second status request left the prior `needs_organization` result in flight; the store exposed `loading`, reproducing the metadata action surface/mark flicker.
+- GREEN: only initial loads and explicit retries from an error expose `loading`. Stale, visibility, metadata-completion, and manual background refreshes keep the last ready value until a replacement ready result or a real error arrives.
+- The regression also proves that a changed server result still publishes after the pending request resolves, so the stabilization does not hide durable status changes.
+- Focused web verification passed 55/55 tests across `metadata-sync`, `metadata-single-ui`, and `library-ui`; typecheck, production build, Prettier check, and diff check passed under Node 24.20.0/npm 11.19.0.
+- The actual development Gallery disclosure opened with the expected organization copy and its accessibility tree remained unchanged across a 31-second refresh interval.
+- The unrelated existing playlist occurrence test still fails when run independently because its song fixture is absent. That route fixture does not grant metadata edit permission and therefore does not subscribe to organization state; the changed store and all focused consumers pass.
