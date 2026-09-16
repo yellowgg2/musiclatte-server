@@ -36,6 +36,7 @@ import {
   id3OrganizationBatchStatus,
   nextId3OrganizationBatchItem,
   recordId3OrganizationBatchFailure,
+  skipId3OrganizationBatchDestinationConflict,
   skipId3OrganizationBatchItem,
   verifyId3OrganizationBatchContext,
 } from './id3-organize-batch-journal.js';
@@ -91,6 +92,7 @@ export interface Id3OrganizeCommandOptions {
     | 'batch-start'
     | 'batch-next'
     | 'batch-skip'
+    | 'batch-skip-destination-conflict'
     | 'batch-status'
     | 'sweep-start'
     | 'sweep-next'
@@ -541,6 +543,48 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       required(options.skipReason, 'skip_reason'),
     );
     return id3OrganizationBatchStatus(stateFile);
+  }
+  if (options.command === 'batch-skip-destination-conflict') {
+    const stateFile = required(options.stateFile, 'state_file');
+    const trackId = required(options.trackId, 'target');
+    const journal = verifyId3OrganizationBatchContext(stateFile, base, token);
+    if (journal.schemaVersion !== 3 || journal.source.kind !== 'unorganized')
+      fail('journal_binding');
+    const binding = id3OrganizationBatchBinding(stateFile, trackId);
+    const finalMetadata = id3OrganizationFinalMetadataBinding(binding);
+    if (
+      binding.state !== 'metadata_accepted' ||
+      binding.organizationJobId !== null ||
+      binding.newTrackId !== null ||
+      binding.serverStage !== null
+    )
+      fail('journal_binding');
+    const revision = required(finalMetadata.resultRevision ?? undefined, 'revision');
+    const preview = decodeOrganizationPreview(
+      await jsonPost(
+        '/metadata-organization/previews',
+        {
+          trackId,
+          expectedRevision: revision,
+          destinationPolicy: 'id3-managed-v1',
+        },
+        [200],
+      ),
+    );
+    if (
+      preview.trackId !== trackId ||
+      preview.currentRevision !== revision ||
+      preview.status !== 'error' ||
+      preview.code !== 'destination_conflict' ||
+      preview.targetKey !== null
+    )
+      fail('destination_conflict');
+    skipId3OrganizationBatchDestinationConflict(stateFile, trackId);
+    return {
+      schemaVersion: 1 as const,
+      status: 'skipped' as const,
+      reason: 'destination_conflict' as const,
+    };
   }
   if (options.command === 'batch-status') {
     const stateFile = required(options.stateFile, 'state_file');

@@ -41,3 +41,20 @@ Final gates: project formatting, focused unit/contract tests, typecheck, build, 
   created its successor, restored both account snapshots (including one playlist occurrence), and
   passed final ID3, one-front-JPEG, and Gonic successor-binding checks. The frozen sweep then
   advanced normally; no replacement intent, direct database edit, or manual file move was used.
+
+## 2026-09-16 retained duplicate destination-conflict terminalization
+
+- Incident: a frozen unorganized item completed required and optional metadata, then a live
+  organization preview found an existing managed destination. The user chose to retain both files
+  and terminally skip this duplicate instead of deleting or renaming media.
+- RED/GREEN: schema-version-3 unorganized journals accept one narrow
+  `skipped(destination_conflict)` terminal shape that preserves successful metadata and cover
+  checkpoints. The dedicated client command replays organization preview at the final result
+  revision and refuses a ready target, another error, a non-current item, or any existing
+  organization job.
+- Safety: ordinary `batch-skip` remains pre-mutation only. The recovery command neither moves nor
+  deletes media, changes references, edits Gonic, nor creates a replacement intent. The retained
+  source remains eligible for a later fresh sweep.
+- Verification: four focused contract files passed 60/60; typecheck, build, formatting, and diff
+  checks passed.
+  Production resume evidence is recorded after deployment.

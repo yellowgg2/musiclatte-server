@@ -112,6 +112,21 @@ recording success without a second file move. For recovery when the pre-move sna
 exist, capture a new private `references-snapshot` of the successor and pass that file instead; the
 client accepts only a starred successor snapshot whose playlists all contain that successor.
 
+If the user instead explicitly chooses to keep both files and terminally skip the unorganized
+duplicate, do not delete either file and do not hand-edit the journal. Recheck the collision and
+record that narrow outcome with:
+
+```sh
+npm run id3:organize -- batch-skip-destination-conflict --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/unorganized-child.json --track-id TRACK_ID
+```
+
+This command is valid only for the current schema-version-3 unorganized item at
+`metadata_accepted`, with a successful final metadata checkpoint and no organization job. It sends
+a fresh organization preview using the checkpointed result revision and transitions to
+`skipped(destination_conflict)` only when the server still returns that exact error. It never moves
+or deletes media, changes references, or weakens ordinary `batch-skip`. The retained source can be
+selected again by a later fresh unorganized sweep.
+
 `batch-next` returns the first unfinished unique track and its occurrence count. Run the existing
 cover, metadata, organization submit, and status commands with both `--state-file` and that exact
 `--track-id`. The journal creates all stable operation IDs before mutation, reuses them after a
