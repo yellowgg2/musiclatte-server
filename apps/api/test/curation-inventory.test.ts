@@ -679,6 +679,67 @@ it('retries directory discovery and resolves its failure ledger entry', async ()
   }
 });
 
+/** Promotes a completed partial generation after its last delayed retry succeeds. */
+it('marks a completed partial generation ready after its delayed retry succeeds', async () => {
+  const { createCurationInventory } = await import('../src/curation/inventory.js');
+  const c = await createTestContext();
+  try {
+    let now = 1000;
+    let attempts = 0;
+    const repo = createCurationRepository({
+      database: c.db,
+      clock: () => now,
+      cursorKey: new Uint8Array(32),
+      limits: {
+        claimLeaseMs: 1000,
+        maxTargets: 10,
+        snapshotMaxAgeMs: 1000,
+        snapshotMaxItems: 100,
+        snapshotMaxCount: 10,
+      },
+    });
+    const inventory = createCurationInventory({
+      database: c.db,
+      repository: repo,
+      clock: () => now,
+      libraries: [{ id: 'lib', musicFolderId: '0' }],
+      batchSize: 1,
+      itemTimeoutMs: 100,
+      batchTimeMs: 200,
+      retryIntervalMs: 10,
+      maxRetryAttempts: 1,
+      sweepIntervalMs: 1000,
+      maxQueueItems: 100,
+      reconcile: async () => {
+        attempts++;
+        if (attempts === 1) throw new Error('inventory_pending');
+      },
+      source: {
+        inventoryIndexes: async () => ({ roots: [{ id: 'track', isDir: false }] }),
+        registrationDirectory: async () => {
+          throw new Error('unexpected');
+        },
+      },
+    });
+    await inventory.runBatch();
+    await inventory.runBatch();
+    await inventory.runBatch();
+    expect(repo.coverage(['lib'])[0]?.status).toBe('partial');
+
+    now = 1010;
+    await inventory.runBatch();
+    await inventory.runBatch();
+
+    expect(attempts).toBe(2);
+    expect(repo.coverage(['lib'])[0]).toMatchObject({
+      status: 'ready',
+      lastErrorCode: null,
+    });
+  } finally {
+    c.cleanup();
+  }
+});
+
 /** Adopts pre-migration error rows whose retry checkpoint columns still contain their defaults. */
 it('retries a legacy error row without an explicit next-attempt timestamp', async () => {
   const { createCurationInventory } = await import('../src/curation/inventory.js');

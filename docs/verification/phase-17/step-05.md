@@ -25,3 +25,12 @@
 - `npm run format:check` and `git diff --check` — passed.
 
 No production deployment, credential access, Gonic call, metadata job creation, or music-file mutation was performed.
+
+## 2026-09-17 partial-inventory recovery repair
+
+- Production exposed a completed `partial` generation whose delayed retry had succeeded and whose queue contained no remaining error rows, but the inventory stayed non-runnable until the next full sweep interval.
+- A focused regression reproduced the exact checkpoint order: transient `inventory_pending`, partial finalization while the retry was delayed, successful retry, then readiness evaluation.
+- The inventory now promotes that completed generation to `ready` immediately and clears the resolved run-level error code. Partial generations with any error row remain partial.
+- RED: the new regression failed with `status: partial` and `lastErrorCode: inventory_pending`.
+- GREEN: `npm run test:unit -- apps/api/test/curation-inventory.test.ts apps/api/test/organization-selection.test.ts apps/api/test/metadata-organization-api.test.ts` passed 36 tests; the focused contract command passed 9 tests.
+- `npm run typecheck`, `npm run build`, `npm run format:check`, and `git diff --check` passed. The existing web bundle-size warning remains non-blocking.
