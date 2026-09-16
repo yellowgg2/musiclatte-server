@@ -71,7 +71,6 @@ export function CurationPage({
       generation,
       loading: true,
       error: null,
-      ...(!more ? { data: null } : {}),
     }));
     const params = new URLSearchParams(query);
     params.set('limit', '25');

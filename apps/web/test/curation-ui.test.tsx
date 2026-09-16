@@ -78,6 +78,41 @@ it('renders completed with missing lyrics, pages a frozen list, filters independ
   const dialog = await screen.findByRole('dialog');
   await within(dialog).findByText('Required review completed');
 });
+/** Keeps the visible rows mounted while an automatic or manual refresh is still pending. */
+it('retains the current list while refreshing the same filters', async () => {
+  const fixture = createCurationUIFixture();
+  let blockRefresh = false;
+  let releaseRefresh!: () => void;
+  let markRefreshStarted!: () => void;
+  const refreshStarted = new Promise<void>((resolve) => {
+    markRefreshStarted = resolve;
+  });
+  const refreshPending = new Promise<void>((resolve) => {
+    releaseRefresh = resolve;
+  });
+  const fetcher: typeof fetch = async (input, init) => {
+    if (blockRefresh && String(input).includes('/tracks?')) {
+      markRefreshStarted();
+      await refreshPending;
+    }
+    return fixture.fetcher(input, init);
+  };
+  localStorage.setItem('musiclatte.locale', 'en');
+  window.history.replaceState(null, '', '/music/curation');
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+  render(<Router fetcher={fetcher} audioFactory={() => new Audio()} />);
+  const user = userEvent.setup();
+  await screen.findByText(/Showing 25 of 27/);
+  blockRefresh = true;
+  await user.click(screen.getByRole('button', { name: 'Refresh list' }));
+  await refreshStarted;
+  try {
+    expect(screen.getByText('Evening in the studio')).toBeTruthy();
+  } finally {
+    releaseRefresh();
+  }
+  await screen.findByText(/Showing 25 of 27/);
+});
 it('does not reset active playback when filters or locale change', async () => {
   const c = setup();
   await screen.findByText(/Showing 25 of 27/);
