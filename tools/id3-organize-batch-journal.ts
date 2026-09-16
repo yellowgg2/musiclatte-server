@@ -262,13 +262,18 @@ function decodeItemV3(value: unknown): Id3OrganizationBatchItem {
     Object.values(value.metadataSteps as Record<string, unknown>).some(
       (step) => object(step) && step.jobId !== null,
     );
+  const reconciledDeletedDuplicate =
+    state === 'already_organized' && value.newTrackId !== null && hasMetadataCheckpoint;
   const skippedDestinationConflict =
     state === 'skipped' && value.errorCode === 'destination_conflict' && hasMetadataCheckpoint;
   const item = decodeItemV2(
     outcome || skippedDestinationConflict
       ? {
           ...legacyShape,
-          state: skippedDestinationConflict ? 'metadata_accepted' : 'pending',
+          state:
+            reconciledDeletedDuplicate || skippedDestinationConflict
+              ? 'metadata_accepted'
+              : 'pending',
           errorCode: null,
         }
       : legacyShape,
@@ -278,7 +283,19 @@ function decodeItemV3(value: unknown): Id3OrganizationBatchItem {
       ? 'destination_conflict'
       : terminalOutcome[state as keyof typeof terminalOutcome];
     if (value.errorCode !== expectedError) failure('journal_invalid');
-    if (skippedDestinationConflict) {
+    if (reconciledDeletedDuplicate) {
+      const finalMetadata =
+        item.metadataSteps.optional.jobId !== null
+          ? item.metadataSteps.optional
+          : item.metadataSteps.required;
+      if (
+        item.organizationJobId !== null ||
+        item.newTrackId === item.trackId ||
+        item.serverStage !== null ||
+        !metadataCanOrganize(finalMetadata)
+      )
+        failure('journal_invalid');
+    } else if (skippedDestinationConflict) {
       const finalMetadata =
         item.metadataSteps.optional.jobId !== null
           ? item.metadataSteps.optional

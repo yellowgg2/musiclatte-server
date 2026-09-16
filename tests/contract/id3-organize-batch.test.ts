@@ -162,6 +162,55 @@ describe('private ID3 organization batch journal', () => {
     });
   });
 
+  it('reads a preserved metadata-complete deleted-duplicate terminal outcome', async () => {
+    const module = await batchModule();
+    expect(module).toHaveProperty('readId3OrganizationBatchJournal');
+    if (!('readId3OrganizationBatchJournal' in module)) return;
+    const { stateFile } = paths();
+    module.createId3OrganizationSweepChildJournal({
+      path: stateFile,
+      api: 'https://music.example/api/v1',
+      token: 'mlpat_' + 'h'.repeat(48),
+      selectionId: 'selection-history',
+      selectionRevision: 'e'.repeat(64),
+      items: [
+        {
+          ordinal: 0,
+          item: {
+            mediaLinkId: 'media-history',
+            trackId: 'track-history',
+            title: 'Historical title',
+            artist: 'Artist',
+            album: null,
+          },
+        },
+      ],
+    });
+    module.nextId3OrganizationBatchItem(stateFile);
+    module.checkpointId3OrganizationBatch(stateFile, 'track-history', {
+      kind: 'metadata',
+      step: 'required',
+      jobId: 'required-job',
+      resultRevision: 'required-revision',
+      serverStage: 'succeeded',
+    });
+    const preserved = module.readId3OrganizationBatchJournal(stateFile);
+    const preservedItem = preserved.items[0]!;
+    preservedItem.state = 'already_organized';
+    preservedItem.errorCode = 'already_organized';
+    preservedItem.newTrackId = 'track-existing';
+    writeFileSync(stateFile, JSON.stringify(preserved), { mode: 0o600 });
+
+    expect(module.readId3OrganizationBatchJournal(stateFile).items[0]).toMatchObject({
+      state: 'already_organized',
+      errorCode: 'already_organized',
+      newTrackId: 'track-existing',
+      metadataSteps: {
+        required: { jobId: 'required-job', serverStage: 'succeeded' },
+      },
+    });
+  });
+
   /** Upgrades a live v1 journal without losing its stable metadata operation or accepted checkpoint. */
   it('normalizes a v1 journal into ordered required and optional metadata checkpoints', async () => {
     const module = await batchModule();
