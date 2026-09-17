@@ -963,6 +963,28 @@ describe('organization storage', () => {
         referenceSnapshotDigests: ['b'.repeat(64), 'c'.repeat(64)],
       }),
     ).toMatchObject({ displacedMediaLinkId: 'media-target-alias' });
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO metadata_jobs(id,identity_key,library_id,operation_id_hash,request_hash,kind,created_at) VALUES('displaced-metadata-job',?,'library-1',?,?,'edit',900)",
+      )
+      .run('4'.repeat(64), '5'.repeat(64), '6'.repeat(64));
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO metadata_items(id,job_id,item_order,media_link_id,file_identity,binding_revision,original_track_id,current_track_id,expected_revision,expected_digest,patch_json,actor_session_id,policy_revision,stage,stage_changed_at,file_saved_at,result_revision,result_digest,error_code,changed_fields_json) VALUES('displaced-metadata-item','displaced-metadata-job',0,'media-target-alias',?,1,'song-2','song-2','revision-before',?,'{}',(SELECT id_hash FROM sessions LIMIT 1),1,'reflecting',900,900,'revision-after',?,NULL,'[]')",
+      )
+      .run('5'.repeat(64), '6'.repeat(64), '7'.repeat(64));
+    expect(() =>
+      s.repository.rebindCurrent({
+        ...registration,
+        newTrackId: 'song-3',
+        targetFileIdentity: '7'.repeat(64),
+      }),
+    ).toThrow('conflict');
+    s.c.db.connection
+      .prepare(
+        "UPDATE metadata_items SET stage='recovery_required',error_code='permission_changed' WHERE id='displaced-metadata-item'",
+      )
+      .run();
     expect(
       s.repository.rebindCurrent({
         ...registration,

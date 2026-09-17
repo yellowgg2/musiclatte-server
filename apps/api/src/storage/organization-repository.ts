@@ -1082,7 +1082,7 @@ export function createOrganizationRepository(options: {
             ? db
                 .prepare(
                   `SELECT 1 WHERE
-                    EXISTS(SELECT 1 FROM metadata_items WHERE media_link_id=? AND stage NOT IN ('succeeded','conflict','failed')) OR
+                    EXISTS(SELECT 1 FROM metadata_items WHERE media_link_id=? AND stage NOT IN ('succeeded','conflict','failed','recovery_required')) OR
                     EXISTS(SELECT 1 FROM import_items WHERE media_link_id=? AND stage NOT IN ('ready','failed','cancelled','duplicate')) OR
                     EXISTS(SELECT 1 FROM organization_items WHERE media_link_id=? AND stage NOT IN ('succeeded','conflict','failed')) OR
                     EXISTS(SELECT 1 FROM organization_source_locations WHERE media_link_id=?)`,

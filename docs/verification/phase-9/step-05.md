@@ -45,3 +45,13 @@ Final gates: project formatting, focused unit/contract tests, typecheck, build, 
 - Verification: focused organization storage unit tests, metadata organization API tests, and ID3
   client contract tests cover default conflict, scoped/idempotent approval, redacted responses,
   distinct-audio replacement, and preserved history.
+
+## 2026-09-18 terminal displaced-metadata recovery
+
+- RED: a digest-bound explicit replacement still failed during gonic rebind when the displaced
+  MediaLink retained a terminal metadata `recovery_required` audit row.
+- GREEN: only that terminal metadata stage is excluded from the displaced alias live-work guard.
+  A `reflecting` metadata item remains blocking, while the same item at `recovery_required` permits
+  the already approved replacement.
+- Safety: exact alias identity, verified curation rows, approval digests, inactive import and
+  organization work, no active curation claim, and retired-key collision checks remain unchanged.

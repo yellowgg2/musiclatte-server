@@ -114,6 +114,12 @@ append-only receipt or event history. A fresh trusted snapshot reconciliation up
 field state. The import item that originally established the MediaLink supplies the YouTube source
 ID for `organization_source_locations`; no raw source or media payload is copied into this mapping.
 
+An explicitly approved target replacement still rejects any displaced alias with live metadata,
+import, organization, or curation-claim work. A metadata `recovery_required` row is a terminal audit
+checkpoint without a runnable claim, so it does not by itself keep the displaced alias active. Its
+immutable history and backup remain preserved after the alias is retired; every nonterminal
+metadata stage continues to block replacement.
+
 Organization status treats that source-location row as import provenance, not as universal success
 evidence. A succeeded item must always match the current MediaLink track ID, relative key, policy,
 and metadata watermark. When the same MediaLink has a qualifying import item in `registering`,
