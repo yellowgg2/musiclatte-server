@@ -113,8 +113,35 @@ it('rechecks a legacy all-invalid-metadata rejection with the same operation int
       admissionResults,
     );
 
-    const accepted = await c.post('metadata-jobs', body, headers);
-    expect(accepted.statusCode, JSON.stringify(accepted.json())).toBe(202);
+    c.storage.db.connection
+      .prepare(
+        'UPDATE curation_claims SET released_at=?,generation=generation+1 WHERE id=? AND released_at IS NULL',
+      )
+      .run(c.clock(), claim.claimId);
+    const freshClaim = { claimId: randomUUID(), generation: 1 };
+    c.storage.db.connection
+      .prepare(
+        'INSERT INTO curation_claims(id,actor_key,purpose,fields_json,generation,claim_epoch,created_at,lease_until,released_at) SELECT ?,actor_key,purpose,fields_json,?,claim_epoch,?,?,NULL FROM curation_claims WHERE id=?',
+      )
+      .run(freshClaim.claimId, freshClaim.generation, c.clock(), c.clock() + 1000, claim.claimId);
+    c.storage.db.connection
+      .prepare(
+        'INSERT INTO curation_claim_items(claim_id,track_ref,file_identity,binding_revision,expected_revision) SELECT ?,track_ref,file_identity,binding_revision,expected_revision FROM curation_claim_items WHERE claim_id=?',
+      )
+      .run(freshClaim.claimId, claim.claimId);
+    const replay = {
+      ...body,
+      automation: {
+        ...body.automation,
+        claimId: freshClaim.claimId,
+        claimGeneration: freshClaim.generation,
+      },
+    };
+    const accepted = await c.post('metadata-jobs', replay, headers);
+    const jobCount = c.storage.db.connection
+      .prepare('SELECT count(*) AS n FROM metadata_jobs')
+      .get()!.n;
+    expect(accepted.statusCode, JSON.stringify({ response: accepted.json(), jobCount })).toBe(202);
     expect(accepted.json().admissionResults).toMatchObject([{ status: 'accepted' }]);
     expect(
       c.storage.db.connection

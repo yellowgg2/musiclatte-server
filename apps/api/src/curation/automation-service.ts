@@ -84,6 +84,41 @@ export function createAutomationService(service: SessionService) {
     saved.admissionResults.every(
       (result) => result.status === 'rejected' && result.reason === 'invalid_metadata',
     );
+  function replayState(actorKey: string, body: AutomationJobRequest) {
+    const saved = repo.operationResult(actorKey, 'write', body.operationId) as StoredJob | null;
+    if (!saved) return { saved: null, retryRejected: false, expectedIntent: null };
+    if (!retryableRejectedOperation(saved)) {
+      return {
+        saved: operation(actorKey, 'write', body.operationId, body) as StoredJob,
+        retryRejected: false,
+        expectedIntent: body,
+      };
+    }
+    const previousClaim = db
+      .prepare('SELECT generation,released_at FROM curation_claims WHERE id=? AND actor_key=?')
+      .get(saved.claimId, actorKey);
+    if (!previousClaim) {
+      return {
+        saved: operation(actorKey, 'write', body.operationId, body) as StoredJob,
+        retryRejected: false,
+        expectedIntent: body,
+      };
+    }
+    const previousIntent = {
+      ...body,
+      automation: {
+        ...body.automation,
+        claimId: saved.claimId,
+        claimGeneration:
+          Number(previousClaim.generation) - (previousClaim.released_at === null ? 0 : 1),
+      },
+    };
+    return {
+      saved: operation(actorKey, 'write', body.operationId, previousIntent) as StoredJob,
+      retryRejected: true,
+      expectedIntent: previousIntent,
+    };
+  }
   async function submitAutomationJob(principal: MetadataPrincipal, body: AutomationJobRequest) {
     const fields = Object.keys(body.patch) as CurationField[];
     requiredWrite(principal, fields);
@@ -98,9 +133,10 @@ export function createAutomationService(service: SessionService) {
     const scope = await q.scope(principal);
     let retryRejected = false;
     if (!body.dryRun) {
-      const saved = operation(scope.actorKey, 'write', body.operationId, body) as StoredJob | null;
+      const replay = replayState(scope.actorKey, body);
+      const saved = replay.saved;
       if (saved) {
-        retryRejected = retryableRejectedOperation(saved);
+        retryRejected = replay.retryRejected;
         if (!retryRejected) return await response(principal, saved);
       }
     }
@@ -204,13 +240,8 @@ export function createAutomationService(service: SessionService) {
       }
       const saved = repo.atomic(() => {
         checkMetadataPrincipal(service, principal);
-        const replay = operation(
-          scope.actorKey,
-          'write',
-          body.operationId,
-          body,
-        ) as StoredJob | null;
-        if (replay && (!retryRejected || !retryableRejectedOperation(replay))) return replay;
+        const replay = replayState(scope.actorKey, body);
+        if (replay.saved && (!retryRejected || !replay.retryRejected)) return replay.saved;
         locks.forEach((held) => held.assertHeld());
         generations.forEach(publications.validate);
         const identityKey = p.identity(principal);
@@ -266,11 +297,12 @@ export function createAutomationService(service: SessionService) {
           claimId: body.automation.claimId,
           admissionResults: admission,
         };
-        if (replay)
+        if (replay.saved)
           repo.replaceOperationResult(
             scope.actorKey,
             'write',
             body.operationId,
+            replay.expectedIntent!,
             body,
             result,
             admission,
