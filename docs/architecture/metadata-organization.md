@@ -120,6 +120,13 @@ checkpoint without a runnable claim, so it does not by itself keep the displaced
 immutable history and backup remain preserved after the alias is retired; every nonterminal
 metadata stage continues to block replacement.
 
+Gonic may reuse the displaced destination's song ID when the replacement keeps the exact managed
+path. The active source curation row owns that live ID after rebind. To satisfy the curation table's
+all-history uniqueness constraint without deleting audit history, the displaced tombstoned row is
+moved to a deterministic `musiclatte-retired:<curation-row-id>` internal identity only in this
+reuse case. The replacement ledger retains the displaced Gonic song ID, and the tombstoned row
+retains its immutable receipts and events.
+
 Organization status treats that source-location row as import provenance, not as universal success
 evidence. A succeeded item must always match the current MediaLink track ID, relative key, policy,
 and metadata watermark. When the same MediaLink has a qualifying import item in `registering`,

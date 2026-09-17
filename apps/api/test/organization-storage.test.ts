@@ -988,13 +988,13 @@ describe('organization storage', () => {
     expect(
       s.repository.rebindCurrent({
         ...registration,
-        newTrackId: 'song-3',
+        newTrackId: 'song-2',
         targetFileIdentity: '7'.repeat(64),
       }),
     ).toEqual({ trackRef: originalTrackRef });
     expect(s.c.mediaLinks.get('media-1')).toMatchObject({
       relativeFileKey: s.input.targetKey,
-      gonicSongId: 'song-3',
+      gonicSongId: 'song-2',
       revision: 2,
       availability: 'available',
     });
@@ -1005,7 +1005,7 @@ describe('organization storage', () => {
       availability: 'unavailable',
     });
     expect(curation.rowFor(originalTrackRef)).toMatchObject({
-      track_id: 'song-3',
+      track_id: 'song-2',
       media_link_id: 'media-1',
       file_identity: '7'.repeat(64),
       binding_revision: 2,
@@ -1013,13 +1013,20 @@ describe('organization storage', () => {
       tombstoned: 0,
     });
     expect(curation.rowFor(displacedTrackRef)).toMatchObject({
-      track_id: 'song-2',
+      track_id: `musiclatte-retired:${displacedTrackRef}`,
       media_link_id: null,
       file_identity: null,
       binding_revision: null,
       validation: 'stale',
       tombstoned: 1,
     });
+    expect(
+      s.c.db.connection
+        .prepare(
+          "SELECT displaced_track_id FROM organization_target_replacements WHERE item_id='organization-item'",
+        )
+        .get(),
+    ).toEqual({ displaced_track_id: 'song-2' });
     expect(
       s.c.db.connection
         .prepare(

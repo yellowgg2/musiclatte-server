@@ -55,3 +55,12 @@ Final gates: project formatting, focused unit/contract tests, typecheck, build, 
   the already approved replacement.
 - Safety: exact alias identity, verified curation rows, approval digests, inactive import and
   organization work, no active curation claim, and retired-key collision checks remain unchanged.
+
+## 2026-09-18 reused Gonic ID during replacement
+
+- RED: after an exact-path replacement, Gonic reused the displaced destination song ID and the
+  table-wide curation identity uniqueness constraint rejected the source rebind.
+- GREEN: when and only when that ID is reused, the displaced tombstoned curation row receives a
+  deterministic internal retired identity before the live source row claims the Gonic ID.
+- Safety: the replacement ledger retains the real displaced song ID; both curation audit rows,
+  immutable history, backup evidence, and active-row ownership remain intact.

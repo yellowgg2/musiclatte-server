@@ -1179,9 +1179,25 @@ export function createOrganizationRepository(options: {
           input.itemId,
         );
         if (replacedTrackRef && trackRef) {
-          db.prepare(
-            "UPDATE curation_tracks SET media_link_id=NULL,file_identity=NULL,binding_revision=NULL,validation='stale',tombstoned=1 WHERE id=?",
-          ).run(replacedTrackRef);
+          const replacedCuration = db
+            .prepare('SELECT library_id,track_id FROM curation_tracks WHERE id=?')
+            .get(replacedTrackRef)!;
+          if (text(replacedCuration.track_id) === input.newTrackId) {
+            const retiredTrackId = `musiclatte-retired:${replacedTrackRef}`;
+            const retiredConflict = db
+              .prepare(
+                'SELECT 1 FROM curation_tracks WHERE library_id=? AND track_id=? AND id<>? LIMIT 1',
+              )
+              .get(libraryId, retiredTrackId, replacedTrackRef);
+            if (retiredConflict) throw new Error('conflict');
+            db.prepare(
+              "UPDATE curation_tracks SET track_id=?,media_link_id=NULL,file_identity=NULL,binding_revision=NULL,validation='stale',tombstoned=1 WHERE id=?",
+            ).run(retiredTrackId, replacedTrackRef);
+          } else {
+            db.prepare(
+              "UPDATE curation_tracks SET media_link_id=NULL,file_identity=NULL,binding_revision=NULL,validation='stale',tombstoned=1 WHERE id=?",
+            ).run(replacedTrackRef);
+          }
           db.prepare(
             "UPDATE curation_tracks SET track_id=?,file_identity=?,binding_revision=?,format='mp3',tombstoned=0 WHERE id=?",
           ).run(input.newTrackId, input.targetFileIdentity, integer(rebound.revision), trackRef);
