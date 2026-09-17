@@ -21,3 +21,16 @@
 
 Final gates: project formatting, focused unit/contract tests, typecheck, build, `format:check`, and
 `git diff --check`.
+
+## 2026-09-17 overlapping replacement references
+
+- RED: an approved target replacement whose source and displaced IDs both occurred in one playlist
+  was scanned as one successor occurrence; either single-baseline restore returned conflict and
+  could not reconstruct the second occurrence.
+- GREEN: the restore service obtains the source/displaced predecessor set only from the successful
+  replacement ledger, accepts the exact collapsed successor projection, and rebuilds both
+  occurrences in their captured order. The second predecessor restore is idempotent and can apply
+  the final favorite union.
+- Safety: ordinary jobs retain the single-predecessor contract. Replacement restore still requires
+  the same successful successor relation, unchanged playlist metadata, one of the enumerated scan
+  projections, and exact authenticated readback; unrelated edits remain conflicts.

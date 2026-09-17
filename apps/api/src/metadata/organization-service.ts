@@ -258,10 +258,16 @@ export function createOrganizationService(service: SessionService) {
       }
       const successor = db
         .prepare(
-          "SELECT j.library_id AS libraryId,i.media_link_id AS mediaLinkId FROM organization_items i JOIN organization_jobs j ON j.id=i.job_id LEFT JOIN organization_target_replacements r ON r.item_id=i.id WHERE (i.old_track_id=? OR r.displaced_track_id=?) AND i.new_track_id=? AND i.stage='succeeded' ORDER BY i.stage_changed_at DESC LIMIT 1",
+          "SELECT j.library_id AS libraryId,i.media_link_id AS mediaLinkId,i.old_track_id AS oldTrackId,r.displaced_track_id AS displacedTrackId FROM organization_items i JOIN organization_jobs j ON j.id=i.job_id LEFT JOIN organization_target_replacements r ON r.item_id=i.id WHERE (i.old_track_id=? OR r.displaced_track_id=?) AND i.new_track_id=? AND i.stage='succeeded' ORDER BY i.stage_changed_at DESC LIMIT 1",
         )
         .get(body.trackId, body.trackId, body.newTrackId) as
-        { libraryId: string; mediaLinkId: string } | undefined;
+        | {
+            libraryId: string;
+            mediaLinkId: string;
+            oldTrackId: string;
+            displacedTrackId: string | null;
+          }
+        | undefined;
       if (!successor || !principal.allowedLibraries.includes(successor.libraryId))
         throw new ApiError(422, 'invalid_request');
       const resolved = await provider.resolver.resolve(principal, body.newTrackId, 'read');
@@ -277,6 +283,9 @@ export function createOrganizationService(service: SessionService) {
           username: principal.identity.username,
           baseline,
           newTrackId: body.newTrackId,
+          predecessorTrackIds: [successor.oldTrackId, successor.displacedTrackId].filter(
+            (trackId): trackId is string => trackId !== null,
+          ),
           ...(signal ? { signal } : {}),
         });
         await revalidateMetadataPrincipal(service, principal);

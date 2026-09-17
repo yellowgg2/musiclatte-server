@@ -4,7 +4,6 @@ import {
   decodeMetadataReferences,
   type MetadataReferences,
 } from './reference-check.js';
-import { migrateReferenceSequence, withoutReference } from './reference-migration.js';
 
 type ReferenceClient = Pick<
   SubsonicClient,
@@ -20,21 +19,43 @@ export async function restoreMetadataReferencesForSuccessor(input: {
   username: string;
   baseline: MetadataReferences;
   newTrackId: string;
+  predecessorTrackIds?: readonly string[];
   signal?: AbortSignal;
 }) {
   const baseline = decodeMetadataReferences(input.baseline);
+  const predecessorTrackIds = [...new Set(input.predecessorTrackIds ?? [baseline.trackId])];
+  if (
+    !predecessorTrackIds.includes(baseline.trackId) ||
+    predecessorTrackIds.includes(input.newTrackId)
+  )
+    throw new Error('reference_conflict');
+  const predecessorSet = new Set(predecessorTrackIds);
+  const migratePredecessors = (values: readonly string[]) =>
+    values.map((value) => (predecessorSet.has(value) ? input.newTrackId : value));
+  const withoutPredecessors = (values: readonly string[]) =>
+    values.filter((value) => !predecessorSet.has(value));
+  const collapsedSuccessor = (values: readonly string[]) => {
+    let seen = false;
+    return migratePredecessors(values).filter((value) => {
+      if (value !== input.newTrackId) return true;
+      if (seen) return false;
+      seen = true;
+      return true;
+    });
+  };
   const request = input.signal ? { signal: input.signal } : undefined;
   for (const entry of baseline.playlists) {
     let current = await input.client.getPlaylist(entry.id, request);
     const currentIds = current.entry.map(({ id }) => id);
-    const desired = migrateReferenceSequence(entry.songIds, baseline.trackId, input.newTrackId);
+    const desired = migratePredecessors(entry.songIds);
     const metadataMatches =
       current.name === entry.name &&
       current.owner === entry.owner &&
       current.owner === input.username;
     const allowed =
       same(currentIds, entry.songIds) ||
-      same(currentIds, withoutReference(entry.songIds, baseline.trackId));
+      same(currentIds, withoutPredecessors(entry.songIds)) ||
+      same(currentIds, collapsedSuccessor(entry.songIds));
     if (!metadataMatches || (!allowed && !same(currentIds, desired)))
       throw new Error('reference_conflict');
     if (!same(currentIds, desired)) {
@@ -74,7 +95,7 @@ export async function restoreMetadataReferencesForSuccessor(input: {
     starred: baseline.starred,
     playlists: baseline.playlists.map((entry) => ({
       ...entry,
-      songIds: migrateReferenceSequence(entry.songIds, baseline.trackId, input.newTrackId),
+      songIds: migratePredecessors(entry.songIds),
     })),
   };
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('reference_conflict');

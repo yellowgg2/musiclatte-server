@@ -146,8 +146,12 @@ requires one verified regular MP3 curation row per side, no active claims or act
 and no retired-key collision. It retires only the displaced binding, tombstones its current
 curation projection, preserves its immutable metadata/organization history, and keeps the source
 MediaLink as the successor. Restore and compare both the source and displaced reference snapshots
-for every configured account before advancing. Do not use this approval to bypass an unbacked
-collision, an ambiguous target, or a missing snapshot.
+for every configured account before advancing. If both predecessor IDs occurred in the same
+playlist, Gonic may temporarily collapse them to one successor; the restore endpoint accepts only
+that ledger-proven collapsed state and reconstructs every captured occurrence in order. Within one
+account, restore an unstarred predecessor snapshot before a starred snapshot, then require one
+combined readback equal to both baselines with both predecessors replaced by the successor. Do not
+use this approval to bypass an unbacked collision, an ambiguous target, or a missing snapshot.
 
 `batch-next` returns the first unfinished unique track and its occurrence count. Run the existing
 cover, metadata, organization submit, and status commands with both `--state-file` and that exact

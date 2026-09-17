@@ -131,6 +131,14 @@ ordered members equal either the captured baseline, the baseline with all old oc
 or the exact desired new-ID list. Any other concurrent edit is `reference_conflict` and is never
 overwritten.
 
+An explicitly approved target replacement has two ledger-proven predecessor IDs: the source and
+the displaced target. Reference restore treats only those two IDs as equivalent to the verified
+successor. When a Gonic scan has collapsed overlapping predecessor occurrences to one successor,
+that exact collapsed projection is also an eligible post-scan state; restore reconstructs every
+captured occurrence in its original order. Ordinary organization jobs still admit only their one
+old ID. For each account, restore an unstarred predecessor snapshot before a starred one, then
+compare the combined source/displaced projection so the final favorite is their logical union.
+
 Each playlist and the star state has a durable checkpoint written before the upstream operation.
 Completed checkpoints are skipped on retry; incomplete conflict/failed checkpoints can be reclaimed
 only with the same immutable baseline and desired value. A timeout after an upstream write is
