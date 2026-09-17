@@ -1,4 +1,5 @@
 import { chmodSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
@@ -665,6 +666,100 @@ it('checkpoints an already-succeeded organization replay exactly once', async ()
     serverStage: 'succeeded',
   });
   expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it('approves one journal-bound target replacement with private evidence digests only', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-target-replacement-'));
+  const token = 'mlpat_' + 'r'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const stateFile = join(directory, 'batch.json');
+  const backupReceiptPath = join(directory, 'backup-receipt.json');
+  const primaryReferences = join(directory, 'primary-references.json');
+  const secondaryReferences = join(directory, 'secondary-references.json');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  writeFileSync(backupReceiptPath, '{"backup":"verified"}\n', { mode: 0o600 });
+  writeFileSync(primaryReferences, '{"account":"primary"}\n', { mode: 0o600 });
+  writeFileSync(secondaryReferences, '{"account":"secondary"}\n', { mode: 0o600 });
+  createId3OrganizationBatchJournal({
+    path: stateFile,
+    api: 'https://music.example/api/v1',
+    token,
+    selection: {
+      schemaVersion: 1,
+      capturedAt: 1,
+      source: { kind: 'favorites' },
+      selectionRevision: 'a'.repeat(64),
+      occurrenceCount: 1,
+      uniqueTrackCount: 1,
+      items: [
+        {
+          trackId: 'old',
+          title: 'Title',
+          artist: 'Artist',
+          album: null,
+          occurrenceIndexes: [0],
+        },
+      ],
+    },
+  });
+  nextId3OrganizationBatchItem(stateFile);
+  checkpointId3OrganizationBatch(stateFile, 'old', {
+    kind: 'metadata',
+    step: 'optional',
+    jobId: 'metadata-job',
+    resultRevision: 'metadata-revision',
+    serverStage: 'succeeded',
+  });
+  checkpointId3OrganizationBatch(stateFile, 'old', {
+    kind: 'organization',
+    jobId: 'organization-job',
+    newTrackId: null,
+    serverStage: 'recovery_required',
+  });
+  const fetcher = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body));
+    expect(body).toMatchObject({
+      displacedTrackId: 'displaced',
+      backupReceiptDigest: createHash('sha256').update('{"backup":"verified"}\n').digest('hex'),
+      referenceSnapshotDigests: [
+        createHash('sha256').update('{"account":"primary"}\n').digest('hex'),
+        createHash('sha256').update('{"account":"secondary"}\n').digest('hex'),
+      ],
+    });
+    expect(JSON.stringify(body)).not.toContain(directory);
+    return Response.json({
+      schemaVersion: 1,
+      job: {
+        id: 'organization-job',
+        itemId: 'organization-item',
+        libraryId: 'music',
+        trackId: 'old',
+        newTrackId: null,
+        stage: 'recovery_required',
+        errorCode: 'conflict',
+        nextOwner: 'gonic',
+      },
+    });
+  });
+  const result = await runId3OrganizeCommand({
+    api: 'https://music.example/api/v1',
+    tokenFile,
+    stateFile,
+    fetch: fetcher,
+    command: 'organization-replacement-approve',
+    trackId: 'old',
+    replacementManifest: {
+      schemaVersion: 1,
+      displacedTrackId: 'displaced',
+      backupReceiptPath,
+      referenceSnapshotPaths: [primaryReferences, secondaryReferences],
+    },
+  });
+  expect(result.job).toMatchObject({ id: 'organization-job', stage: 'recovery_required' });
+  expect(fetcher).toHaveBeenCalledWith(
+    'https://music.example/api/v1/metadata-organization-jobs/organization-job/target-replacements',
+    expect.objectContaining({ method: 'POST' }),
+  );
 });
 
 it('snapshots and restores current-account favorite and duplicate playlist references', async () => {

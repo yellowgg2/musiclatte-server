@@ -71,6 +71,13 @@ export interface Id3OrganizationManifest {
   cover?: { path: string; usageBasis: string };
 }
 
+export interface Id3OrganizationReplacementManifest {
+  schemaVersion: 1;
+  displacedTrackId: string;
+  backupReceiptPath: string;
+  referenceSnapshotPaths: string[];
+}
+
 type PollOptions = { attempts: number; intervalMs: number; recoveryRetries: number };
 
 export interface Id3OrganizeCommandOptions {
@@ -86,6 +93,7 @@ export interface Id3OrganizeCommandOptions {
     | 'metadata-recheck'
     | 'metadata-retry'
     | 'organization-preview'
+    | 'organization-replacement-approve'
     | 'organization-submit'
     | 'status'
     | 'retry'
@@ -108,6 +116,7 @@ export interface Id3OrganizeCommandOptions {
   metadataJobId?: string;
   operationId?: string;
   manifest?: Id3OrganizationManifest;
+  replacementManifest?: Id3OrganizationReplacementManifest;
   requiredManifest?: Id3OrganizationManifest;
   sourceEvidence?: OrganizationSourceEvidence[];
   coverUploadId?: string;
@@ -241,6 +250,44 @@ export function readPrivateManifest(path: string) {
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('client_failed:')) throw error;
     return fail('manifest');
+  }
+}
+
+export function readPrivateReplacementManifest(path: string): Id3OrganizationReplacementManifest {
+  try {
+    const value = JSON.parse(
+      privateFile(path, 65536, 'private_replacement_manifest').toString('utf8'),
+    ) as unknown;
+    if (
+      !object(value) ||
+      !exact(value, [
+        'schemaVersion',
+        'displacedTrackId',
+        'backupReceiptPath',
+        'referenceSnapshotPaths',
+      ]) ||
+      value.schemaVersion !== 1 ||
+      !text(value.displacedTrackId, 2048) ||
+      !text(value.backupReceiptPath) ||
+      !isAbsolute(value.backupReceiptPath) ||
+      !Array.isArray(value.referenceSnapshotPaths) ||
+      value.referenceSnapshotPaths.length < 1 ||
+      value.referenceSnapshotPaths.length > 16 ||
+      new Set(value.referenceSnapshotPaths).size !== value.referenceSnapshotPaths.length ||
+      !value.referenceSnapshotPaths.every(
+        (referencePath) => text(referencePath) && isAbsolute(referencePath),
+      )
+    )
+      fail('replacement_manifest');
+    return {
+      schemaVersion: 1,
+      displacedTrackId: value.displacedTrackId,
+      backupReceiptPath: value.backupReceiptPath,
+      referenceSnapshotPaths: value.referenceSnapshotPaths as string[],
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('client_failed:')) throw error;
+    return fail('replacement_manifest');
   }
 }
 
@@ -761,6 +808,52 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         [200],
       ),
     );
+  if (options.command === 'organization-replacement-approve') {
+    const binding = batchBinding();
+    const replacement = options.replacementManifest;
+    if (
+      !binding ||
+      !replacement ||
+      binding.state !== 'organization_accepted' ||
+      !binding.organizationJobId
+    )
+      fail('journal_binding');
+    const digest = (filePath: string) =>
+      createHash('sha256')
+        .update(privateFile(filePath, 4 * 1024 * 1024, 'replacement_evidence'))
+        .digest('hex');
+    const backupReceiptDigest = digest(replacement.backupReceiptPath);
+    const referenceSnapshotDigests = replacement.referenceSnapshotPaths.map(digest);
+    if (new Set(referenceSnapshotDigests).size !== referenceSnapshotDigests.length)
+      fail('replacement_evidence');
+    const operationId =
+      'target-replacement-' +
+      createHash('sha256')
+        .update(
+          JSON.stringify([
+            binding.operations.organization,
+            replacement.displacedTrackId,
+            backupReceiptDigest,
+            referenceSnapshotDigests,
+          ]),
+        )
+        .digest('hex');
+    return decodeOrganizationJobResponse(
+      await jsonPost(
+        '/metadata-organization-jobs/' +
+          encodeURIComponent(binding.organizationJobId) +
+          '/target-replacements',
+        {
+          operationId,
+          displacedTrackId: replacement.displacedTrackId,
+          backupReceiptDigest,
+          referenceSnapshotDigests,
+        },
+        [200],
+        true,
+      ),
+    );
+  }
   if (options.command === 'metadata-preview') {
     if (!options.manifest) fail('manifest');
     return decodeMetadataPreview(
@@ -1227,6 +1320,9 @@ function parseArgs(argv: string[]) {
   const requiredManifest = values.get('required-manifest')
     ? readPrivateManifest(resolve(values.get('required-manifest')!))
     : undefined;
+  const replacementManifest = values.get('replacement-manifest')
+    ? readPrivateReplacementManifest(resolve(values.get('replacement-manifest')!))
+    : undefined;
   const result: Id3OrganizeCommandOptions = {
     command,
     api: required(values.get('api'), 'api'),
@@ -1258,6 +1354,7 @@ function parseArgs(argv: string[]) {
   }
   if (manifest) result.manifest = manifest;
   if (requiredManifest) result.requiredManifest = requiredManifest;
+  if (replacementManifest) result.replacementManifest = replacementManifest;
   if (values.get('poll-attempts'))
     result.poll = {
       attempts: Number(values.get('poll-attempts')),

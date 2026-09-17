@@ -127,6 +127,28 @@ a fresh organization preview using the checkpointed result revision and transiti
 or deletes media, changes references, or weakens ordinary `batch-skip`. The retained source can be
 selected again by a later fresh unorganized sweep.
 
+If the user explicitly chooses to replace a duplicate normalized destination, first snapshot the
+source and displaced track references for every configured account and copy the exact regular-file
+destination to an owner-only recoverable backup. After verifying the backup, remove only that
+destination and submit the same journal-bound organization job. A previously managed different-
+audio destination can leave that accepted job in gonic-owned conflict recovery even though the new
+file is already at the target. In that case create a mode-`0600` replacement manifest outside the
+repository containing `schemaVersion: 1`, the displaced track ID, the absolute private backup
+receipt path, and every absolute private reference-snapshot path, then run:
+
+```sh
+npm run id3:organize -- organization-replacement-approve --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/unorganized-child.json --track-id TRACK_ID --replacement-manifest /absolute/private/replacement.json
+```
+
+The client sends only SHA-256 evidence digests. The API accepts the approval only for the same PAT,
+accepted job, exact target-bound displaced MediaLink, and a scanning/recovery item. Rebinding still
+requires one verified regular MP3 curation row per side, no active claims or active displaced work,
+and no retired-key collision. It retires only the displaced binding, tombstones its current
+curation projection, preserves its immutable metadata/organization history, and keeps the source
+MediaLink as the successor. Restore and compare both the source and displaced reference snapshots
+for every configured account before advancing. Do not use this approval to bypass an unbacked
+collision, an ambiguous target, or a missing snapshot.
+
 `batch-next` returns the first unfinished unique track and its occurrence count. Run the existing
 cover, metadata, organization submit, and status commands with both `--state-file` and that exact
 `--track-id`. The journal creates all stable operation IDs before mutation, reuses them after a

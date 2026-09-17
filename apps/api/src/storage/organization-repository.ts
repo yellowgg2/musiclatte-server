@@ -161,6 +161,26 @@ export function validateOrganizationStorage(db: DatabaseSync): void {
     )
       throw new Error('Storage unavailable');
   }
+  for (const raw of db.prepare('SELECT * FROM organization_target_replacements').iterate()) {
+    const row = raw as Row;
+    let referenceDigests: unknown;
+    try {
+      referenceDigests = JSON.parse(text(row.reference_snapshot_digests_json));
+    } catch {
+      throw new Error('Storage unavailable');
+    }
+    if (
+      !hex(row.operation_id_hash) ||
+      !hex(row.request_hash) ||
+      !hex(row.backup_receipt_digest) ||
+      !Array.isArray(referenceDigests) ||
+      referenceDigests.length < 1 ||
+      referenceDigests.length > 16 ||
+      new Set(referenceDigests).size !== referenceDigests.length ||
+      !referenceDigests.every(hex)
+    )
+      throw new Error('Storage unavailable');
+  }
 }
 
 export function createOrganizationRepository(options: {
@@ -907,6 +927,81 @@ export function createOrganizationRepository(options: {
           }
         : null;
     },
+    approveTargetReplacement(input: {
+      itemId: string;
+      operationIdHash: string;
+      requestHash: string;
+      displacedTrackId: string;
+      backupReceiptDigest: string;
+      referenceSnapshotDigests: string[];
+    }) {
+      return atomic(() => {
+        if (
+          !input.displacedTrackId ||
+          !hex(input.operationIdHash) ||
+          !hex(input.requestHash) ||
+          !hex(input.backupReceiptDigest) ||
+          input.referenceSnapshotDigests.length < 1 ||
+          input.referenceSnapshotDigests.length > 16 ||
+          new Set(input.referenceSnapshotDigests).size !== input.referenceSnapshotDigests.length ||
+          !input.referenceSnapshotDigests.every(hex)
+        )
+          throw new Error('conflict');
+        const item = rowFor(input.itemId);
+        if (!item || !['scanning', 'recovery_required'].includes(text(item.stage)))
+          throw new Error('conflict');
+        const job = db
+          .prepare('SELECT library_id FROM organization_jobs WHERE id=?')
+          .get(text(item.job_id)) as Row | undefined;
+        if (!job) throw new Error('conflict');
+        const aliases = db
+          .prepare(
+            'SELECT * FROM media_links WHERE library_id=? AND id<>? AND relative_file_key=? AND gonic_song_id=?',
+          )
+          .all(
+            text(job.library_id),
+            text(item.media_link_id),
+            text(item.target_key),
+            input.displacedTrackId,
+          ) as Row[];
+        if (aliases.length !== 1 || aliases[0]!.availability !== 'available')
+          throw new Error('conflict');
+        const aliasId = text(aliases[0]!.id);
+        const referenceSnapshotDigests = JSON.stringify(input.referenceSnapshotDigests);
+        const replay = db
+          .prepare(
+            'SELECT * FROM organization_target_replacements WHERE item_id=? OR operation_id_hash=?',
+          )
+          .get(input.itemId, input.operationIdHash) as Row | undefined;
+        if (replay) {
+          if (
+            replay.item_id !== input.itemId ||
+            replay.displaced_media_link_id !== aliasId ||
+            replay.displaced_track_id !== input.displacedTrackId ||
+            replay.operation_id_hash !== input.operationIdHash ||
+            replay.request_hash !== input.requestHash ||
+            replay.backup_receipt_digest !== input.backupReceiptDigest ||
+            replay.reference_snapshot_digests_json !== referenceSnapshotDigests
+          )
+            throw new Error('conflict');
+          return { displacedMediaLinkId: aliasId };
+        }
+        db.prepare(
+          'INSERT INTO organization_target_replacements(item_id,displaced_media_link_id,displaced_track_id,operation_id_hash,request_hash,backup_receipt_digest,reference_snapshot_digests_json,created_at) VALUES(?,?,?,?,?,?,?,?)',
+        ).run(
+          input.itemId,
+          aliasId,
+          input.displacedTrackId,
+          input.operationIdHash,
+          input.requestHash,
+          input.backupReceiptDigest,
+          referenceSnapshotDigests,
+          now(),
+        );
+        event(input.itemId, 'target_replacement_approved', {});
+        return { displacedMediaLinkId: aliasId };
+      });
+    },
     rebindCurrent(
       input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
         newTrackId: string;
@@ -947,6 +1042,7 @@ export function createOrganizationRepository(options: {
         if (curation.length > 1) throw new Error('conflict');
         let trackRef = curation.length ? text(curation[0]!.id) : null;
         let adoptedTrackRef: string | null = null;
+        let replacedTrackRef: string | null = null;
         if (conflictingLinks.length) {
           const alias = conflictingLinks.length === 1 ? conflictingLinks[0]! : null;
           const aliasId = alias ? text(alias.id) : '';
@@ -956,8 +1052,17 @@ export function createOrganizationRepository(options: {
                 .all(aliasId) as Row[])
             : [];
           const candidate = aliases.length === 1 ? aliases[0]! : null;
+          const replacement = alias
+            ? (db
+                .prepare('SELECT * FROM organization_target_replacements WHERE item_id=?')
+                .get(input.itemId) as Row | undefined)
+            : undefined;
+          const replacementApproved =
+            replacement !== undefined &&
+            replacement.displaced_media_link_id === aliasId &&
+            replacement.displaced_track_id === alias?.gonic_song_id;
           const retiredKey = validateRelativeKey(
-            `.musiclatte-retired/${input.targetFileIdentity}.mp3`,
+            `.musiclatte-retired/${replacementApproved && candidate ? text(candidate.file_identity) : input.targetFileIdentity}.mp3`,
           );
           const aliasOwned = alias
             ? db
@@ -972,6 +1077,18 @@ export function createOrganizationRepository(options: {
                     EXISTS(SELECT 1 FROM organization_selection_snapshot_items WHERE media_link_id=?)`,
                 )
                 .get(aliasId, aliasId, aliasId, aliasId, aliasId, aliasId, aliasId)
+            : null;
+          const aliasActiveWork = alias
+            ? db
+                .prepare(
+                  `SELECT 1 WHERE
+                    EXISTS(SELECT 1 FROM metadata_items WHERE media_link_id=? AND stage NOT IN ('succeeded','conflict','failed')) OR
+                    EXISTS(SELECT 1 FROM import_items WHERE media_link_id=? AND stage NOT IN ('ready','failed','cancelled','duplicate')) OR
+                    EXISTS(SELECT 1 FROM organization_items WHERE media_link_id=? AND stage NOT IN ('succeeded','conflict','failed')) OR
+                    EXISTS(SELECT 1 FROM organization_source_locations WHERE media_link_id=?) OR
+                    EXISTS(SELECT 1 FROM organization_selection_snapshot_items WHERE media_link_id=?)`,
+                )
+                .get(aliasId, aliasId, aliasId, aliasId, aliasId)
             : null;
           const activeClaim =
             candidate && trackRef
@@ -1000,10 +1117,9 @@ export function createOrganizationRepository(options: {
                 )
                 .get(libraryId, aliasId, retiredKey)
             : null;
-          if (
+          const currentInvalid =
             !alias ||
             alias.relative_file_key !== targetKey ||
-            alias.gonic_song_id !== input.newTrackId ||
             alias.availability !== 'available' ||
             !candidate ||
             !trackRef ||
@@ -1017,25 +1133,34 @@ export function createOrganizationRepository(options: {
             curation[0]!.base_status !== 'unreviewed' ||
             curation[0]!.receipt_id !== null ||
             candidate.library_id !== libraryId ||
-            candidate.track_id !== input.newTrackId ||
             candidate.media_link_id !== aliasId ||
-            candidate.file_identity !== input.targetFileIdentity ||
-            candidate.binding_revision !== alias.revision ||
-            candidate.audio_identity !== row.audio_identity ||
             candidate.validation !== 'verified' ||
             candidate.tombstoned !== 0 ||
             candidate.format !== 'mp3' ||
             candidate.base_status !== 'unreviewed' ||
             candidate.receipt_id !== null ||
-            aliasOwned ||
             activeClaim ||
-            retiredKeyConflict
-          )
+            retiredKeyConflict;
+          const invalidApprovedReplacement =
+            replacementApproved &&
+            (alias!.gonic_song_id !== replacement!.displaced_track_id ||
+              candidate!.track_id !== replacement!.displaced_track_id ||
+              aliasActiveWork);
+          const invalidAutomaticAdoption =
+            !replacementApproved &&
+            (alias!.gonic_song_id !== input.newTrackId ||
+              candidate!.track_id !== input.newTrackId ||
+              candidate!.file_identity !== input.targetFileIdentity ||
+              candidate!.binding_revision !== alias!.revision ||
+              candidate!.audio_identity !== row.audio_identity ||
+              aliasOwned);
+          if (currentInvalid || invalidApprovedReplacement || invalidAutomaticAdoption)
             throw new Error('conflict');
           db.prepare(
             "UPDATE media_links SET relative_file_key=?,gonic_song_id=NULL,availability='unavailable',revision=revision+1,validated_at=? WHERE id=?",
           ).run(retiredKey, now(), aliasId);
-          adoptedTrackRef = text(candidate.id);
+          if (replacementApproved) replacedTrackRef = text(candidate!.id);
+          else adoptedTrackRef = text(candidate!.id);
         }
         if (
           link.relative_file_key !== targetKey ||
@@ -1054,7 +1179,15 @@ export function createOrganizationRepository(options: {
           input.newTrackId,
           input.itemId,
         );
-        if (adoptedTrackRef && trackRef) {
+        if (replacedTrackRef && trackRef) {
+          db.prepare(
+            "UPDATE curation_tracks SET media_link_id=NULL,file_identity=NULL,binding_revision=NULL,validation='stale',tombstoned=1 WHERE id=?",
+          ).run(replacedTrackRef);
+          db.prepare(
+            "UPDATE curation_tracks SET track_id=?,file_identity=?,binding_revision=?,format='mp3',tombstoned=0 WHERE id=?",
+          ).run(input.newTrackId, input.targetFileIdentity, integer(rebound.revision), trackRef);
+          event(input.itemId, 'target_alias_replaced', {});
+        } else if (adoptedTrackRef && trackRef) {
           db.prepare(
             "UPDATE curation_tracks SET media_link_id=NULL,file_identity=NULL,binding_revision=NULL,validation='stale',tombstoned=1 WHERE id=?",
           ).run(trackRef);

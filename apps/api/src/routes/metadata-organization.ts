@@ -7,6 +7,7 @@ import {
   type OrganizationSelectionRequest,
   type OrganizationReferenceRestoreRequest,
   type OrganizationStatusRequest,
+  type OrganizationTargetReplacementRequest,
   type UnorganizedSelectionRequest,
   type AccessTokenScope,
   decodeOrganizationStatusRequest,
@@ -300,5 +301,21 @@ export function registerMetadataOrganizationRoutes(
             getService().retry(principal, request.params.id, request.body),
           ),
         ),
+  );
+  app.post<{ Params: { id: string }; Body: OrganizationTargetReplacementRequest }>(
+    '/api/v1/metadata-organization-jobs/:id/target-replacements',
+    {
+      attachValidation: true,
+      schema: {
+        params: requests.params,
+        querystring: requests.empty,
+        body: requests.targetReplacement,
+        response: { 200: responses.job },
+      },
+    },
+    (request) =>
+      boundary(request, writeBoundary, (principal) =>
+        getService().approveTargetReplacement(principal, request.params.id, request.body),
+      ),
   );
 }

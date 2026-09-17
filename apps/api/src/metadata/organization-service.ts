@@ -5,6 +5,7 @@ import {
   type MetadataField,
   type OrganizationJobRequest,
   type OrganizationPreviewRequest,
+  type OrganizationTargetReplacementRequest,
   type OrganizationSelectionRequest,
   type OrganizationSelectionSource,
   type OrganizationReferenceRestoreRequest,
@@ -510,6 +511,35 @@ export function createOrganizationService(service: SessionService) {
         requestHash,
       });
       return { schemaVersion: 1 as const, job: publicJob(result) };
+    },
+    async approveTargetReplacement(
+      principal: Principal,
+      id: string,
+      body: OrganizationTargetReplacementRequest,
+    ) {
+      const job = scopedJob(principal, id);
+      await revalidateMetadataPrincipal(service, principal);
+      try {
+        repository.approveTargetReplacement({
+          itemId: job.item.itemId,
+          operationIdHash: hash('target-replacement-operation', [
+            metadataCredentialFingerprint(principal),
+            body.operationId,
+          ]),
+          requestHash: hash('target-replacement-request', [id, body]),
+          displacedTrackId: body.displacedTrackId,
+          backupReceiptDigest: body.backupReceiptDigest,
+          referenceSnapshotDigests: body.referenceSnapshotDigests,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === 'conflict')
+          throw new ApiError(409, 'conflict');
+        throw error;
+      }
+      return {
+        schemaVersion: 1 as const,
+        job: publicJob(scopedJob(principal, id)),
+      };
     },
   };
 }

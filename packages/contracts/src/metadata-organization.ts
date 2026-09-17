@@ -98,6 +98,12 @@ export interface OrganizationJobRequest extends OrganizationPreviewRequest {
   metadataJobId: string;
   sourceEvidence: OrganizationSourceEvidence[];
 }
+export interface OrganizationTargetReplacementRequest {
+  operationId: string;
+  displacedTrackId: string;
+  backupReceiptDigest: string;
+  referenceSnapshotDigests: string[];
+}
 export interface OrganizationJob {
   id: string;
   itemId: string;
@@ -455,6 +461,28 @@ export const organizationRequestSchemas = {
     required: ['operationId'],
     properties: {
       operationId: { type: 'string', minLength: 21, maxLength: 128, pattern: '^[A-Za-z0-9_-]+$' },
+    },
+  },
+  targetReplacement: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'operationId',
+      'displacedTrackId',
+      'backupReceiptDigest',
+      'referenceSnapshotDigests',
+    ],
+    properties: {
+      operationId: { type: 'string', minLength: 21, maxLength: 128, pattern: '^[A-Za-z0-9_-]+$' },
+      displacedTrackId: id,
+      backupReceiptDigest: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+      referenceSnapshotDigests: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 16,
+        uniqueItems: true,
+        items: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+      },
     },
   },
   statuses: {

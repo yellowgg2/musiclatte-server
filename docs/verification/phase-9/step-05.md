@@ -26,3 +26,22 @@
 
 Final gates: project formatting, focused unit/contract tests, typecheck, build, `format:check`, and
 `git diff --check`.
+
+## 2026-09-17 explicit managed-target replacement recovery
+
+- RED: after an operator-backed duplicate overwrite moved a different verified source into an
+  existing managed destination, registration repeatedly returned `conflict` because the stale
+  destination MediaLink had terminal metadata and organization history.
+- GREEN: schema v30 records one same-PAT, same-job target-replacement approval with an immutable
+  request hash plus backup-receipt and reference-snapshot digests. Ordinary alias adoption remains
+  same-audio and unowned; only the explicit approval branch may retire a managed different-audio
+  alias.
+- Safety: the exact target alias, verified MP3 projections, source binding, inactive claims and
+  displaced work, and deterministic retired key are checked in one transaction. The displaced
+  curation row is tombstoned while its audit history remains; the stable source MediaLink and
+  curation row become the successor.
+- CLI: the journal-bound replacement command reads only owner-private evidence files and transmits
+  their SHA-256 digests, never local paths or evidence contents.
+- Verification: focused organization storage unit tests, metadata organization API tests, and ID3
+  client contract tests cover default conflict, scoped/idempotent approval, redacted responses,
+  distinct-audio replacement, and preserved history.

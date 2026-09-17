@@ -1231,6 +1231,89 @@ describe('metadata organization PAT API', () => {
     ).toBe(1);
   });
 
+  it('records one scoped target-replacement approval without exposing evidence paths', async () => {
+    const s = await setup();
+    const previewBody = {
+      trackId: s.trackId,
+      expectedRevision: s.revision,
+      destinationPolicy: 'id3-managed-v1' as const,
+    };
+    const preview = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/previews',
+      headers: s.headers,
+      payload: previewBody,
+    });
+    expect(preview.statusCode).toBe(200);
+    const targetKey = String(preview.json().targetKey);
+    const submit = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization-jobs',
+      headers: s.headers,
+      payload: {
+        ...previewBody,
+        operationId: 'organization_replace_submit_0001',
+        metadataJobId: 'completed-metadata',
+        sourceEvidence: [
+          {
+            url: 'https://example.invalid/official',
+            kind: 'official_artist',
+            fields: ['title'],
+          },
+        ],
+      },
+    });
+    expect(submit.statusCode).toBe(202);
+    const job = submit.json().job;
+    s.c.storage.mediaLinks.create({
+      id: 'managed-target-alias',
+      libraryId: 'music',
+      relativeFileKey: targetKey,
+      gonicSongId: 'displaced-track',
+    });
+    s.c.storage.db.connection
+      .prepare(
+        "UPDATE organization_items SET stage='scanning',lease_owner=NULL,lease_expires_at=NULL WHERE id=?",
+      )
+      .run(job.itemId);
+    const body = {
+      operationId: 'target_replacement_approval_0001',
+      displacedTrackId: 'displaced-track',
+      backupReceiptDigest: 'a'.repeat(64),
+      referenceSnapshotDigests: ['b'.repeat(64), 'c'.repeat(64)],
+    };
+    const approved = await s.app.inject({
+      method: 'POST',
+      url: `/api/v1/metadata-organization-jobs/${job.id}/target-replacements`,
+      headers: s.headers,
+      payload: body,
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect(approved.body).not.toContain('backupReceiptDigest');
+    expect(approved.body).not.toContain('referenceSnapshotDigests');
+    expect(approved.json().job).toMatchObject({ id: job.id, stage: 'scanning' });
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: `/api/v1/metadata-organization-jobs/${job.id}/target-replacements`,
+          headers: s.headers,
+          payload: body,
+        })
+      ).json(),
+    ).toEqual(approved.json());
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: `/api/v1/metadata-organization-jobs/${job.id}/target-replacements`,
+          headers: s.headers,
+          payload: { ...body, backupReceiptDigest: 'd'.repeat(64) },
+        })
+      ).statusCode,
+    ).toBe(409);
+  });
+
   it('admits an album-only reflection mismatch so the managed move can repair the directory projection', async () => {
     const s = await setup();
     s.c.storage.db.connection
