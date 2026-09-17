@@ -20,13 +20,17 @@ export async function restoreMetadataReferencesForSuccessor(input: {
   baseline: MetadataReferences;
   newTrackId: string;
   predecessorTrackIds?: readonly string[];
+  allowIdentityReuse?: boolean;
   signal?: AbortSignal;
 }) {
   const baseline = decodeMetadataReferences(input.baseline);
-  const predecessorTrackIds = [...new Set(input.predecessorTrackIds ?? [baseline.trackId])];
+  const identityReused = baseline.trackId === input.newTrackId;
+  const predecessorTrackIds = [...new Set(input.predecessorTrackIds ?? [baseline.trackId])].filter(
+    (trackId) => trackId !== input.newTrackId,
+  );
   if (
-    !predecessorTrackIds.includes(baseline.trackId) ||
-    predecessorTrackIds.includes(input.newTrackId)
+    (identityReused && !input.allowIdentityReuse) ||
+    (!identityReused && !predecessorTrackIds.includes(baseline.trackId))
   )
     throw new Error('reference_conflict');
   const predecessorSet = new Set(predecessorTrackIds);

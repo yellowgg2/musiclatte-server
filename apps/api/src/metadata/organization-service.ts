@@ -245,7 +245,6 @@ export function createOrganizationService(service: SessionService) {
       signal?: AbortSignal,
     ) {
       available();
-      if (body.trackId === body.newTrackId) throw new ApiError(422, 'invalid_request');
       let baseline;
       try {
         baseline = decodeMetadataReferences({
@@ -270,6 +269,9 @@ export function createOrganizationService(service: SessionService) {
         | undefined;
       if (!successor || !principal.allowedLibraries.includes(successor.libraryId))
         throw new ApiError(422, 'invalid_request');
+      const identityReused = body.trackId === body.newTrackId;
+      if (identityReused && successor.displacedTrackId !== body.trackId)
+        throw new ApiError(422, 'invalid_request');
       const resolved = await provider.resolver.resolve(principal, body.newTrackId, 'read');
       if (
         resolved.libraryId !== successor.libraryId ||
@@ -286,6 +288,7 @@ export function createOrganizationService(service: SessionService) {
           predecessorTrackIds: [successor.oldTrackId, successor.displacedTrackId].filter(
             (trackId): trackId is string => trackId !== null,
           ),
+          allowIdentityReuse: identityReused,
           ...(signal ? { signal } : {}),
         });
         await revalidateMetadataPrincipal(service, principal);

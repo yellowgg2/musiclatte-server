@@ -806,8 +806,15 @@ describe('metadata organization PAT API', () => {
       "INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES('replacement-job',?,'music',?,?,?,1,'id3-managed-v1','completed-metadata','revision','[]',?)",
     ).run('7'.repeat(64), '8'.repeat(64), '9'.repeat(64), s.accessTokenId, recentNow);
     db.prepare(
-      "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('replacement-item','replacement-job',?,'imports/account/Legacy/source.mp3','imports/account/Managed/source.mp3',?,'replacement-track',?,?,'succeeded',?)",
-    ).run(sourceMediaLinkId, s.trackId, 'a'.repeat(64), 'b'.repeat(64), recentNow);
+      "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('replacement-item','replacement-job',?,'imports/account/Legacy/source.mp3','imports/account/Managed/source.mp3',?,?,?,?, 'succeeded',?)",
+    ).run(
+      sourceMediaLinkId,
+      s.trackId,
+      displacedTrackId,
+      'a'.repeat(64),
+      'b'.repeat(64),
+      recentNow,
+    );
     db.prepare(
       "INSERT INTO organization_target_replacements(item_id,displaced_media_link_id,displaced_track_id,operation_id_hash,request_hash,backup_receipt_digest,reference_snapshot_digests_json,created_at) VALUES('replacement-item',?,?,?,?,?,?,?)",
     ).run(
@@ -819,12 +826,15 @@ describe('metadata organization PAT API', () => {
       JSON.stringify(['f'.repeat(64)]),
       recentNow,
     );
+    db.prepare(
+      "UPDATE media_links SET gonic_song_id=NULL,availability='unavailable',revision=revision+1 WHERE id=?",
+    ).run(displacedMediaLinkId);
     db.prepare('UPDATE media_links SET gonic_song_id=?,revision=revision+1 WHERE id=?').run(
-      'replacement-track',
+      displacedTrackId,
       sourceMediaLinkId,
     );
     s.c.songs.push({
-      id: 'replacement-track',
+      id: displacedTrackId,
       title: 'Original synthetic',
       artist: 'Original artist',
       album: 'Original album',
@@ -839,7 +849,7 @@ describe('metadata organization PAT API', () => {
       headers: s.headers,
       payload: {
         trackId: displacedTrackId,
-        newTrackId: 'replacement-track',
+        newTrackId: displacedTrackId,
         starred: snapshot.starred,
         playlists: snapshot.playlists,
       },
@@ -847,12 +857,10 @@ describe('metadata organization PAT API', () => {
     expect(restored.statusCode, restored.body).toBe(200);
     expect(restored.json()).toMatchObject({
       trackId: displacedTrackId,
-      newTrackId: 'replacement-track',
+      newTrackId: displacedTrackId,
       starred: true,
     });
-    expect(s.c.state.favoriteSongIdsByUsername.get(password.username)).toEqual([
-      'replacement-track',
-    ]);
+    expect(s.c.state.favoriteSongIdsByUsername.get(password.username)).toEqual([displacedTrackId]);
   });
 
   /** A replacement restores both predecessor occurrences when gonic collapses them to one ID. */

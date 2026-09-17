@@ -64,3 +64,6 @@ Final gates: project formatting, focused unit/contract tests, typecheck, build, 
   deterministic internal retired identity before the live source row claims the Gonic ID.
 - Safety: the replacement ledger retains the real displaced song ID; both curation audit rows,
   immutable history, backup evidence, and active-row ownership remain intact.
+- Reference recovery: the approved displaced relation permits a same-ID authenticated restore as
+  an exact no-translation readback. An unapproved same-ID request or a source-predecessor same-ID
+  request remains invalid.

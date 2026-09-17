@@ -127,6 +127,12 @@ moved to a deterministic `musiclatte-retired:<curation-row-id>` internal identit
 reuse case. The replacement ledger retains the displaced Gonic song ID, and the tombstoned row
 retains its immutable receipts and events.
 
+The same successful replacement relation also authorizes a reference restore whose displaced
+track ID equals the successor ID. That request performs no identity translation: it restores and
+exactly reads back the authenticated account's saved favorite and playlist state for the reused
+ID. Same-ID restores remain invalid for the source predecessor and for every relation without the
+approved displaced-track match.
+
 Organization status treats that source-location row as import provenance, not as universal success
 evidence. A succeeded item must always match the current MediaLink track ID, relative key, policy,
 and metadata watermark. When the same MediaLink has a qualifying import item in `registering`,
