@@ -146,12 +146,22 @@ requires one verified regular MP3 curation row per side, no active claims or act
 and no retired-key collision. It retires only the displaced binding, tombstones its current
 curation projection, preserves its immutable metadata/organization history, and keeps the source
 MediaLink as the successor. Restore and compare both the source and displaced reference snapshots
-for every configured account before advancing. If both predecessor IDs occurred in the same
-playlist, Gonic may temporarily collapse them to one successor; the restore endpoint accepts only
-that ledger-proven collapsed state and reconstructs every captured occurrence in order. Within one
-account, restore an unstarred predecessor snapshot before a starred snapshot, then require one
-combined readback equal to both baselines with both predecessors replaced by the successor. Do not
-use this approval to bypass an unbacked collision, an ambiguous target, or a missing snapshot.
+for every configured account before advancing. When Gonic reuses the displaced ID as the
+successor, restore the verified per-account union in one request:
+
+```sh
+npm run id3:organize -- references-restore --api https://service.example/api/v1 --token-file /absolute/private/account-token --track-id SOURCE_TRACK_ID --new-track-id DISPLACED_SUCCESSOR_ID --reference-file /absolute/private/source-references.json --replacement-reference-file /absolute/private/displaced-references.json
+```
+
+The replacement snapshot must be bound to the same API and PAT, must identify the reused successor
+ID, and must have the same name, owner, and complete ordered members as the source snapshot for any
+playlist appearing in both. The
+client unions disjoint playlists and favorite state, submits one ledger-validated restore, requires
+an exact combined readback, and checkpoints both private snapshots. If both predecessor IDs
+occurred in the same playlist, Gonic may temporarily collapse them to one successor; the restore
+endpoint accepts only that ledger-proven collapsed state and reconstructs every captured occurrence
+in order. Do not use this approval to bypass an unbacked collision, an ambiguous target, or a
+missing snapshot.
 
 `batch-next` returns the first unfinished unique track and its occurrence count. Run the existing
 cover, metadata, organization submit, and status commands with both `--state-file` and that exact

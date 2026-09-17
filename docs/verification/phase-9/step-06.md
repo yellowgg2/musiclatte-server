@@ -34,3 +34,15 @@ Final gates: project formatting, focused unit/contract tests, typecheck, build, 
 - Safety: ordinary jobs retain the single-predecessor contract. Replacement restore still requires
   the same successful successor relation, unchanged playlist metadata, one of the enumerated scan
   projections, and exact authenticated readback; unrelated edits remain conflicts.
+
+## 2026-09-18 reused-identity account union
+
+- RED: when Gonic reused the displaced track ID, restoring a source snapshot and displaced snapshot
+  separately made each exact readback reject the other predecessor's legitimate references.
+- GREEN: the CLI can verify and union the source and reused-displaced snapshots for one API/PAT,
+  submit the complete favorite/playlist baseline once, and checkpoint both private snapshots only
+  after the exact combined response succeeds.
+- Safety: the additional snapshot must identify the successor ID, a duplicate playlist must have
+  identical name, owner, and complete ordered members in both snapshots, and existing playlist and
+  occurrence limits remain enforced before the request. The server still derives the only accepted
+  predecessor set from the successful replacement ledger.

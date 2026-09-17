@@ -19,6 +19,7 @@ import {
 import {
   checkpointId3ReferenceRestore,
   createId3ReferenceSnapshot,
+  readId3ReferenceSnapshot,
 } from '../../tools/id3-organize-reference-guard.js';
 
 const privateFile = (name: string, value: string) => {
@@ -814,6 +815,134 @@ it('snapshots and restores current-account favorite and duplicate playlist refer
     expect(String(input)).not.toContain('mlpat_');
     expect(String(init?.body ?? '')).not.toContain('mlpat_');
   }
+});
+
+it('restores the verified union of source and displaced references for one replacement account', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-reference-replacement-client-'));
+  const token = 'mlpat_' + 'r'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const sourceFile = join(directory, 'source-references.json');
+  const displacedFile = join(directory, 'displaced-references.json');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  createId3ReferenceSnapshot({
+    path: sourceFile,
+    api: 'https://music.example/api/v1',
+    token,
+    trackId: 'source',
+    starred: false,
+    playlists: [
+      {
+        id: 'shared',
+        name: 'Shared',
+        owner: 'listener',
+        songIds: ['source', 'displaced'],
+      },
+    ],
+  });
+  createId3ReferenceSnapshot({
+    path: displacedFile,
+    api: 'https://music.example/api/v1',
+    token,
+    trackId: 'displaced',
+    starred: true,
+    playlists: [
+      {
+        id: 'shared',
+        name: 'Shared',
+        owner: 'listener',
+        songIds: ['source', 'displaced'],
+      },
+      {
+        id: 'owned',
+        name: 'Owned',
+        owner: 'listener',
+        songIds: ['A', 'displaced', 'B'],
+      },
+    ],
+  });
+  let restoreBody: Record<string, unknown> | undefined;
+  const result = await runId3OrganizeCommand({
+    api: 'https://music.example/api/v1',
+    tokenFile,
+    command: 'references-restore',
+    trackId: 'source',
+    newTrackId: 'displaced',
+    referenceFile: sourceFile,
+    replacementReferenceFile: displacedFile,
+    fetch: vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      restoreBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json({
+        schemaVersion: 1,
+        trackId: 'source',
+        newTrackId: 'displaced',
+        starred: true,
+        playlistsRestored: 2,
+      });
+    }),
+  });
+  expect(result).toEqual({ schemaVersion: 1, favoriteRestored: true, playlistsRestored: 2 });
+  expect(restoreBody).toMatchObject({
+    trackId: 'source',
+    newTrackId: 'displaced',
+    starred: true,
+    playlists: [
+      {
+        id: 'shared',
+        name: 'Shared',
+        owner: 'listener',
+        songIds: ['source', 'displaced'],
+      },
+      {
+        id: 'owned',
+        name: 'Owned',
+        owner: 'listener',
+        songIds: ['A', 'displaced', 'B'],
+      },
+    ],
+  });
+  expect(readId3ReferenceSnapshot(sourceFile).favoriteRestoredTo).toBe('displaced');
+  expect(readId3ReferenceSnapshot(sourceFile).playlists).toMatchObject([
+    { restoredTo: 'displaced' },
+  ]);
+  expect(readId3ReferenceSnapshot(displacedFile)).toMatchObject({
+    favoriteRestoredTo: 'displaced',
+    playlists: [{ restoredTo: 'displaced' }, { restoredTo: 'displaced' }],
+  });
+});
+
+it('rejects a replacement reference snapshot that is not bound to the reused successor ID', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-reference-replacement-guard-'));
+  const token = 'mlpat_' + 'q'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const sourceFile = join(directory, 'source.json');
+  const unrelatedFile = join(directory, 'unrelated.json');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  for (const [path, trackId] of [
+    [sourceFile, 'source'],
+    [unrelatedFile, 'unrelated'],
+  ] as const)
+    createId3ReferenceSnapshot({
+      path,
+      api: 'https://music.example/api/v1',
+      token,
+      trackId,
+      starred: false,
+      playlists: [],
+    });
+  const fetcher = vi.fn();
+  await expect(
+    runId3OrganizeCommand({
+      api: 'https://music.example/api/v1',
+      tokenFile,
+      command: 'references-restore',
+      trackId: 'source',
+      newTrackId: 'successor',
+      referenceFile: sourceFile,
+      replacementReferenceFile: unrelatedFile,
+      fetch: fetcher,
+    }),
+  ).rejects.toThrow('client_failed:reference_context');
+  expect(fetcher).not.toHaveBeenCalled();
 });
 
 /** Preserves already-restored owned playlists while adopting a shared successor. */

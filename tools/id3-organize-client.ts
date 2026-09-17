@@ -125,6 +125,7 @@ export interface Id3OrganizeCommandOptions {
   playlistId?: string;
   skipReason?: string;
   referenceFile?: string;
+  replacementReferenceFile?: string;
   newTrackId?: string;
   poll?: PollOptions;
   fetch?: typeof fetch;
@@ -743,19 +744,42 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const snapshot = verifyId3ReferenceContext(referenceFile, base, token);
     if (options.trackId !== undefined && options.trackId !== snapshot.trackId)
       fail('reference_context');
+    const replacementFile = options.replacementReferenceFile;
+    const replacement = replacementFile
+      ? verifyId3ReferenceContext(replacementFile, base, token)
+      : undefined;
+    if (
+      replacement &&
+      (replacementFile === referenceFile ||
+        replacement.trackId !== newTrackId ||
+        replacement.trackId === snapshot.trackId)
+    )
+      fail('reference_context');
+    const playlists = new Map<
+      string,
+      { id: string; name: string; owner: string; songIds: string[] }
+    >();
+    for (const current of [snapshot, ...(replacement ? [replacement] : [])])
+      for (const { id, name, owner, songIds } of current.playlists) {
+        const entry = { id, name, owner, songIds };
+        const existing = playlists.get(id);
+        if (existing && JSON.stringify(existing) !== JSON.stringify(entry))
+          fail('reference_context');
+        playlists.set(id, entry);
+      }
+    if (playlists.size > 1000) fail('reference_context');
+    const combinedPlaylists = [...playlists.values()];
+    if (combinedPlaylists.reduce((total, entry) => total + entry.songIds.length, 0) > 100000)
+      fail('reference_context');
+    const starred = snapshot.starred || replacement?.starred === true;
     const restored = decodeReferenceRestore(
       await jsonPost(
         '/metadata-organization/reference-restores',
         {
           trackId: snapshot.trackId,
           newTrackId,
-          starred: snapshot.starred,
-          playlists: snapshot.playlists.map(({ id, name, owner, songIds }) => ({
-            id,
-            name,
-            owner,
-            songIds,
-          })),
+          starred,
+          playlists: combinedPlaylists,
         },
         [200],
       ),
@@ -763,21 +787,26 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     if (
       restored.trackId !== snapshot.trackId ||
       restored.newTrackId !== newTrackId ||
-      restored.starred !== snapshot.starred ||
-      restored.playlistsRestored !== snapshot.playlists.length
+      restored.starred !== starred ||
+      restored.playlistsRestored !== combinedPlaylists.length
     )
       fail('reference_conflict');
-    checkpointId3ReferenceRestore(referenceFile, { kind: 'favorite', newTrackId });
-    for (const saved of snapshot.playlists)
-      checkpointId3ReferenceRestore(referenceFile, {
-        kind: 'playlist',
-        playlistId: saved.id,
-        newTrackId,
-      });
+    const checkpoints = [{ path: referenceFile, snapshot }];
+    if (replacement && replacementFile)
+      checkpoints.push({ path: replacementFile, snapshot: replacement });
+    for (const { path, snapshot: current } of checkpoints) {
+      checkpointId3ReferenceRestore(path, { kind: 'favorite', newTrackId });
+      for (const saved of current.playlists)
+        checkpointId3ReferenceRestore(path, {
+          kind: 'playlist',
+          playlistId: saved.id,
+          newTrackId,
+        });
+    }
     return {
       schemaVersion: 1 as const,
-      favoriteRestored: snapshot.starred,
-      playlistsRestored: snapshot.playlists.length,
+      favoriteRestored: starred,
+      playlistsRestored: combinedPlaylists.length,
     };
   }
 
@@ -1341,6 +1370,7 @@ function parseArgs(argv: string[]) {
     ['playlist-id', 'playlistId'],
     ['skip-reason', 'skipReason'],
     ['reference-file', 'referenceFile'],
+    ['replacement-reference-file', 'replacementReferenceFile'],
     ['new-track-id', 'newTrackId'],
   ] as const;
   for (const [flag, property] of optional) {
