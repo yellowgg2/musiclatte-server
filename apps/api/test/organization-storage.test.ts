@@ -919,6 +919,16 @@ describe('organization storage', () => {
         "INSERT INTO curation_source_events(library_id,media_link_id,track_id,kind,source_key,created_at) VALUES('library-1','media-target-alias','song-2','organization_rebound','organization:previous:rebound',900)",
       )
       .run();
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO organization_selection_snapshots(id,actor_token_id,scope_hash,inventory_revision,captured_at,expires_at,summary_json) VALUES('selection-1',?,?,?,900,2000,'{}')",
+      )
+      .run(s.issued.accessToken.id, 'd'.repeat(64), 'e'.repeat(64));
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO organization_selection_snapshot_items(selection_id,ordinal,media_link_id,track_id,title,artist,album) VALUES('selection-1',0,'media-target-alias','song-2','Title','Artist','Album')",
+      )
+      .run();
 
     const move = s.repository.claimNext({ workerId: 'filesystem', leaseDurationMs: 100 })!;
     s.repository.recordReferences({

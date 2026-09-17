@@ -1085,10 +1085,9 @@ export function createOrganizationRepository(options: {
                     EXISTS(SELECT 1 FROM metadata_items WHERE media_link_id=? AND stage NOT IN ('succeeded','conflict','failed')) OR
                     EXISTS(SELECT 1 FROM import_items WHERE media_link_id=? AND stage NOT IN ('ready','failed','cancelled','duplicate')) OR
                     EXISTS(SELECT 1 FROM organization_items WHERE media_link_id=? AND stage NOT IN ('succeeded','conflict','failed')) OR
-                    EXISTS(SELECT 1 FROM organization_source_locations WHERE media_link_id=?) OR
-                    EXISTS(SELECT 1 FROM organization_selection_snapshot_items WHERE media_link_id=?)`,
+                    EXISTS(SELECT 1 FROM organization_source_locations WHERE media_link_id=?)`,
                 )
-                .get(aliasId, aliasId, aliasId, aliasId, aliasId)
+                .get(aliasId, aliasId, aliasId, aliasId)
             : null;
           const activeClaim =
             candidate && trackRef
