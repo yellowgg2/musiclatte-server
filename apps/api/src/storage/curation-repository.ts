@@ -503,6 +503,29 @@ export function createCurationRepository(options: {
         clock(),
       );
     },
+    replaceOperationResult(
+      actorKey: string,
+      route: string,
+      operationId: string,
+      intent: unknown,
+      result: unknown,
+      admissionResults: unknown[] = [],
+    ) {
+      const updated = db
+        .prepare(
+          'UPDATE curation_operations SET result_json=?,admission_results_json=?,created_at=? WHERE actor_key=? AND route=? AND operation_hash=? AND intent_hash=?',
+        )
+        .run(
+          JSON.stringify(result),
+          JSON.stringify(admissionResults),
+          clock(),
+          actorKey,
+          route,
+          hash(operationId),
+          hash(intent),
+        );
+      if (updated.changes !== 1) throw new Error('operation_conflict');
+    },
     list(scope: CurationScope, input: CurationFilter, limit = 25, nextCursor?: string) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
         throw new Error('invalid_limit');

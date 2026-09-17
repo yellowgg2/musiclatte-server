@@ -64,6 +64,68 @@ it('previews without durable effects and admits only valid targets with replayab
   }
 });
 
+it('rechecks a legacy all-invalid-metadata rejection with the same operation intent', async () => {
+  const c = await createCurationMutationContext();
+  try {
+    const headers = await c.token();
+    const targets = [
+      { trackId: 'track-1', expectedRevision: c.repository.get(c.trackRef)!.fileRevision! },
+    ];
+    const claim = (
+      await c.post(
+        'curation-claims',
+        { operationId: randomUUID(), purpose: 'required_review', fields: ['title'], targets },
+        headers,
+      )
+    ).json();
+    expect(claim.claimId, JSON.stringify(claim)).toEqual(expect.any(String));
+    const body = {
+      operationId: randomUUID(),
+      targets,
+      patch: { title: { op: 'set', value: 'Recovered title' } },
+      automation: {
+        claimId: claim.claimId,
+        claimGeneration: claim.generation,
+        purpose: 'required_review',
+        sourceNotes: null,
+      },
+      dryRun: false,
+    };
+    const actor = c.storage.db.connection
+      .prepare(
+        "SELECT actor_key FROM curation_operations WHERE route='claim' ORDER BY created_at DESC LIMIT 1",
+      )
+      .get()!;
+    const admissionResults = [
+      {
+        trackId: 'track-1',
+        status: 'rejected' as const,
+        jobItemId: null,
+        reason: 'invalid_metadata' as const,
+      },
+    ];
+    c.repository.recordOperation(
+      String(actor.actor_key),
+      'write',
+      body.operationId,
+      body,
+      { jobId: null, claimId: claim.claimId, admissionResults },
+      admissionResults,
+    );
+
+    const accepted = await c.post('metadata-jobs', body, headers);
+    expect(accepted.statusCode, JSON.stringify(accepted.json())).toBe(202);
+    expect(accepted.json().admissionResults).toMatchObject([{ status: 'accepted' }]);
+    expect(
+      c.storage.db.connection
+        .prepare("SELECT count(*) AS n FROM curation_operations WHERE route='write'")
+        .get()!.n,
+    ).toBe(1);
+  } finally {
+    await c.cleanup();
+  }
+});
+
 /** A PAT may retry only its own failed unsaved automation item through the existing child-job contract. */
 it('retries a failed unsaved automation item with the original scoped PAT', async () => {
   const c = await createCurationMutationContext();

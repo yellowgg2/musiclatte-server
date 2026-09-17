@@ -27,3 +27,14 @@ proves that an already admitted job still writes safely after immediate claim re
 
 Focused verification: curation/automation unit suites 11 tests and claim/automation/ID3 contract
 suites 8 tests passed under Node 24.20.0 and npm 11.19.0. Typecheck and production build passed.
+
+## Follow-up — legacy rejected-admission recovery (2026-09-17)
+
+A production organizer run exposed a legacy all-target `invalid_metadata` admission whose null-job
+idempotency record permanently replayed the rejection after the transient condition cleared. The
+API now revalidates only the same actor, route, operation ID, and exact intent hash when every
+stored admission is `invalid_metadata`; accepted jobs and differently rejected replays remain
+immutable. A successful recheck atomically replaces the existing null-job result, retaining one
+operation row and one mutation intent. The focused automation unit test records the RED replay and
+the GREEN same-intent admission. Verification passed with 8 automation unit tests, 2 automation
+contract tests, typecheck, production build, and final format check under the pinned toolchain.

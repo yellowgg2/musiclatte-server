@@ -78,6 +78,12 @@ export function createAutomationService(service: SessionService) {
       admissionResults: saved.admissionResults,
     });
   }
+  const retryableRejectedOperation = (saved: StoredJob) =>
+    saved.jobId === null &&
+    saved.admissionResults.length > 0 &&
+    saved.admissionResults.every(
+      (result) => result.status === 'rejected' && result.reason === 'invalid_metadata',
+    );
   async function submitAutomationJob(principal: MetadataPrincipal, body: AutomationJobRequest) {
     const fields = Object.keys(body.patch) as CurationField[];
     requiredWrite(principal, fields);
@@ -90,9 +96,13 @@ export function createAutomationService(service: SessionService) {
     )
       throw new ApiError(400, 'invalid_request');
     const scope = await q.scope(principal);
+    let retryRejected = false;
     if (!body.dryRun) {
       const saved = operation(scope.actorKey, 'write', body.operationId, body) as StoredJob | null;
-      if (saved) return await response(principal, saved);
+      if (saved) {
+        retryRejected = retryableRejectedOperation(saved);
+        if (!retryRejected) return await response(principal, saved);
+      }
     }
     const locks: HeldMediaFence[] = [];
     const generations: PublicationFence[] = [];
@@ -200,7 +210,7 @@ export function createAutomationService(service: SessionService) {
           body.operationId,
           body,
         ) as StoredJob | null;
-        if (replay) return replay;
+        if (replay && (!retryRejected || !retryableRejectedOperation(replay))) return replay;
         locks.forEach((held) => held.assertHeld());
         generations.forEach(publications.validate);
         const identityKey = p.identity(principal);
@@ -256,7 +266,17 @@ export function createAutomationService(service: SessionService) {
           claimId: body.automation.claimId,
           admissionResults: admission,
         };
-        repo.recordOperation(scope.actorKey, 'write', body.operationId, body, result, admission);
+        if (replay)
+          repo.replaceOperationResult(
+            scope.actorKey,
+            'write',
+            body.operationId,
+            body,
+            result,
+            admission,
+          );
+        else
+          repo.recordOperation(scope.actorKey, 'write', body.operationId, body, result, admission);
         return result;
       });
       return await response(principal, saved);
