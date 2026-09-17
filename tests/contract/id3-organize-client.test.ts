@@ -832,7 +832,7 @@ it('restores the verified union of source and displaced references for one repla
     starred: false,
     playlists: [
       {
-        id: 'shared',
+        id: 'z-shared',
         name: 'Shared',
         owner: 'listener',
         songIds: ['source', 'displaced'],
@@ -847,13 +847,13 @@ it('restores the verified union of source and displaced references for one repla
     starred: true,
     playlists: [
       {
-        id: 'shared',
+        id: 'z-shared',
         name: 'Shared',
         owner: 'listener',
         songIds: ['source', 'displaced'],
       },
       {
-        id: 'owned',
+        id: 'a-owned',
         name: 'Owned',
         owner: 'listener',
         songIds: ['A', 'displaced', 'B'],
@@ -887,16 +887,16 @@ it('restores the verified union of source and displaced references for one repla
     starred: true,
     playlists: [
       {
-        id: 'shared',
-        name: 'Shared',
-        owner: 'listener',
-        songIds: ['source', 'displaced'],
-      },
-      {
-        id: 'owned',
+        id: 'a-owned',
         name: 'Owned',
         owner: 'listener',
         songIds: ['A', 'displaced', 'B'],
+      },
+      {
+        id: 'z-shared',
+        name: 'Shared',
+        owner: 'listener',
+        songIds: ['source', 'displaced'],
       },
     ],
   });

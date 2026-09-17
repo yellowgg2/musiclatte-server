@@ -768,7 +768,9 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         playlists.set(id, entry);
       }
     if (playlists.size > 1000) fail('reference_context');
-    const combinedPlaylists = [...playlists.values()];
+    const combinedPlaylists = [...playlists.values()].sort((left, right) =>
+      left.id.localeCompare(right.id),
+    );
     if (combinedPlaylists.reduce((total, entry) => total + entry.songIds.length, 0) > 100000)
       fail('reference_context');
     const starred = snapshot.starred || replacement?.starred === true;
