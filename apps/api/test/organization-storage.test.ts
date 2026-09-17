@@ -963,6 +963,8 @@ describe('organization storage', () => {
         referenceSnapshotDigests: ['b'.repeat(64), 'c'.repeat(64)],
       }),
     ).toMatchObject({ displacedMediaLinkId: 'media-target-alias' });
+    expect(s.repository.approvedTargetReplacement(registration.itemId, 'song-2')).toBe(true);
+    expect(s.repository.approvedTargetReplacement(registration.itemId, 'song-3')).toBe(false);
     s.c.db.connection
       .prepare(
         "INSERT INTO metadata_jobs(id,identity_key,library_id,operation_id_hash,request_hash,kind,created_at) VALUES('displaced-metadata-job',?,'library-1',?,?,'edit',900)",
@@ -1037,6 +1039,41 @@ describe('organization storage', () => {
       { kind: 'target_replacement_approved', payload_json: '{}' },
       { kind: 'target_alias_replaced', payload_json: '{}' },
     ]);
+    s.repository.completeRegistration({ ...registration, newTrackId: 'song-2' });
+    const references = s.repository.claimNext({
+      workerId: 'references',
+      leaseDurationMs: 100,
+    })!;
+    expect(references).toMatchObject({ stage: 'rebound', newTrackId: 'song-2' });
+    s.repository.transition({ ...references, stage: 'migrating_references' });
+    s.repository.putReferenceCheckpoint({
+      ...references,
+      kind: 'star',
+      referenceId: 'star',
+      baseline: false,
+      desired: false,
+    });
+    s.repository.failReferenceCheckpoint({
+      ...references,
+      kind: 'star',
+      referenceId: 'star',
+      errorCode: 'reference_conflict',
+    });
+    s.repository.putReferenceCheckpoint({
+      ...references,
+      kind: 'star',
+      referenceId: 'star',
+      baseline: false,
+      desired: true,
+      allowApprovedReplacementExpansion: true,
+    });
+    expect(
+      s.c.db.connection
+        .prepare(
+          "SELECT desired_json,status,error_code FROM organization_reference_checkpoints WHERE item_id=? AND kind='star' AND reference_id='star'",
+        )
+        .get(references.itemId),
+    ).toEqual({ desired_json: 'true', status: 'pending', error_code: null });
   });
 
   /** Rebinding publishes one durable pending delta while preserving the original audit payload. */

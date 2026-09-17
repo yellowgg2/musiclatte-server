@@ -822,6 +822,7 @@ export function createOrganizationRepository(options: {
         referenceId: string;
         baseline: unknown;
         desired: unknown;
+        allowApprovedReplacementExpansion?: boolean;
       },
     ) {
       return atomic(() => {
@@ -835,8 +836,33 @@ export function createOrganizationRepository(options: {
           )
           .get(input.itemId, input.kind, input.referenceId);
         if (existing) {
-          if (existing.baseline_json !== baseline || existing.desired_json !== desired)
-            throw new Error('conflict');
+          if (existing.baseline_json !== baseline || existing.desired_json !== desired) {
+            const approvedExpansion =
+              input.allowApprovedReplacementExpansion === true &&
+              input.kind === 'star' &&
+              input.referenceId === 'star' &&
+              existing.baseline_json === baseline &&
+              existing.desired_json === baseline &&
+              baseline === 'false' &&
+              desired === 'true' &&
+              existing.status !== 'completed' &&
+              Boolean(
+                db
+                  .prepare(
+                    `SELECT 1
+                     FROM organization_target_replacements r
+                     JOIN organization_items i ON i.id=r.item_id
+                     WHERE r.item_id=? AND r.displaced_track_id=i.new_track_id`,
+                  )
+                  .get(input.itemId),
+              );
+            if (!approvedExpansion) throw new Error('conflict');
+            db.prepare(
+              "UPDATE organization_reference_checkpoints SET desired_json=?,status='pending',error_code=NULL,updated_at=? WHERE item_id=? AND kind='star' AND reference_id='star'",
+            ).run(desired, now(), input.itemId);
+            event(input.itemId, 'reference_checkpoint_expanded', {});
+            return;
+          }
           if (existing.status !== 'completed')
             db.prepare(
               "UPDATE organization_reference_checkpoints SET status='pending',error_code=NULL,updated_at=? WHERE item_id=? AND kind=? AND reference_id=?",
@@ -881,6 +907,15 @@ export function createOrganizationRepository(options: {
       const row = owned(claim);
       if (row.baseline_json === null) throw new Error('reference_conflict');
       return decodeMetadataReferences(JSON.parse(text(row.baseline_json)));
+    },
+    approvedTargetReplacement(itemId: string, displacedTrackId: string) {
+      return Boolean(
+        db
+          .prepare(
+            'SELECT 1 FROM organization_target_replacements WHERE item_id=? AND displaced_track_id=?',
+          )
+          .get(itemId, displacedTrackId),
+      );
     },
     failReferenceCheckpoint(
       input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {

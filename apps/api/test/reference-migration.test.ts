@@ -56,11 +56,14 @@ function setup(
     authorizeError?: string;
     playlistReadError?: string;
     baseline?: MetadataReferences;
+    approvedReplacement?: boolean;
+    successorStarred?: boolean;
+    successorPlaylists?: MetadataReferences['playlists'];
   } = {},
 ) {
   const referenceBaseline = options.baseline ?? baseline;
   const playlists = new Map(
-    referenceBaseline.playlists.map((entry) => [
+    [...referenceBaseline.playlists, ...(options.successorPlaylists ?? [])].map((entry) => [
       entry.id,
       {
         ...entry,
@@ -71,12 +74,13 @@ function setup(
       },
     ]),
   );
-  let starred = false;
+  let starred = options.successorStarred ?? false;
   const writes: string[] = [];
   const completed = new Set<string>(['playlist:playlist-b']);
   const transitions: string[] = [];
   const migration = createReferenceMigration({
     repository: {
+      approvedTargetReplacement: () => options.approvedReplacement ?? false,
       readBaseline: () => referenceBaseline,
       transition: (input) => transitions.push(input.stage),
       completeVerifiedReferences: () => transitions.push('verified:succeeded'),
@@ -191,5 +195,42 @@ it('verifies an unstarred baseline with zero playlists without adding a star', a
   });
   await s.migration.process(claim);
   expect(s.writes).toEqual(['checkpoint:star:star', 'complete:star:star']);
+  expect(s.transitions).toEqual(['migrating_references', 'verifying', 'verified:succeeded']);
+});
+
+it('still rejects an unexpected successor favorite without an approved replacement', async () => {
+  const s = setup([], {
+    baseline: { trackId: oldId, starred: false, playlists: [] },
+    successorStarred: true,
+  });
+  await expect(s.migration.process(claim)).rejects.toThrow('reference_conflict');
+  expect(s.transitions).toEqual(['migrating_references', 'recovery_required']);
+});
+
+it('preserves an approved replacement successor favorite', async () => {
+  const s = setup([], {
+    baseline: { trackId: oldId, starred: false, playlists: [] },
+    approvedReplacement: true,
+    successorStarred: true,
+  });
+  await s.migration.process(claim);
+  expect(s.writes).toEqual(['checkpoint:star:star', 'complete:star:star']);
+  expect(s.transitions).toEqual(['migrating_references', 'verifying', 'verified:succeeded']);
+});
+
+it('preserves playlists that reference only an approved replacement successor', async () => {
+  const successorPlaylist = {
+    id: 'playlist-successor',
+    name: 'Existing successor references',
+    owner: 'owner',
+    songIds: ['A', newId],
+  };
+  const s = setup([], {
+    baseline: { trackId: oldId, starred: false, playlists: [] },
+    approvedReplacement: true,
+    successorPlaylists: [successorPlaylist],
+  });
+  await s.migration.process(claim);
+  expect(s.playlists.get(successorPlaylist.id)!.songIds).toEqual(successorPlaylist.songIds);
   expect(s.transitions).toEqual(['migrating_references', 'verifying', 'verified:succeeded']);
 });
