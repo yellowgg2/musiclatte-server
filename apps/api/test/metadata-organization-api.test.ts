@@ -787,6 +787,74 @@ describe('metadata organization PAT API', () => {
     expect(s.c.state.playlistEntryIds).toEqual(['replacement-track', 'tr-B', 'replacement-track']);
   });
 
+  /** An approved target replacement preserves the displaced track's account references too. */
+  it('restores displaced target references through the approved successor relation', async () => {
+    const s = await setup();
+    const displacedTrackId = 'tr-displaced';
+    const snapshot = { trackId: displacedTrackId, starred: true, playlists: [] };
+
+    const db = s.c.storage.db.connection;
+    const sourceMediaLinkId = String(
+      db.prepare("SELECT media_link_id FROM metadata_items WHERE id='completed-item'").get()!
+        .media_link_id,
+    );
+    const displacedMediaLinkId = 'displaced-media-link';
+    db.prepare(
+      "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at,validated_at) VALUES(?,'music','imports/account/Legacy/displaced.mp3',?,1,'available',?,?)",
+    ).run(displacedMediaLinkId, displacedTrackId, recentNow, recentNow);
+    db.prepare(
+      "INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES('replacement-job',?,'music',?,?,?,1,'id3-managed-v1','completed-metadata','revision','[]',?)",
+    ).run('7'.repeat(64), '8'.repeat(64), '9'.repeat(64), s.accessTokenId, recentNow);
+    db.prepare(
+      "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('replacement-item','replacement-job',?,'imports/account/Legacy/source.mp3','imports/account/Managed/source.mp3',?,'replacement-track',?,?,'succeeded',?)",
+    ).run(sourceMediaLinkId, s.trackId, 'a'.repeat(64), 'b'.repeat(64), recentNow);
+    db.prepare(
+      "INSERT INTO organization_target_replacements(item_id,displaced_media_link_id,displaced_track_id,operation_id_hash,request_hash,backup_receipt_digest,reference_snapshot_digests_json,created_at) VALUES('replacement-item',?,?,?,?,?,?,?)",
+    ).run(
+      displacedMediaLinkId,
+      displacedTrackId,
+      'c'.repeat(64),
+      'd'.repeat(64),
+      'e'.repeat(64),
+      JSON.stringify(['f'.repeat(64)]),
+      recentNow,
+    );
+    db.prepare('UPDATE media_links SET gonic_song_id=?,revision=revision+1 WHERE id=?').run(
+      'replacement-track',
+      sourceMediaLinkId,
+    );
+    s.c.songs.push({
+      id: 'replacement-track',
+      title: 'Original synthetic',
+      artist: 'Original artist',
+      album: 'Original album',
+      isDir: false,
+      path: 'imports/account/Legacy/source.mp3',
+    });
+    s.c.state.favoriteSongIdsByUsername.set(password.username, []);
+
+    const restored = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/reference-restores',
+      headers: s.headers,
+      payload: {
+        trackId: displacedTrackId,
+        newTrackId: 'replacement-track',
+        starred: snapshot.starred,
+        playlists: snapshot.playlists,
+      },
+    });
+    expect(restored.statusCode, restored.body).toBe(200);
+    expect(restored.json()).toMatchObject({
+      trackId: displacedTrackId,
+      newTrackId: 'replacement-track',
+      starred: true,
+    });
+    expect(s.c.state.favoriteSongIdsByUsername.get(password.username)).toEqual([
+      'replacement-track',
+    ]);
+  });
+
   /** Restore cannot mutate collections without an exact successful organization relation. */
   it('rejects an unrecorded successor without collection writes', async () => {
     const s = await setup();

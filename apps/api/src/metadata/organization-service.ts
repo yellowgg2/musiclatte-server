@@ -258,9 +258,9 @@ export function createOrganizationService(service: SessionService) {
       }
       const successor = db
         .prepare(
-          "SELECT j.library_id AS libraryId,i.media_link_id AS mediaLinkId FROM organization_items i JOIN organization_jobs j ON j.id=i.job_id WHERE i.old_track_id=? AND i.new_track_id=? AND i.stage='succeeded' ORDER BY i.stage_changed_at DESC LIMIT 1",
+          "SELECT j.library_id AS libraryId,i.media_link_id AS mediaLinkId FROM organization_items i JOIN organization_jobs j ON j.id=i.job_id LEFT JOIN organization_target_replacements r ON r.item_id=i.id WHERE (i.old_track_id=? OR r.displaced_track_id=?) AND i.new_track_id=? AND i.stage='succeeded' ORDER BY i.stage_changed_at DESC LIMIT 1",
         )
-        .get(body.trackId, body.newTrackId) as
+        .get(body.trackId, body.trackId, body.newTrackId) as
         { libraryId: string; mediaLinkId: string } | undefined;
       if (!successor || !principal.allowedLibraries.includes(successor.libraryId))
         throw new ApiError(422, 'invalid_request');
