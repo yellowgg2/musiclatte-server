@@ -58,6 +58,7 @@ npm run id3:organize -- metadata-recheck --api https://service.example/api/v1 --
 npm run id3:organize -- metadata-retry --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID
 npm run id3:organize -- organization-preview --api https://service.example/api/v1 --token-file /absolute/private/token --track-id TRACK_ID --revision RESULT_REVISION
 npm run id3:organize -- organization-submit --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision RESULT_REVISION --metadata-job-id METADATA_JOB_ID --operation-id STABLE_OPERATION_ID --poll-attempts 180 --poll-interval-ms 1000 --recovery-retries 1
+npm run id3:organize -- organization-adopt-no-op --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision RESULT_REVISION --metadata-job-id METADATA_JOB_ID --operation-id STABLE_OPERATION_ID
 ```
 
 Title/artist claims and optional-field claims are separate server contracts. If a manifest mixes
@@ -65,6 +66,13 @@ them, split the change into sequential manifests. Keep the last successful metad
 result revision for organization submission. Reuse the same operation ID after a lost response.
 If that replay is already `succeeded`, the client checkpoints the terminal response once and does
 not attempt a second identical journal transition.
+
+When the fresh organization preview returns exact `no_op`, use
+`organization-adopt-no-op` instead of `organization-submit`. The distinct endpoint repeats the
+same metadata job, result revision, evidence, current binding, and exact managed-path checks, then
+records a terminal succeeded organization without a worker claim, file move, scan, or reference
+mutation. Any `ready` plan, stale revision, changed request body, or nonidentical old/new binding is
+rejected. Do not use this command to bypass a destination conflict or a real move.
 
 A deployed worker may have recorded pre-rename SQLite contention as a terminal failure before the
 contention recovery fix. Preserve the journal and replay `organization-submit` with the exact same
@@ -77,7 +85,8 @@ after a claim was granted, the client idempotently releases that claim. The acce
 under its durable grant and file fence, so the next claim need not wait for the lease to expire.
 
 Stop when candidate search is not exact, evidence is incomplete, metadata preview rejects a field,
-or organization preview reports a collision. `status` performs a read; `retry` is valid only for a
+or organization preview reports a collision. A `ready` preview uses `organization-submit`; an exact
+`no_op` preview uses only `organization-adopt-no-op`. `status` performs a read; `retry` is valid only for a
 server-reported `recovery_required` checkpoint. Polling and automatic recovery are bounded.
 
 ## Collection batch lifecycle

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { mkdirSync, realpathSync } from 'node:fs';
+import { mkdirSync, realpathSync, renameSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMetadataFixture } from '../../../packages/test-support/src/metadata-fixtures.js';
 import { browserHeaders, cookieOf, native, password } from '../../../tests/support/auth-harness.js';
@@ -30,22 +30,38 @@ afterEach(async () => {
 async function setup({
   sourceAccountDirectory = 'account',
   actorAccountDirectory = 'account',
+  alreadyManaged = false,
 }: {
   sourceAccountDirectory?: string;
   actorAccountDirectory?: string;
+  alreadyManaged?: boolean;
 } = {}) {
   const c = await createRecentContext();
-  const fixtureRoot = join(c.musicRoot, 'imports', sourceAccountDirectory, 'Legacy');
+  const fixtureRoot = alreadyManaged
+    ? join(
+        c.musicRoot,
+        'imports',
+        sourceAccountDirectory,
+        'ID3-managed',
+        'Original album artist',
+        'Original album',
+      )
+    : join(c.musicRoot, 'imports', sourceAccountDirectory, 'Legacy');
   mkdirSync(fixtureRoot, { recursive: true });
   await createMetadataFixture({ root: fixtureRoot, ...helper, version: 4 });
+  if (alreadyManaged)
+    renameSync(join(fixtureRoot, 'source.mp3'), join(fixtureRoot, '01 - Original synthetic.mp3'));
   const trackId = 'organization-track';
+  const relativePath = alreadyManaged
+    ? `imports/${sourceAccountDirectory}/ID3-managed/Original album artist/Original album/01 - Original synthetic.mp3`
+    : `imports/${sourceAccountDirectory}/Legacy/source.mp3`;
   c.songs.push({
     id: trackId,
     title: 'Original synthetic',
     artist: 'Original artist',
     album: 'Original album',
     isDir: false,
-    path: `imports/${sourceAccountDirectory}/Legacy/source.mp3`,
+    path: relativePath,
   });
   const uploadRoot = join(realpathSync(c.storage.root), 'organization-uploads');
   mkdirSync(uploadRoot, { mode: 0o700 });
@@ -226,6 +242,121 @@ async function setup({
 }
 
 describe('metadata organization PAT API', () => {
+  /** A no-op adoption requires a fresh exact-path plan and records no runnable worker work. */
+  it('should adopt an already managed path as a verified organization success', async () => {
+    const s = await setup({ alreadyManaged: true });
+    const body = {
+      trackId: s.trackId,
+      expectedRevision: s.revision,
+      destinationPolicy: 'id3-managed-v1' as const,
+      operationId: 'organization_no_op_0001',
+      metadataJobId: 'completed-metadata',
+      sourceEvidence: [
+        {
+          url: 'https://example.invalid/official',
+          kind: 'official_artist' as const,
+          fields: ['title' as const],
+        },
+      ],
+    };
+    const preview = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/previews',
+      headers: s.headers,
+      payload: {
+        trackId: body.trackId,
+        expectedRevision: body.expectedRevision,
+        destinationPolicy: body.destinationPolicy,
+      },
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json()).toMatchObject({
+      status: 'no_op',
+      currentKey: expect.stringContaining('/ID3-managed/'),
+      targetKey: expect.stringContaining('/ID3-managed/'),
+    });
+
+    const adopted = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization-no-op-jobs',
+      headers: s.headers,
+      payload: body,
+    });
+    expect(adopted.statusCode, adopted.body).toBe(202);
+    expect(adopted.json().job).toMatchObject({
+      trackId: s.trackId,
+      newTrackId: s.trackId,
+      stage: 'succeeded',
+      errorCode: null,
+      nextOwner: null,
+    });
+    expect(
+      s.c.storage.db.connection
+        .prepare("SELECT count(*) AS count FROM organization_items WHERE stage<>'succeeded'")
+        .get()!.count,
+    ).toBe(0);
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization-no-op-jobs',
+          headers: s.headers,
+          payload: body,
+        })
+      ).json(),
+    ).toEqual(adopted.json());
+    const mediaLinkId = String(
+      s.c.storage.db.connection
+        .prepare('SELECT id FROM media_links WHERE gonic_song_id=?')
+        .get(s.trackId)!.id,
+    );
+    s.c.storage.db.connection
+      .prepare(
+        "INSERT INTO metadata_changes(item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at) VALUES('completed-item',?,?,'music','old',?,'{}','cover','[\"title\"]','verified',?)",
+      )
+      .run(mediaLinkId, s.actorIdentityKey, s.revision, recentNow);
+    const status = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/statuses',
+      headers: s.headers,
+      payload: {
+        schemaVersion: 1,
+        targets: [{ kind: 'track', trackId: s.trackId }],
+      },
+    });
+    expect(status.statusCode, status.body).toBe(200);
+    expect(status.json().items[0]).toMatchObject({
+      state: 'organized',
+      reason: 'verified',
+      stage: 'succeeded',
+    });
+  });
+
+  /** The no-op endpoint cannot bypass a real move or stale metadata binding. */
+  it('should reject no-op adoption unless the current path is already exact', async () => {
+    const s = await setup();
+    const response = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization-no-op-jobs',
+      headers: s.headers,
+      payload: {
+        trackId: s.trackId,
+        expectedRevision: s.revision,
+        destinationPolicy: 'id3-managed-v1',
+        operationId: 'organization_no_op_reject_0001',
+        metadataJobId: 'completed-metadata',
+        sourceEvidence: [
+          {
+            url: 'https://example.invalid/official',
+            kind: 'official_artist',
+            fields: ['title'],
+          },
+        ],
+      },
+    });
+    expect(response.statusCode).toBe(422);
+  });
+
   /** Whole-library selection is an explicit PAT-only endpoint, separate from collection selection. */
   it('should expose the unorganized selection endpoint', async () => {
     const s = await setup();

@@ -50,6 +50,8 @@ export interface OrganizationIntent {
   grantEpoch: string;
 }
 
+export type OrganizationNoOpIntent = Omit<OrganizationIntent, 'encryptedJobGrant' | 'grantEpoch'>;
+
 export interface OrganizationClaim {
   itemId: string;
   jobId: string;
@@ -129,6 +131,29 @@ export function validateOrganizationStorage(db: DatabaseSync): void {
       throw new Error('Storage unavailable');
     if (row.baseline_json !== null && Buffer.byteLength(text(row.baseline_json)) > 1024 * 1024)
       throw new Error('Storage unavailable');
+    const verifiedNoOp =
+      item.stage === 'succeeded' &&
+      item.sourceKey === item.targetKey &&
+      item.oldTrackId === item.newTrackId &&
+      row.baseline_json === null &&
+      row.source_device === null &&
+      row.source_inode === null &&
+      row.source_digest === null &&
+      row.source_mode === null &&
+      row.source_uid === null &&
+      row.source_gid === null &&
+      row.target_parent_device === null &&
+      row.target_parent_inode === null &&
+      row.encrypted_job_grant === null &&
+      row.grant_epoch === null &&
+      row.generation === 0 &&
+      Boolean(
+        db
+          .prepare(
+            "SELECT 1 FROM organization_events WHERE item_id=? AND kind='stage_changed' AND json_extract(payload_json,'$.stage')='succeeded' AND json_extract(payload_json,'$.mode')='verified_no_op' LIMIT 1",
+          )
+          .get(item.itemId),
+      );
     if (
       [
         'moving',
@@ -139,6 +164,7 @@ export function validateOrganizationStorage(db: DatabaseSync): void {
         'verifying',
         'succeeded',
       ].includes(item.stage) &&
+      !verifiedNoOp &&
       (!hex(row.source_digest) ||
         typeof row.source_device !== 'string' ||
         !/^\d+$/.test(row.source_device) ||
@@ -509,6 +535,106 @@ export function createOrganizationRepository(options: {
         event(input.itemId, 'accepted', {
           policyVersion: input.policyVersion,
           metadataRevision: input.metadataRevision,
+        });
+        return readJob(input.id, input.identityKey)!;
+      });
+    },
+    createOrReplayNoOp(input: OrganizationNoOpIntent) {
+      return atomic(() => {
+        const replay = db
+          .prepare(
+            'SELECT id,request_hash FROM organization_jobs WHERE identity_key=? AND operation_id_hash=?',
+          )
+          .get(input.identityKey, input.operationIdHash);
+        if (replay) {
+          if (replay.request_hash !== input.requestHash) throw new Error('conflict');
+          return readJob(text(replay.id), input.identityKey)!;
+        }
+        if (
+          !input.id ||
+          !input.itemId ||
+          !hex(input.identityKey) ||
+          !hex(input.operationIdHash) ||
+          !hex(input.requestHash) ||
+          !hex(input.fileIdentity) ||
+          !hex(input.audioIdentity) ||
+          input.policyVersion !== 'id3-managed-v1' ||
+          !Number.isSafeInteger(input.policyRevision) ||
+          input.policyRevision < 1 ||
+          !Array.isArray(input.sourceEvidence) ||
+          Buffer.byteLength(JSON.stringify(input.sourceEvidence)) > 65536 ||
+          input.sourceKey !== input.targetKey ||
+          !input.oldTrackId
+        )
+          throw new Error('invalid_organization_intent');
+        validateExistingRelativeKey(input.sourceKey);
+        validateRelativeKey(input.targetKey);
+        const link = db.prepare('SELECT * FROM media_links WHERE id=?').get(input.mediaLinkId) as
+          Row | undefined;
+        if (
+          !link ||
+          link.library_id !== input.libraryId ||
+          link.relative_file_key !== input.targetKey ||
+          link.gonic_song_id !== input.oldTrackId ||
+          link.availability !== 'available'
+        )
+          throw new Error('conflict');
+        const timestamp = now();
+        db.prepare(
+          'INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+        ).run(
+          input.id,
+          input.identityKey,
+          input.libraryId,
+          input.operationIdHash,
+          input.requestHash,
+          input.actorTokenId,
+          input.policyRevision,
+          input.policyVersion,
+          input.metadataJobId,
+          input.metadataRevision,
+          JSON.stringify(input.sourceEvidence),
+          timestamp,
+        );
+        db.prepare(
+          "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES(?,?,?,?,?,?,?,?,?,'succeeded',?)",
+        ).run(
+          input.itemId,
+          input.id,
+          input.mediaLinkId,
+          input.sourceKey,
+          input.targetKey,
+          input.oldTrackId,
+          input.oldTrackId,
+          input.fileIdentity,
+          input.audioIdentity,
+          timestamp,
+        );
+        const provenance = db
+          .prepare(
+            "SELECT source_id FROM import_items WHERE media_link_id=? AND stage IN ('registering','ready','duplicate') ORDER BY id LIMIT 1",
+          )
+          .get(input.mediaLinkId);
+        if (provenance)
+          db.prepare(
+            'INSERT INTO organization_source_locations(media_link_id,source_id,managed_key,organization_item_id,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(media_link_id) DO UPDATE SET source_id=excluded.source_id,managed_key=excluded.managed_key,organization_item_id=excluded.organization_item_id,updated_at=excluded.updated_at',
+          ).run(
+            input.mediaLinkId,
+            text(provenance.source_id),
+            input.targetKey,
+            input.itemId,
+            timestamp,
+          );
+        event(input.itemId, 'accepted', {
+          policyVersion: input.policyVersion,
+          metadataRevision: input.metadataRevision,
+          mode: 'verified_no_op',
+        });
+        event(input.itemId, 'stage_changed', {
+          stage: 'succeeded',
+          errorCode: null,
+          nextOwner: null,
+          mode: 'verified_no_op',
         });
         return readJob(input.id, input.identityKey)!;
       });

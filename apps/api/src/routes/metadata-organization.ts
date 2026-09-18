@@ -267,6 +267,26 @@ export function registerMetadataOrganizationRoutes(
           ),
         ),
   );
+  app.post<{ Body: OrganizationJobRequest }>(
+    '/api/v1/metadata-organization-no-op-jobs',
+    {
+      attachValidation: true,
+      bodyLimit: 65536,
+      schema: {
+        querystring: requests.empty,
+        body: requests.create,
+        response: { 202: responses.job },
+      },
+    },
+    async (request, reply) =>
+      reply
+        .code(202)
+        .send(
+          await boundary(request, writeBoundary, (principal) =>
+            getService().adoptNoOp(principal, request.body),
+          ),
+        ),
+  );
   app.get<{ Params: { id: string } }>(
     '/api/v1/metadata-organization-jobs/:id',
     {

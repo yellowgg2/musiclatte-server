@@ -4,7 +4,10 @@ import { createTestContext, proof } from '../../../tests/support/session-storage
 import { organizationGrantContext } from '../src/auth/metadata-job-authorizer.js';
 import { createAccessTokenRepository } from '../src/storage/access-token-repository.js';
 import { createCurationRepository } from '../src/storage/curation-repository.js';
-import { createOrganizationRepository } from '../src/storage/organization-repository.js';
+import {
+  createOrganizationRepository,
+  validateOrganizationStorage,
+} from '../src/storage/organization-repository.js';
 import { createWorkerLedger } from '../src/imports/worker-state.js';
 import { createMetadataRepository } from '../src/storage/metadata-repository.js';
 
@@ -98,6 +101,89 @@ async function setup() {
 }
 
 describe('organization storage', () => {
+  /** An exact managed-path no-op is terminal, replay-safe, and never enters the worker queue. */
+  it('should record a verified no-op as an auditable succeeded organization', async () => {
+    const s = await setup();
+    const input = {
+      ...s.input,
+      sourceKey: s.input.targetKey,
+      oldTrackId: 'song-1',
+    };
+    s.c.db.connection
+      .prepare('UPDATE media_links SET relative_file_key=? WHERE id=?')
+      .run(input.targetKey, input.mediaLinkId);
+
+    const first = s.repository.createOrReplayNoOp(input);
+    expect(first.item).toMatchObject({
+      stage: 'succeeded',
+      sourceKey: input.targetKey,
+      targetKey: input.targetKey,
+      oldTrackId: 'song-1',
+      newTrackId: 'song-1',
+      preimage: null,
+    });
+    expect(
+      s.repository.createOrReplayNoOp({ ...input, id: 'discarded', itemId: 'discarded' }),
+    ).toEqual(first);
+    expect(() =>
+      s.repository.createOrReplayNoOp({ ...input, requestHash: 'f'.repeat(64) }),
+    ).toThrow('conflict');
+    expect(
+      s.c.db.connection
+        .prepare('SELECT count(*) AS count FROM organization_attempts WHERE item_id=?')
+        .get(input.itemId)!.count,
+    ).toBe(0);
+    expect(
+      s.c.db.connection
+        .prepare('SELECT kind FROM organization_events WHERE item_id=? ORDER BY sequence')
+        .all(input.itemId)
+        .map((row) => row.kind),
+    ).toEqual(['accepted', 'stage_changed']);
+    expect(() => validateOrganizationStorage(s.c.db.connection)).not.toThrow();
+  });
+
+  /** A terminal row cannot impersonate verified no-op adoption without its append-only receipt. */
+  it('should reject an unmarked preimage-free succeeded row during storage validation', async () => {
+    const s = await setup();
+    const input = { ...s.input, sourceKey: s.input.targetKey };
+    s.c.db.connection
+      .prepare('UPDATE media_links SET relative_file_key=? WHERE id=?')
+      .run(input.targetKey, input.mediaLinkId);
+    s.c.db.connection
+      .prepare(
+        'INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,1000)',
+      )
+      .run(
+        input.id,
+        input.identityKey,
+        input.libraryId,
+        input.operationIdHash,
+        input.requestHash,
+        input.actorTokenId,
+        input.policyRevision,
+        input.policyVersion,
+        input.metadataJobId,
+        input.metadataRevision,
+        JSON.stringify(input.sourceEvidence),
+      );
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES(?,?,?,?,?,?,?,?,?,'succeeded',1000)",
+      )
+      .run(
+        input.itemId,
+        input.id,
+        input.mediaLinkId,
+        input.targetKey,
+        input.targetKey,
+        input.oldTrackId,
+        input.oldTrackId,
+        input.fileIdentity,
+        input.audioIdentity,
+      );
+    expect(() => validateOrganizationStorage(s.c.db.connection)).toThrow('Storage unavailable');
+  });
+
   /** Status projection resolves bounded targets in order and keeps current library identity isolated. */
   it('should project latest organization states for current scoped media links', async () => {
     const s = await setup();

@@ -671,6 +671,85 @@ it('replays lost submits and bounds server-owned recovery retries', async () => 
   expect(status).toBe(3);
 });
 
+/** Exact managed-path adoption uses a distinct endpoint and checkpoints terminal success. */
+it('adopts a journal-bound organization no-op without polling a worker', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-organization-no-op-'));
+  const token = 'mlpat_' + 'n'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const stateFile = join(directory, 'batch.json');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  createId3OrganizationBatchJournal({
+    path: stateFile,
+    api: 'https://music.example/api/v1',
+    token,
+    selection: {
+      schemaVersion: 1,
+      capturedAt: 1,
+      source: { kind: 'favorites' },
+      selectionRevision: 'a'.repeat(64),
+      occurrenceCount: 1,
+      uniqueTrackCount: 1,
+      items: [
+        {
+          trackId: 'track-1',
+          title: 'Title',
+          artist: 'Artist',
+          album: null,
+          occurrenceIndexes: [0],
+        },
+      ],
+    },
+  });
+  nextId3OrganizationBatchItem(stateFile);
+  checkpointId3OrganizationBatch(stateFile, 'track-1', {
+    kind: 'metadata',
+    step: 'optional',
+    jobId: 'metadata-job-1',
+    resultRevision: 'revision-1',
+    serverStage: 'succeeded',
+  });
+  const fetcher = vi.fn(async (input: string | URL | Request) => {
+    expect(String(input)).toBe('https://music.example/api/v1/metadata-organization-no-op-jobs');
+    return Response.json(
+      {
+        schemaVersion: 1,
+        job: {
+          id: 'job-1',
+          itemId: 'item-1',
+          libraryId: 'music',
+          trackId: 'track-1',
+          newTrackId: 'track-1',
+          stage: 'succeeded',
+          errorCode: null,
+          nextOwner: null,
+        },
+      },
+      { status: 202 },
+    );
+  });
+  const result = await runId3OrganizeCommand({
+    api: 'https://music.example/api/v1',
+    tokenFile,
+    stateFile,
+    fetch: fetcher,
+    command: 'organization-adopt-no-op',
+    trackId: 'track-1',
+    revision: 'revision-1',
+    metadataJobId: 'metadata-job-1',
+    sourceEvidence: [
+      { url: 'https://artist.example/release', kind: 'official_artist', fields: ['title'] },
+    ],
+  });
+  expect(result.job).toMatchObject({ stage: 'succeeded', newTrackId: 'track-1' });
+  expect(readId3OrganizationBatchJournal(stateFile).items[0]).toMatchObject({
+    state: 'succeeded',
+    organizationJobId: 'job-1',
+    newTrackId: 'track-1',
+    serverStage: 'succeeded',
+  });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
 /** A replay may already be terminal before the client receives its accepted response. */
 it('checkpoints an already-succeeded organization replay exactly once', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'musiclatte-organization-replay-'));

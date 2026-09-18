@@ -96,6 +96,7 @@ export interface Id3OrganizeCommandOptions {
     | 'organization-preview'
     | 'organization-replacement-approve'
     | 'organization-submit'
+    | 'organization-adopt-no-op'
     | 'status'
     | 'retry'
     | 'batch-start'
@@ -1208,6 +1209,51 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         serverStage: completed.job.stage,
       });
     return completed;
+  }
+  if (options.command === 'organization-adopt-no-op') {
+    const binding = batchBinding();
+    const finalMetadata = binding ? id3OrganizationFinalMetadataBinding(binding) : undefined;
+    if (
+      binding &&
+      (binding.state !== 'metadata_accepted' ||
+        finalMetadata?.jobId !== options.metadataJobId ||
+        finalMetadata?.resultRevision !== options.revision ||
+        (options.operationId !== undefined &&
+          options.operationId !== binding.operations.organization))
+    )
+      fail('journal_binding');
+    const evidence = decodeEvidence(options.sourceEvidence ?? options.manifest?.sourceEvidence);
+    const adopted = decodeOrganizationJobResponse(
+      await jsonPost(
+        '/metadata-organization-no-op-jobs',
+        {
+          ...target(),
+          destinationPolicy: 'id3-managed-v1',
+          operationId: binding?.operations.organization ?? options.operationId ?? randomUUID(),
+          metadataJobId: required(options.metadataJobId, 'metadata_job'),
+          sourceEvidence: evidence,
+        },
+        [202],
+        true,
+      ),
+    );
+    const trackId = required(options.trackId, 'track');
+    if (
+      adopted.job.stage !== 'succeeded' ||
+      adopted.job.trackId !== trackId ||
+      adopted.job.trackId !== adopted.job.newTrackId ||
+      adopted.job.errorCode !== null ||
+      adopted.job.nextOwner !== null
+    )
+      fail('response');
+    if (binding && options.stateFile)
+      checkpointId3OrganizationBatch(options.stateFile, binding.trackId, {
+        kind: 'organization',
+        jobId: adopted.job.id,
+        newTrackId: adopted.job.newTrackId,
+        serverStage: adopted.job.stage,
+      });
+    return adopted;
   }
   if (options.command === 'status') {
     const binding = batchBinding();
