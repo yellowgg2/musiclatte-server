@@ -213,6 +213,12 @@ If an accepted metadata submit returns before its item succeeds, use `metadata-s
 same state file and track. It reads the journal-owned job ID and checkpoints the server's current
 stage/result revision without acquiring a new claim or replaying the mutation. Continue to the next
 metadata step only after that checkpoint reports a successful nonempty result revision.
+`metadata-status` is also the recovery command when the saved step is already successful but Gonic
+assigned a different current track ID during reflection. The client re-reads that exact saved job
+and atomically rebinds only the active journal item after a successful result with a nonempty
+revision; the stable metadata and organization operation IDs remain unchanged. Resume later
+inspect, optional metadata, reference, and organization commands with the rebound track ID returned
+by `batch-next` or `sweep-next`.
 
 If a saved item remains `reflecting` after bounded status polling, use `metadata-recheck` once with
 the same state file and track. The client binds the parent job and item to the current journal,

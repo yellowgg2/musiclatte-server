@@ -50,6 +50,73 @@ function paths() {
 }
 
 describe('private ID3 organization batch journal', () => {
+  it('rebinds the active item only after a succeeded metadata checkpoint', async () => {
+    const module = await batchModule();
+    expect(module).toHaveProperty('checkpointId3OrganizationBatch');
+    if (!('checkpointId3OrganizationBatch' in module)) return;
+    const { stateFile } = paths();
+    module.createId3OrganizationBatchJournal({
+      path: stateFile,
+      api: 'https://music.example/api/v1',
+      token: 'mlpat_' + 'b'.repeat(48),
+      selection,
+    });
+    module.nextId3OrganizationBatchItem(stateFile);
+
+    module.checkpointId3OrganizationBatch(stateFile, 'A', {
+      kind: 'metadata',
+      step: 'required',
+      jobId: 'required-job',
+      resultRevision: 'revision-2',
+      serverStage: 'reflecting',
+      currentTrackId: 'A-rebound',
+    });
+    expect(module.nextId3OrganizationBatchItem(stateFile)).toMatchObject({
+      trackId: 'A',
+      state: 'metadata_accepted',
+    });
+
+    module.checkpointId3OrganizationBatch(stateFile, 'A', {
+      kind: 'metadata',
+      step: 'required',
+      jobId: 'required-job',
+      resultRevision: 'revision-2',
+      serverStage: 'succeeded',
+      currentTrackId: 'A-rebound',
+    });
+
+    expect(module.nextId3OrganizationBatchItem(stateFile)).toMatchObject({
+      trackId: 'A-rebound',
+      state: 'metadata_accepted',
+    });
+    expect(() => module.id3OrganizationBatchBinding(stateFile, 'A')).toThrow(
+      'client_failed:journal_binding',
+    );
+    expect(module.id3OrganizationBatchBinding(stateFile, 'A-rebound')).toMatchObject({
+      trackId: 'A-rebound',
+      metadataSteps: {
+        required: {
+          jobId: 'required-job',
+          resultRevision: 'revision-2',
+          serverStage: 'succeeded',
+        },
+      },
+    });
+    expect(() =>
+      module.checkpointId3OrganizationBatch(stateFile, 'A-rebound', {
+        kind: 'metadata',
+        step: 'required',
+        jobId: 'required-job',
+        resultRevision: 'revision-2',
+        serverStage: 'succeeded',
+        currentTrackId: 'B',
+      }),
+    ).toThrow('client_failed:journal_binding');
+    expect(module.nextId3OrganizationBatchItem(stateFile)).toMatchObject({
+      trackId: 'A-rebound',
+    });
+  });
+
   it('adds media-link identity and deterministic operations only to unorganized v3 children', async () => {
     const module = await batchModule();
     expect(module).toHaveProperty('createId3OrganizationSweepChildJournal');

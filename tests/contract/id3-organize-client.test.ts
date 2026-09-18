@@ -74,6 +74,88 @@ it('strictly decodes verified values, evidence, cover usage and rejects unknown 
   ).toThrow('client_failed:manifest');
 });
 
+it('recovers a completed metadata checkpoint whose gonic track ID changed', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-metadata-rebind-'));
+  const token = 'mlpat_' + 'b'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const stateFile = join(directory, 'batch.json');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  createId3OrganizationBatchJournal({
+    path: stateFile,
+    api: 'https://music.example/api/v1',
+    token,
+    selection: {
+      schemaVersion: 1,
+      capturedAt: 1,
+      source: { kind: 'favorites' },
+      selectionRevision: 'a'.repeat(64),
+      occurrenceCount: 1,
+      uniqueTrackCount: 1,
+      items: [
+        {
+          trackId: 'track-old',
+          title: 'Title',
+          artist: 'Artist',
+          album: null,
+          occurrenceIndexes: [0],
+        },
+      ],
+    },
+  });
+  nextId3OrganizationBatchItem(stateFile);
+  checkpointId3OrganizationBatch(stateFile, 'track-old', {
+    kind: 'metadata',
+    step: 'required',
+    jobId: 'required-job',
+    resultRevision: 'revision-2',
+    serverStage: 'succeeded',
+  });
+  const fetcher = vi.fn(async () =>
+    Response.json({
+      schemaVersion: 1,
+      job: {
+        id: 'required-job',
+        libraryId: 'music',
+        createdAt: 1,
+        status: 'succeeded',
+        kind: 'edit',
+        parentJobId: null,
+        items: [
+          {
+            itemId: 'required-item',
+            originalTrackId: 'track-old',
+            currentTrackId: 'track-rebound',
+            stage: 'succeeded',
+            fileSavedAt: 1,
+            reflectedAt: 2,
+            previousRevision: 'revision-1',
+            resultRevision: 'revision-2',
+            changedFields: ['title'],
+            errorCode: null,
+            recoveryActions: [],
+            restoreAvailable: false,
+          },
+        ],
+      },
+    }),
+  );
+
+  await runId3OrganizeCommand({
+    api: 'https://music.example/api/v1',
+    tokenFile,
+    stateFile,
+    fetch: fetcher,
+    command: 'metadata-status',
+    trackId: 'track-old',
+  });
+
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(nextId3OrganizationBatchItem(stateFile)).toMatchObject({
+    trackId: 'track-rebound',
+    state: 'metadata_accepted',
+  });
+});
+
 it('uploads the optional cover after a successful required metadata step', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'musiclatte-two-step-cover-'));
   const token = 'mlpat_' + 'z'.repeat(48);

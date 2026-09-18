@@ -43,3 +43,20 @@
 
 - Inventory remains active independently on Unraid and continues draining normal pending work before legacy retries.
 - Before the first live metadata preview or mutation, re-read the operation recovery reference.
+
+## 2026-09-19 metadata reflection track rebind recovery
+
+- A production sweep checkpoint proved that a successful metadata reflection may replace the
+  Gonic track ID while the private child journal still retains the pre-reflection ID. Fresh inspect
+  and organization preview then fail against the retired ID even though the saved metadata job and
+  result revision are valid.
+- Focused RED covered both the atomic journal rebind and recovery of an already-successful saved
+  metadata checkpoint. GREEN now lets `metadata-status` re-read the journal-owned job, verify a
+  unique job item, and replace only the active item track ID after `succeeded` plus a nonempty result
+  revision. Stable operation IDs and every accepted job/revision checkpoint are preserved.
+- The same checkpoint path is used for submit, status, recheck, and retry responses; nonterminal
+  stages never change the journal track ID, and a rebind that collides with another frozen item is
+  rejected.
+- Focused contract verification passed 48 tests across the batch journal and operator client.
+  `npm run typecheck`, `npm run build`, `npm run format:check`, and `git diff --check` passed; the
+  web build emitted only the existing chunk-size warning.

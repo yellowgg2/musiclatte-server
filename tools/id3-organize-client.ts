@@ -32,6 +32,7 @@ import {
   id3OrganizationBatchBinding,
   id3OrganizationFinalMetadataBinding,
   id3OrganizationMetadataBinding,
+  id3OrganizationMetadataStatusBinding,
   id3OrganizationPendingMetadataBinding,
   id3OrganizationBatchStatus,
   nextId3OrganizationBatchItem,
@@ -319,6 +320,14 @@ function decodeMetadataJobDetail(value: unknown) {
   }
   if (!exact(value, ['schemaVersion', 'job'])) fail('response');
   return { schemaVersion: 1 as const, job: decodeMetadataJob(value.job) };
+}
+
+function metadataJobItem(job: ReturnType<typeof decodeMetadataJob>, trackId: string) {
+  const matches = job.items.filter(
+    (item) => item.originalTrackId === trackId || item.currentTrackId === trackId,
+  );
+  if (matches.length !== 1) fail('response');
+  return matches[0]!;
 }
 
 function required(value: string | undefined, code: string): string {
@@ -1019,13 +1028,14 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       );
       if (!accepted.job || accepted.admissionResults[0]?.status !== 'accepted') fail('admission');
       if (binding && options.stateFile) {
-        const result = accepted.job.items.find((item) => item.originalTrackId === binding.trackId);
+        const result = metadataJobItem(accepted.job, binding.trackId);
         checkpointId3OrganizationBatch(options.stateFile, binding.trackId, {
           kind: 'metadata',
           step: metadataStep,
           jobId: accepted.job.id,
-          resultRevision: result?.resultRevision ?? null,
-          serverStage: result?.stage ?? accepted.job.status,
+          resultRevision: result.resultRevision,
+          serverStage: result.stage,
+          currentTrackId: result.currentTrackId,
         });
       }
       return accepted;
@@ -1041,17 +1051,18 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
   if (options.command === 'metadata-status') {
     const binding = batchBinding();
     if (!binding || binding.state !== 'metadata_accepted') fail('journal_binding');
-    const pending = id3OrganizationPendingMetadataBinding(binding);
-    const response = await call('/metadata-jobs/' + encodeURIComponent(pending.target.jobId!));
+    const status = id3OrganizationMetadataStatusBinding(binding);
+    const response = await call('/metadata-jobs/' + encodeURIComponent(status.target.jobId!));
     const job = decodeMetadataJobDetail(response).job;
-    const result = job.items.find((item) => item.originalTrackId === binding.trackId);
-    if (!result) fail('response');
+    if (job.id !== status.target.jobId) fail('response');
+    const result = metadataJobItem(job, binding.trackId);
     checkpointId3OrganizationBatch(options.stateFile!, binding.trackId, {
       kind: 'metadata',
-      step: pending.step,
+      step: status.step,
       jobId: job.id,
       resultRevision: result.resultRevision,
       serverStage: result.stage,
+      currentTrackId: result.currentTrackId,
     });
     return { schemaVersion: 1 as const, job };
   }
@@ -1062,9 +1073,7 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const parent = decodeMetadataJobDetail(
       await call('/metadata-jobs/' + encodeURIComponent(pending.target.jobId!)),
     );
-    const reflecting = parent.job.items.find(
-      (item) => item.originalTrackId === binding.trackId && item.currentTrackId === binding.trackId,
-    );
+    const reflecting = metadataJobItem(parent.job, binding.trackId);
     if (
       !reflecting ||
       !['file_saved', 'reflecting'].includes(reflecting.stage) ||
@@ -1094,16 +1103,14 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       ),
     );
     if (rechecked.job.id !== parent.job.id) fail('response');
-    const result = rechecked.job.items.find(
-      (item) => item.originalTrackId === binding.trackId && item.currentTrackId === binding.trackId,
-    );
-    if (!result) fail('response');
+    const result = metadataJobItem(rechecked.job, binding.trackId);
     checkpointId3OrganizationBatch(options.stateFile!, binding.trackId, {
       kind: 'metadata',
       step: pending.step,
       jobId: rechecked.job.id,
       resultRevision: result.resultRevision,
       serverStage: result.stage,
+      currentTrackId: result.currentTrackId,
     });
     return rechecked;
   }
@@ -1114,9 +1121,7 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const parent = decodeMetadataJobDetail(
       await call('/metadata-jobs/' + encodeURIComponent(pending.target.jobId!)),
     );
-    const failed = parent.job.items.find(
-      (item) => item.originalTrackId === binding.trackId && item.currentTrackId === binding.trackId,
-    );
+    const failed = metadataJobItem(parent.job, binding.trackId);
     if (
       !failed ||
       !['failed', 'conflict'].includes(failed.stage) ||
@@ -1140,16 +1145,14 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         true,
       ),
     );
-    const result = retried.job.items.find(
-      (item) => item.originalTrackId === binding.trackId && item.currentTrackId === binding.trackId,
-    );
-    if (!result) fail('response');
+    const result = metadataJobItem(retried.job, binding.trackId);
     checkpointId3OrganizationBatch(options.stateFile!, binding.trackId, {
       kind: 'metadata',
       step: pending.step,
       jobId: retried.job.id,
       resultRevision: result.resultRevision,
       serverStage: result.stage,
+      currentTrackId: result.currentTrackId,
     });
     return retried;
   }
