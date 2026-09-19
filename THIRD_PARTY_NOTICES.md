@@ -1,7 +1,7 @@
 # Third-party runtime notices
 
-The project license remains undecided. This file records third-party components and does not
-grant a license for Musiclatte Server's own code.
+Musiclatte Server's own code is provided under the MIT License. This file records third-party
+components, which retain their own copyright notices and license terms.
 
 ## Metadata images
 

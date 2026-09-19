@@ -58,4 +58,4 @@ media snapshot made with the old build before migration. Disabling metadata or o
 not reverse migrations, reference changes, or edited/moved files. An older image must never be
 paired with a newer database.
 
-The repository contains source, dependency locks and synthetic-fixture generators only. Images exclude tests, probe tools, credentials, private stores and generated media. [Third-party notices](../../THIRD_PARTY_NOTICES.md) describe included dependencies; no project license has been selected.
+The repository contains source, dependency locks and synthetic-fixture generators only. Images exclude tests, probe tools, credentials, private stores and generated media. The project code is available under the [MIT License](../../LICENSE), while included dependencies retain the terms recorded in [third-party notices](../../THIRD_PARTY_NOTICES.md).
