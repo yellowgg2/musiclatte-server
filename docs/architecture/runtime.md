@@ -41,7 +41,7 @@ API는 환경변수를 shell로 전달한다. `.env`를 자동 로딩하지 않�
 
 ## 경계
 
-GitHub public repository 생성은 사용자 지시로 수행했다. 소스 commit/push와 운영 배포는 수행하지 않았다. License는 미선택이다. 실제 media·비밀값·local agent state·generated output은 Git/Docker 제외 대상이며 공개 sample에는 개인 서버 경로나 사용자 음악 정보를 적지 않는다.
+GitHub public repository 생성은 사용자 지시로 수행했다. 소스 commit/push와 운영 배포는 수행하지 않았다. 프로젝트 코드는 MIT License로 제공되며 제3자 구성 요소에는 각자의 라이선스가 적용된다. 실제 media·비밀값·local agent state·generated output은 Git/Docker 제외 대상이며 공개 sample에는 개인 서버 경로나 사용자 음악 정보를 적지 않는다.
 
 ## Phase 3 worker seed (2026-09-07 확인)
 
