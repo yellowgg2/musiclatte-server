@@ -19,6 +19,12 @@ const observationSelect = `SELECT
   o.first_seen_at,o.stable_since_at,o.last_seen_at,o.next_attempt_at,o.attempt,
   o.failure_code,o.event_id,o.media_link_id,o.lease_owner,o.lease_expires_at,o.generation
 FROM external_file_observations o`;
+const rootSelect = `SELECT
+  library_id,account_directory,identity_key,state,generation,continuation_json,
+  CAST(root_device AS TEXT) AS root_device,CAST(root_inode AS TEXT) AS root_inode,
+  scan_started_at,scan_completed_at,next_reconcile_at,last_error_code,
+  lease_owner,lease_expires_at,updated_at
+FROM external_watch_roots`;
 
 export type ExternalObservationState =
   'baseline' | 'settling' | 'validating' | 'registering' | 'ready' | 'absent' | 'rejected';
@@ -112,6 +118,8 @@ function decodeContinuation(value: unknown): ExternalWatchContinuation | null {
 
 function decodeRoot(row: Record<string, unknown>) {
   try {
+    const rootDevice = row.root_device === null ? null : losslessInteger(row.root_device);
+    const rootInode = row.root_inode === null ? null : losslessInteger(row.root_inode);
     if (
       !text(row.library_id) ||
       !validAccountDirectory(row.account_directory) ||
@@ -120,8 +128,9 @@ function decodeRoot(row: Record<string, unknown>) {
       !['baselining', 'active', 'blocked'].includes(String(row.state)) ||
       !integer(row.generation) ||
       row.generation < 1 ||
-      !optionalInteger(row.root_device) ||
-      !optionalInteger(row.root_inode) ||
+      (row.root_device !== null && rootDevice === null) ||
+      (row.root_inode !== null && rootInode === null) ||
+      (rootDevice === null) !== (rootInode === null) ||
       !optionalInteger(row.scan_started_at) ||
       !optionalInteger(row.scan_completed_at) ||
       !integer(row.next_reconcile_at) ||
@@ -136,8 +145,8 @@ function decodeRoot(row: Record<string, unknown>) {
       state: row.state as 'baselining' | 'active' | 'blocked',
       generation: row.generation,
       continuation: decodeContinuation(row.continuation_json),
-      rootDevice: row.root_device,
-      rootInode: row.root_inode,
+      rootDevice,
+      rootInode,
       scanStartedAt: row.scan_started_at,
       scanCompletedAt: row.scan_completed_at,
       nextReconcileAt: row.next_reconcile_at,
@@ -252,8 +261,7 @@ function decodeObservation(row: Record<string, unknown>) {
 export function validateExternalWatchStorage(database: DatabaseSync): void {
   for (const row of database.prepare('SELECT * FROM external_watch_owners').iterate())
     decodeOwner(row);
-  for (const row of database.prepare('SELECT * FROM external_watch_roots').iterate())
-    decodeRoot(row);
+  for (const row of database.prepare(rootSelect).iterate()) decodeRoot(row);
   for (const row of database.prepare(observationSelect).iterate()) decodeObservation(row);
   if (
     database
@@ -442,7 +450,7 @@ export function createExternalWatchRepository(options: {
     },
     getRoot(libraryId: string, accountDirectory: string) {
       const row = db
-        .prepare('SELECT * FROM external_watch_roots WHERE library_id=? AND account_directory=?')
+        .prepare(`${rootSelect} WHERE library_id=? AND account_directory=?`)
         .get(libraryId, accountDirectory);
       return row ? decodeRoot(row) : null;
     },
@@ -450,16 +458,16 @@ export function createExternalWatchRepository(options: {
       libraryId: string;
       accountDirectory: string;
       identityKey: string;
-      rootDevice: number;
-      rootInode: number;
+      rootDevice: number | bigint | string;
+      rootInode: number | bigint | string;
       continuation: ExternalWatchContinuation;
     }) {
       if (
         !text(input.libraryId) ||
         !validAccountDirectory(input.accountDirectory) ||
         !identityPattern.test(input.identityKey) ||
-        !integer(input.rootDevice) ||
-        !integer(input.rootInode)
+        losslessInteger(input.rootDevice) === null ||
+        losslessInteger(input.rootInode) === null
       )
         throw new Error('Invalid external watch root');
       const continuation = decodeContinuation(JSON.stringify(input.continuation));
@@ -475,8 +483,8 @@ export function createExternalWatchRepository(options: {
          WHERE library_id=? AND account_directory=? AND identity_key=?`,
       ).run(
         JSON.stringify(continuation),
-        input.rootDevice,
-        input.rootInode,
+        losslessInteger(input.rootDevice),
+        losslessInteger(input.rootInode),
         timestamp,
         timestamp,
         input.libraryId,
@@ -524,7 +532,7 @@ export function createExternalWatchRepository(options: {
       const timestamp = now();
       database.transaction(() => {
         const root = db
-          .prepare('SELECT * FROM external_watch_roots WHERE library_id=? AND account_directory=?')
+          .prepare(`${rootSelect} WHERE library_id=? AND account_directory=?`)
           .get(input.libraryId, input.accountDirectory);
         const decoded = root ? decodeRoot(root) : null;
         if (!decoded || decoded.scanStartedAt === null)

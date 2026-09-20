@@ -77,6 +77,44 @@ function finish(inventory: {
 }
 
 describe('external watch inventory', () => {
+  it('should preserve 64-bit root identities beyond the JavaScript safe integer range', async () => {
+    const module = await import('../src/imports/external-watch-inventory.js').catch(() => ({}));
+    const identify = (module as Record<string, unknown>).externalWatchRootIdentity;
+    expect(identify).toBeTypeOf('function');
+    if (typeof identify !== 'function') return;
+
+    const identity = (
+      identify as (stat: { dev: bigint; ino: bigint }) => { device: string; inode: string }
+    )({ dev: 10n, ino: 9_007_199_254_740_993n });
+    expect(identity).toEqual({ device: '10', inode: '9007199254740993' });
+
+    const c = await makeSUT();
+    if (!c) return;
+    c.repository.ensureRoot({
+      libraryId: target.libraryId,
+      accountDirectory: target.accountDirectory,
+      identityKey: target.identityKey,
+    });
+    c.repository.startRootScan({
+      libraryId: target.libraryId,
+      accountDirectory: target.accountDirectory,
+      identityKey: target.identityKey,
+      rootDevice: identity.device,
+      rootInode: identity.inode,
+      continuation: { version: 1, directories: [{ key: '', offset: 0 }] },
+    });
+    expect(c.repository.getRoot(target.libraryId, target.accountDirectory)).toMatchObject({
+      rootDevice: '10',
+      rootInode: '9007199254740993',
+    });
+    expect(() =>
+      (identify as (stat: { dev: bigint; ino: bigint }) => unknown)({
+        dev: 10n,
+        ino: 9_223_372_036_854_775_808n,
+      }),
+    ).toThrow('root_unavailable');
+  });
+
   it('should baseline only exact account MP3 files and settle later nested additions', async () => {
     now = 10;
     const c = await makeSUT({ maxEntries: 3 });

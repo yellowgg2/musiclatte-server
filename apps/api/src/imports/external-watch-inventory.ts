@@ -72,12 +72,11 @@ function visibleDirectoryMatches(path: string, identity: BigIntStats): boolean {
   }
 }
 
-function rootNumbers(stat: BigIntStats) {
-  const device = Number(stat.dev);
-  const inode = Number(stat.ino);
-  if (!Number.isSafeInteger(device) || device < 0 || !Number.isSafeInteger(inode) || inode < 0)
+export function externalWatchRootIdentity(stat: Pick<BigIntStats, 'dev' | 'ino'>) {
+  const maximum = 9_223_372_036_854_775_807n;
+  if (stat.dev < 0n || stat.dev > maximum || stat.ino < 0n || stat.ino > maximum)
     throw new Error('root_unavailable');
-  return { device, inode };
+  return { device: stat.dev.toString(), inode: stat.ino.toString() };
 }
 
 function accountRoot(musicRoot: string, target: InventoryTarget) {
@@ -181,7 +180,7 @@ export function createExternalWatchInventory(options: InventoryOptions) {
         return block(target, 'root_unavailable');
       }
       let stored = repository.getRoot(target.libraryId, target.accountDirectory)!;
-      const currentIdentity = rootNumbers(root.stat);
+      const currentIdentity = externalWatchRootIdentity(root.stat);
       if (stored.failureCode === 'root_replaced') return block(target, 'root_replaced');
       if (
         stored.rootDevice !== null &&
