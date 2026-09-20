@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const APPLICATION_ID = 1296843092;
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 31;
 const MIGRATIONS = [
   new URL('./migrations/001-session.sql', import.meta.url),
   new URL('./migrations/002-playlist-operations.sql', import.meta.url),
@@ -35,6 +35,7 @@ const MIGRATIONS = [
   new URL('./migrations/028-organization-status-lookup.sql', import.meta.url),
   new URL('./migrations/029-unorganized-selection-snapshots.sql', import.meta.url),
   new URL('./migrations/030-organization-target-replacements.sql', import.meta.url),
+  new URL('./migrations/031-external-recent-watch.sql', import.meta.url),
 ] as const;
 export interface ManagementDatabase {
   connection: DatabaseSync;
@@ -172,7 +173,16 @@ export function validateSchema(db: DatabaseSync): void {
     'SELECT id, library_id, relative_file_key, gonic_song_id, revision, availability, created_at, validated_at FROM media_links LIMIT 0',
   );
   db.prepare(
-    'SELECT id, import_item_id, identity_key, library_id, download_completed_at, registered_at FROM download_events LIMIT 0',
+    'SELECT id, import_item_id, media_link_id, provenance, identity_key, library_id, download_completed_at, registered_at FROM download_events LIMIT 0',
+  );
+  db.prepare(
+    'SELECT library_id,account_directory,username,identity_key,instance_id,policy_revision,updated_at FROM external_watch_owners LIMIT 0',
+  );
+  db.prepare(
+    'SELECT library_id,account_directory,identity_key,state,generation,continuation_json,root_device,root_inode,scan_started_at,scan_completed_at,next_reconcile_at,last_error_code,lease_owner,lease_expires_at,updated_at FROM external_watch_roots LIMIT 0',
+  );
+  db.prepare(
+    'SELECT library_id,relative_file_key,account_directory,identity_key,state,device,inode,size,mtime_ns,ctime_ns,link_count,first_seen_at,stable_since_at,last_seen_at,next_attempt_at,attempt,failure_code,event_id,media_link_id,lease_owner,lease_expires_at,generation FROM external_file_observations LIMIT 0',
   );
   db.prepare(
     'SELECT singleton, last_checked_at, last_check_succeeded_at, active_version, candidate_version, previous_version, status, failure_code, candidate_key, candidate_hash, operation_token, operation_expires_at FROM engine_state LIMIT 0',

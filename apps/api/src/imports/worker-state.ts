@@ -206,8 +206,8 @@ export function createWorkerLedger(
         }
         if (!duplicate)
           db.prepare(
-            'INSERT INTO download_events(id,import_item_id,identity_key,library_id,download_completed_at) VALUES(?,?,?,?,?)',
-          ).run(value.eventId, id, job.identityKey, job.libraryId, at);
+            "INSERT INTO download_events(id,import_item_id,media_link_id,provenance,identity_key,library_id,download_completed_at) VALUES(?,?,?,'musiclatte',?,?,?)",
+          ).run(value.eventId, id, media.id!, job.identityKey, job.libraryId, at);
         db.prepare('UPDATE import_publish_intents SET completed_at=? WHERE item_id=?').run(at, id);
         db.prepare(
           'UPDATE import_items SET stage=?,media_link_id=?,stage_changed_at=?,registering_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=?',

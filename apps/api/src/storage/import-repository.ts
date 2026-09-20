@@ -131,6 +131,8 @@ function decodeEvent(row: Record<string, unknown> | undefined) {
   const event = {
     id: row.id,
     importItemId: row.import_item_id,
+    mediaLinkId: row.media_link_id,
+    provenance: row.provenance,
     identityKey: row.identity_key,
     libraryId: row.library_id,
     downloadCompletedAt: row.download_completed_at,
@@ -138,7 +140,10 @@ function decodeEvent(row: Record<string, unknown> | undefined) {
   };
   if (
     !text(event.id) ||
-    !text(event.importItemId) ||
+    !nullableText(event.importItemId) ||
+    !text(event.mediaLinkId) ||
+    (event.provenance !== 'musiclatte' && event.provenance !== 'external') ||
+    (event.provenance === 'musiclatte') !== (event.importItemId !== null) ||
     typeof event.identityKey !== 'string' ||
     !fingerprint.test(event.identityKey) ||
     !text(event.libraryId) ||
@@ -148,7 +153,9 @@ function decodeEvent(row: Record<string, unknown> | undefined) {
     throw new Error('Storage unavailable');
   return event as {
     id: string;
-    importItemId: string;
+    importItemId: string | null;
+    mediaLinkId: string;
+    provenance: 'musiclatte' | 'external';
     identityKey: string;
     libraryId: string;
     downloadCompletedAt: number;
@@ -189,7 +196,12 @@ export function validateImportStorage(database: DatabaseSync): void {
   if (
     database
       .prepare(
-        "SELECT 1 FROM download_events e JOIN import_items i ON i.id=e.import_item_id JOIN import_jobs j ON j.id=i.job_id WHERE e.identity_key<>j.identity_key OR e.library_id<>j.library_id OR i.stage NOT IN ('registering','ready') LIMIT 1",
+        "SELECT 1 FROM download_events e JOIN import_items i ON i.id=e.import_item_id JOIN import_jobs j ON j.id=i.job_id WHERE e.provenance='musiclatte' AND (e.identity_key<>j.identity_key OR e.library_id<>j.library_id OR e.media_link_id<>i.media_link_id OR i.stage NOT IN ('registering','ready')) LIMIT 1",
+      )
+      .get() ||
+    database
+      .prepare(
+        'SELECT 1 FROM download_events e JOIN media_links m ON m.id=e.media_link_id WHERE e.library_id<>m.library_id LIMIT 1',
       )
       .get() ||
     database
@@ -208,9 +220,8 @@ export function validateImportStorage(database: DatabaseSync): void {
 
 /** Append-only event ledger; rowid is an insertion fence, independent of completion time. */
 export const recentDownloadQuery = `
-  SELECT e.*, i.media_link_id
+  SELECT e.*
   FROM download_events AS e INDEXED BY download_events_recent
-  JOIN import_items AS i ON i.id=e.import_item_id
   WHERE e.identity_key=? AND e.library_id=?
     AND e.download_completed_at>=? AND e.download_completed_at<?
     AND e.download_completed_at<=? AND e.rowid<=?
@@ -523,24 +534,37 @@ export function createImportRepository(options: {
         return readItem(input.itemId)!;
       });
     },
-    recordPublished(input: { itemId: string; workerId: string; eventId: string }) {
-      if (!text(input.eventId)) throw new Error('Invalid download event');
+    recordPublished(input: {
+      itemId: string;
+      workerId: string;
+      eventId: string;
+      mediaLinkId: string;
+    }) {
+      if (!text(input.eventId) || !text(input.mediaLinkId))
+        throw new Error('Invalid download event');
       return database.transaction(() => {
         ownedItem(input.itemId, input.workerId, ['publishing']);
         const publishedAt = now();
         const job = db
           .prepare(
-            'SELECT j.identity_key,j.library_id FROM import_jobs j JOIN import_items i ON i.job_id=j.id WHERE i.id=?',
+            'SELECT j.identity_key,j.library_id,m.id AS media_link_id FROM import_jobs j JOIN import_items i ON i.job_id=j.id JOIN media_links m ON m.id=? AND m.library_id=j.library_id WHERE i.id=?',
           )
-          .get(input.itemId)!;
-        if (!text(job.identity_key) || !text(job.library_id))
+          .get(input.mediaLinkId, input.itemId)!;
+        if (!text(job.identity_key) || !text(job.library_id) || !text(job.media_link_id))
           throw new Error('Storage unavailable');
         db.prepare(
-          'INSERT INTO download_events(id,import_item_id,identity_key,library_id,download_completed_at,registered_at) VALUES(?,?,?,?,?,NULL)',
-        ).run(input.eventId, input.itemId, job.identity_key, job.library_id, publishedAt);
+          "INSERT INTO download_events(id,import_item_id,media_link_id,provenance,identity_key,library_id,download_completed_at,registered_at) VALUES(?,?,?,'musiclatte',?,?,?,NULL)",
+        ).run(
+          input.eventId,
+          input.itemId,
+          job.media_link_id,
+          job.identity_key,
+          job.library_id,
+          publishedAt,
+        );
         db.prepare(
-          "UPDATE import_items SET stage='registering',stage_changed_at=?,registering_at=? WHERE id=?",
-        ).run(publishedAt, publishedAt, input.itemId);
+          "UPDATE import_items SET stage='registering',media_link_id=?,stage_changed_at=?,registering_at=? WHERE id=?",
+        ).run(input.mediaLinkId, publishedAt, publishedAt, input.itemId);
         return readItem(input.itemId)!;
       });
     },
@@ -550,7 +574,7 @@ export function createImportRepository(options: {
         ownedItem(input.itemId, input.workerId, ['registering']);
         const row = db
           .prepare(
-            "SELECT j.library_id AS job_library,m.library_id AS media_library FROM import_items i JOIN import_jobs j ON j.id=i.job_id JOIN media_links m ON m.id=? WHERE i.id=? AND m.gonic_song_id IS NOT NULL AND m.availability='available'",
+            "SELECT j.library_id AS job_library,m.library_id AS media_library FROM import_items i JOIN import_jobs j ON j.id=i.job_id JOIN media_links m ON m.id=? WHERE i.id=? AND i.media_link_id=m.id AND m.gonic_song_id IS NOT NULL AND m.availability='available'",
           )
           .get(input.mediaLinkId, input.itemId);
         if (!row || row.job_library !== row.media_library)
@@ -682,8 +706,7 @@ export function createImportRepository(options: {
               input.limit,
             )
             .map((row) => {
-              if (!nullableText(row.media_link_id)) throw new Error('Storage unavailable');
-              return { ...decodeEvent(row)!, mediaLinkId: row.media_link_id };
+              return decodeEvent(row)!;
             }),
         )
         .sort(

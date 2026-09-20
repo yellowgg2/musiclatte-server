@@ -429,14 +429,19 @@ describe('imports API', () => {
     });
     c.storage.imports.advanceItem({ itemId: item.id, workerId: 'worker', stage: 'postprocessing' });
     c.storage.imports.advanceItem({ itemId: item.id, workerId: 'worker', stage: 'publishing' });
-    c.storage.imports.recordPublished({ itemId: item.id, workerId: 'worker', eventId: 'event' });
-    expect((await retry(job.id, job.items[0].id)).statusCode).toBe(422);
     c.storage.mediaLinks.create({
       id: 'media',
       libraryId: 'music',
       relativeFileKey: 'private/synthetic.mp3',
       gonicSongId: 'song',
     });
+    c.storage.imports.recordPublished({
+      itemId: item.id,
+      workerId: 'worker',
+      eventId: 'event',
+      mediaLinkId: 'media',
+    });
+    expect((await retry(job.id, job.items[0].id)).statusCode).toBe(422);
     c.storage.imports.finishRegistration({
       itemId: item.id,
       workerId: 'worker',

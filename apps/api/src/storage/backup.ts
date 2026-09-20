@@ -19,6 +19,7 @@ import { validateSchema, type ManagementDatabase } from './database.js';
 import { decodeSessionRow, sessionContext } from './session-repository.js';
 import { validatePlaylistOperationReceipts } from './playlist-operation-repository.js';
 import { validateImportStorage } from './import-repository.js';
+import { validateExternalWatchStorage } from './external-watch-repository.js';
 import { validateMediaLinks } from './media-link-repository.js';
 import { validateEngineState } from './engine-repository.js';
 import { validateWorkerState } from './worker-state-repository.js';
@@ -42,6 +43,7 @@ function verifySnapshot(path: string, key: Uint8Array): void {
     validateCurationStorage(db);
     validatePlaylistOperationReceipts(db);
     validateImportStorage(db);
+    validateExternalWatchStorage(db);
     validateMediaLinks(db);
     validateEngineState(db);
     validateWorkerState(db);
@@ -180,6 +182,9 @@ export async function restoreBackup(source: string, destination: string): Promis
         .run(randomBytes(32).toString('hex'));
       restored.exec(
         "UPDATE media_publications SET generation=generation+1,dirty=1; UPDATE curation_tracks SET validation='stale'; UPDATE curation_inventory_runs SET status='stale'; DELETE FROM curation_snapshot_items; DELETE FROM curation_snapshots;",
+      );
+      restored.exec(
+        'UPDATE external_watch_roots SET lease_owner=NULL,lease_expires_at=NULL,generation=generation+1; UPDATE external_file_observations SET lease_owner=NULL,lease_expires_at=NULL,generation=generation+1;',
       );
       restored.exec('COMMIT');
     } finally {

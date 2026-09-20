@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import {
   createLegacyV2,
   createTestContext,
@@ -43,20 +45,95 @@ function jobInput(overrides: Record<string, unknown> = {}) {
 }
 
 describe('import storage schema', () => {
-  /** Fresh storage exposes schema v5 and every import ledger table. */
-  it('should create the complete v5 ledger for fresh storage', async () => {
+  /** The v30 rebuild preserves event rowids while backfilling direct media links. */
+  it('should preserve existing recent insertion fences when migrating v30', async () => {
     const c = await makeSUT();
-    expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 30 });
+    const legacyData = join(c.root, 'legacy-v30');
+    mkdirSync(legacyData, { mode: 0o700 });
+    const path = join(legacyData, 'management.sqlite');
+    const legacy = new DatabaseSync(path);
+    const migrationDirectory = new URL('../src/storage/migrations/', import.meta.url);
+    const migrations = readdirSync(migrationDirectory)
+      .filter((name) => /^\d{3}-.*\.sql$/.test(name) && Number(name.slice(0, 3)) <= 30)
+      .sort();
+    legacy.exec('PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE');
+    for (const migration of migrations)
+      legacy.exec(readFileSync(new URL(migration, migrationDirectory), 'utf8'));
+    legacy.exec('COMMIT');
+    for (const [suffix, rowid] of [
+      ['one', 7],
+      ['two', 42],
+    ] as const) {
+      legacy
+        .prepare(
+          'INSERT INTO import_jobs(id,identity_key,library_id,operation_id_hash,request_hash,created_at) VALUES(?,?,?,?,?,?)',
+        )
+        .run(
+          `job-${suffix}`,
+          identityKey,
+          'library-1',
+          suffix === 'one' ? 'b'.repeat(64) : 'd'.repeat(64),
+          suffix === 'one' ? 'c'.repeat(64) : 'e'.repeat(64),
+          rowid,
+        );
+      legacy
+        .prepare(
+          "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at) VALUES(?,?,?,NULL,1,'unavailable',?)",
+        )
+        .run(`media-${suffix}`, 'library-1', `${suffix}.mp3`, rowid);
+      legacy
+        .prepare(
+          "INSERT INTO import_items(id,job_id,item_order,source_id,stage,media_link_id,stage_changed_at,registering_at) VALUES(?,?,?,?, 'registering',?,?,?)",
+        )
+        .run(
+          `item-${suffix}`,
+          `job-${suffix}`,
+          0,
+          `source-${suffix}`,
+          `media-${suffix}`,
+          rowid,
+          rowid,
+        );
+      legacy
+        .prepare(
+          'INSERT INTO download_events(rowid,id,import_item_id,identity_key,library_id,download_completed_at) VALUES(?,?,?,?,?,?)',
+        )
+        .run(rowid, `event-${suffix}`, `item-${suffix}`, identityKey, 'library-1', rowid);
+    }
+    legacy.close();
+
+    const migrated = c.open(legacyData);
+    expect(
+      migrated.connection
+        .prepare('SELECT rowid,id,media_link_id,provenance FROM download_events ORDER BY rowid')
+        .all(),
+    ).toEqual([
+      { rowid: 7, id: 'event-one', media_link_id: 'media-one', provenance: 'musiclatte' },
+      { rowid: 42, id: 'event-two', media_link_id: 'media-two', provenance: 'musiclatte' },
+    ]);
+    expect(migrated.connection.prepare('PRAGMA integrity_check').get()).toEqual({
+      integrity_check: 'ok',
+    });
+    expect(migrated.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  });
+
+  /** Fresh storage exposes the external recent-watch ledger beside the import tables. */
+  it('should create the complete external recent-watch ledger for fresh storage', async () => {
+    const c = await makeSUT();
+    expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 31 });
     expect(
       c.db.connection
         .prepare(
-          "SELECT name FROM sqlite_schema WHERE type='table' AND name IN ('import_jobs','import_items','media_links','download_events','engine_state','worker_state') ORDER BY name",
+          "SELECT name FROM sqlite_schema WHERE type='table' AND name IN ('import_jobs','import_items','media_links','download_events','external_watch_owners','external_watch_roots','external_file_observations','engine_state','worker_state') ORDER BY name",
         )
         .all()
         .map((row) => row.name),
     ).toEqual([
       'download_events',
       'engine_state',
+      'external_file_observations',
+      'external_watch_owners',
+      'external_watch_roots',
       'import_items',
       'import_jobs',
       'media_links',
@@ -65,7 +142,7 @@ describe('import storage schema', () => {
   });
 
   /** A real v2 database migrates without changing its session or playlist receipt rows. */
-  it('should preserve v2 rows while migrating to v5', async () => {
+  it('should preserve v2 rows while migrating to the current schema', async () => {
     const c = await makeSUT();
     const legacyData = join(c.root, 'legacy-v2');
     createLegacyV2(legacyData);
@@ -81,7 +158,7 @@ describe('import storage schema', () => {
     legacy.close();
 
     const migrated = c.open(legacyData);
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 30 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 31 });
     expect(migrated.connection.prepare('SELECT id FROM instance').get()).toEqual({
       id: 'legacy-instance',
     });
@@ -276,11 +353,6 @@ describe('import storage repositories', () => {
         { id: 'item-2', stage: 'cancelled' },
       ],
     });
-    invoke(c.imports, 'recordPublished', {
-      itemId: 'item-1',
-      workerId: 'worker-a',
-      eventId: 'event-1',
-    });
     const media = invoke<{ id: string }>(c.mediaLinks, 'create', {
       id: 'media-1',
       libraryId: 'library-1',
@@ -288,6 +360,12 @@ describe('import storage repositories', () => {
       gonicSongId: 'song-1',
     });
     expect(media.id).toBe('media-1');
+    invoke(c.imports, 'recordPublished', {
+      itemId: 'item-1',
+      workerId: 'worker-a',
+      eventId: 'event-1',
+      mediaLinkId: 'media-1',
+    });
     expect(
       invoke(c.imports, 'finishRegistration', {
         itemId: 'item-1',
@@ -300,6 +378,7 @@ describe('import storage repositories', () => {
         itemId: 'item-1',
         workerId: 'worker-a',
         eventId: 'event-2',
+        mediaLinkId: 'media-1',
       }),
     ).toThrow();
     expect(invoke(c.imports, 'getDownloadEvent', 'event-1')).toMatchObject({

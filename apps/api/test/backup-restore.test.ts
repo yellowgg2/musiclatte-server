@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { createExternalWatchRepository } from '../src/storage/external-watch-repository.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createTestContext, proof } from '../../../tests/support/session-storage-harness.js';
 let ctx: Awaited<ReturnType<typeof createTestContext>> | undefined;
@@ -13,6 +14,65 @@ async function makeSUT() {
   return ctx;
 }
 describe('management backup and offline restore', () => {
+  /** Offline restore preserves watch history but releases process-owned observation leases. */
+  it('should restore external watch observations with reclaimable leases', async () => {
+    const c = await makeSUT();
+    let now = 20;
+    const watch = createExternalWatchRepository({ database: c.db, clock: () => now });
+    watch.syncOwners({
+      instanceId: 'instance-watch',
+      policyRevision: 2,
+      owners: [
+        {
+          libraryId: 'music',
+          accountDirectory: 'listener',
+          username: 'listener',
+          identityKey: 'f'.repeat(64),
+        },
+      ],
+    });
+    watch.ensureRoot({
+      libraryId: 'music',
+      accountDirectory: 'listener',
+      identityKey: 'f'.repeat(64),
+    });
+    watch.observe({
+      libraryId: 'music',
+      accountDirectory: 'listener',
+      identityKey: 'f'.repeat(64),
+      relativeFileKey: 'listener/song.mp3',
+      state: 'settling',
+      fingerprint: { device: 1, inode: 2, size: 3, mtimeNs: 4, ctimeNs: 5, linkCount: 1 },
+      nextAttemptAt: 20,
+    });
+    expect(
+      watch.claimObservations({
+        workerId: 'worker-before-backup',
+        leaseDurationMs: 1000,
+        states: ['settling'],
+        limit: 1,
+      }),
+    ).toHaveLength(1);
+
+    const snapshot = join(c.root, 'external-watch-snapshot');
+    await c.createBackup(c.db, c.keyPath, snapshot);
+    const restoredPath = join(c.root, 'external-watch-restored');
+    await c.restoreBackup(snapshot, restoredPath);
+    now = 21;
+    const restored = createExternalWatchRepository({
+      database: c.open(restoredPath),
+      clock: () => now,
+    });
+    expect(
+      restored.claimObservations({
+        workerId: 'worker-after-restore',
+        leaseDurationMs: 100,
+        states: ['settling'],
+        limit: 1,
+      }),
+    ).toMatchObject([{ leaseOwner: 'worker-after-restore', generation: 4 }]);
+  });
+
   /** Online backup includes committed WAL pages and the matching immutable key. */
   it('should restore WAL-backed session instance expiry and revocation state', async () => {
     const c = await makeSUT();
@@ -72,16 +132,17 @@ describe('management backup and offline restore', () => {
     });
     for (const stage of ['postprocessing', 'publishing'] as const)
       c.imports.advanceItem({ itemId: 'item-1', workerId: 'worker-1', stage });
-    c.imports.recordPublished({
-      itemId: 'item-1',
-      workerId: 'worker-1',
-      eventId: 'event-1',
-    });
     c.mediaLinks.create({
       id: 'media-1',
       libraryId: 'library-1',
       relativeFileKey: 'Channel [channel-1]/Song [video-1].mp3',
       gonicSongId: 'song-1',
+    });
+    c.imports.recordPublished({
+      itemId: 'item-1',
+      workerId: 'worker-1',
+      eventId: 'event-1',
+      mediaLinkId: 'media-1',
     });
     c.imports.finishRegistration({
       itemId: 'item-1',

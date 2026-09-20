@@ -92,8 +92,8 @@ export async function createRecentContext() {
       ready ? at : null,
     );
     db.prepare(
-      'INSERT INTO download_events(id,import_item_id,identity_key,library_id,download_completed_at,registered_at) VALUES(?,?,?,?,?,?)',
-    ).run(id, `item-${n}`, identityKey, libraryId, at, ready ? at : null);
+      "INSERT INTO download_events(id,import_item_id,media_link_id,provenance,identity_key,library_id,download_completed_at,registered_at) VALUES(?,?,?,'musiclatte',?,?,?,?)",
+    ).run(id, `item-${n}`, `media-${n}`, identityKey, libraryId, at, ready ? at : null);
     const song = { id: `song-${n}`, title: `Synthetic song ${n}`, isDir: false, path: fileKey };
     songs.push(song);
     return { id, fileKey, file, song, identityKey };
