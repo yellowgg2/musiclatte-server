@@ -1,11 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
+import { accountDirectoryForUsername } from './external-watch-config.js';
 
 export interface ImportLibrary {
   readonly id: string;
   readonly musicFolderId: string;
   readonly relativeRoot: string;
   readonly allowedUsers: readonly string[];
+  readonly watchExternalMp3?: boolean;
 }
 export interface ImportPolicy {
   readonly enabled: boolean;
@@ -88,15 +90,37 @@ export function loadImportPolicy(path: string | undefined, enabled: boolean): Im
       'libraries',
       'engineManagers',
     ]);
-    if (value.schemaVersion !== 1 || !Array.isArray(value.libraries)) throw new Error();
+    if (![1, 2].includes(value.schemaVersion as number) || !Array.isArray(value.libraries))
+      throw new Error();
+    const schemaVersion = value.schemaVersion as 1 | 2;
     const libraries = value.libraries.map((item) => {
-      const entry = record(item, ['id', 'musicFolderId', 'relativeRoot', 'allowedUsers']);
+      const entry = record(
+        item,
+        schemaVersion === 1
+          ? ['id', 'musicFolderId', 'relativeRoot', 'allowedUsers']
+          : ['id', 'musicFolderId', 'relativeRoot', 'allowedUsers', 'watchExternalMp3'],
+      );
       if (typeof entry.relativeRoot !== 'string') throw new Error();
+      if (schemaVersion === 2 && typeof entry.watchExternalMp3 !== 'boolean') throw new Error();
+      const allowedUsers = users(entry.allowedUsers);
+      const watchExternalMp3 = schemaVersion === 2 && entry.watchExternalMp3 === true;
+      if (watchExternalMp3) {
+        if (
+          allowedUsers.length === 0 ||
+          allowedUsers.some((username) => /^\.{1,2}$/.test(username))
+        )
+          throw new Error();
+        const directories = allowedUsers.map((username) =>
+          accountDirectoryForUsername(username).normalize('NFC').toLowerCase(),
+        );
+        if (new Set(directories).size !== directories.length) throw new Error();
+      }
       return Object.freeze({
         id: identifier(entry.id),
         musicFolderId: identifier(entry.musicFolderId),
         relativeRoot: validateRelativeKey(entry.relativeRoot),
-        allowedUsers: users(entry.allowedUsers),
+        allowedUsers,
+        watchExternalMp3,
       });
     });
     if (new Set(libraries.map((library) => library.id)).size !== libraries.length)

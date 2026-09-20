@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
@@ -55,6 +56,64 @@ describe('configured authentication runtime', () => {
     );
     expect((await next.inject('/.well-known/musiclatte-server')).json().instanceId).toBe(
       ctx.storage.instances.get().id,
+    );
+  });
+  /** Startup replaces owner projection with the current watched policy exact set. */
+  it('should synchronize and disable external watch owner projections across restart', async () => {
+    const { ctx, env } = await makeSUT();
+    const module = await runtime();
+    const policyPath = join(ctx.storage.data, 'import-policy.json');
+    const policy = {
+      schemaVersion: 2,
+      libraries: [
+        {
+          id: 'music',
+          musicFolderId: '1',
+          relativeRoot: 'imports',
+          allowedUsers: ['fixture-listener'],
+          watchExternalMp3: true,
+        },
+      ],
+      engineManagers: [],
+    };
+    writeFileSync(policyPath, JSON.stringify(policy));
+    const configured = {
+      ...env,
+      IMPORTS_ENABLED: 'true',
+      IMPORT_POLICY_PATH: policyPath,
+    };
+    const first = module.createConfiguredApp(configured);
+    apps.push(first);
+    const current = ctx.storage.instances.get();
+    expect(
+      ctx.storage.db.connection
+        .prepare(
+          'SELECT library_id,account_directory,username,instance_id,policy_revision FROM external_watch_owners',
+        )
+        .all(),
+    ).toEqual([
+      {
+        library_id: 'music',
+        account_directory: 'fixture-listener',
+        username: 'fixture-listener',
+        instance_id: current.id,
+        policy_revision: current.policyRevision,
+      },
+    ]);
+    await first.close();
+    apps.splice(apps.indexOf(first), 1);
+
+    writeFileSync(
+      policyPath,
+      JSON.stringify({
+        ...policy,
+        libraries: [{ ...policy.libraries[0]!, watchExternalMp3: false }],
+      }),
+    );
+    const next = module.createConfiguredApp(configured);
+    apps.push(next);
+    expect(ctx.storage.db.connection.prepare('SELECT * FROM external_watch_owners').all()).toEqual(
+      [],
     );
   });
   /** Missing and unsafe deployment values fail closed without echoing configuration. */

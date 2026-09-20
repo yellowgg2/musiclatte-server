@@ -12,6 +12,7 @@ import { createImportRepository } from '../storage/import-repository.js';
 import { createMediaLinkRepository } from '../storage/media-link-repository.js';
 import { SubsonicError } from '../subsonic/errors.js';
 import { resolveFileKey } from './file-keys.js';
+import { importIdentityKey } from './identity.js';
 import { validateRelativeKey } from './policy.js';
 import type { ImportOptions } from './import-service.js';
 
@@ -74,10 +75,7 @@ export function createRecentService(service: SessionService) {
   const repository = options ? createImportRepository(options) : undefined;
   const links = options ? createMediaLinkRepository(options) : undefined;
   const identity = (v: Verified) =>
-    Buffer.from(
-      service.sign('import-identity', JSON.stringify([v.session.instanceId, v.identity.username])),
-      'base64url',
-    ).toString('hex');
+    importIdentityKey(service.sign, v.session.instanceId, v.identity.username);
   const scope = (v: Verified) =>
     options!.policy.libraries
       .filter((l) => l.allowedUsers.includes(v.identity.username))

@@ -233,6 +233,21 @@ export function createExternalWatchRepository(options: {
       }
       const updatedAt = now();
       database.transaction(() => {
+        const desired = new Map(
+          input.owners.map((owner) => [`${owner.libraryId}\0${owner.accountDirectory}`, owner]),
+        );
+        for (const row of db.prepare('SELECT * FROM external_watch_owners').iterate()) {
+          const existing = decodeOwner(row);
+          const owner = desired.get(`${existing.libraryId}\0${existing.accountDirectory}`);
+          if (
+            !owner ||
+            owner.username !== existing.username ||
+            owner.identityKey !== existing.identityKey
+          )
+            db.prepare(
+              'DELETE FROM external_watch_owners WHERE library_id=? AND account_directory=?',
+            ).run(existing.libraryId, existing.accountDirectory);
+        }
         for (const owner of input.owners)
           db.prepare(
             `INSERT INTO external_watch_owners(
@@ -253,15 +268,6 @@ export function createExternalWatchRepository(options: {
             input.policyRevision,
             updatedAt,
           );
-        db.prepare(
-          `DELETE FROM external_watch_owners
-           WHERE (instance_id<>? OR policy_revision<>?)
-             AND NOT EXISTS (
-               SELECT 1 FROM external_file_observations o
-               WHERE o.library_id=external_watch_owners.library_id
-                 AND o.account_directory=external_watch_owners.account_directory
-             )`,
-        ).run(input.instanceId, input.policyRevision);
       });
     },
     listOwners(filter?: { instanceId: string; policyRevision: number }) {
@@ -275,6 +281,45 @@ export function createExternalWatchRepository(options: {
             .prepare('SELECT * FROM external_watch_owners ORDER BY library_id,account_directory')
             .all();
       return rows.map(decodeOwner);
+    },
+    readOwners(input: {
+      instanceId: string;
+      policyRevision: number;
+      expected: readonly {
+        libraryId: string;
+        accountDirectory: string;
+        username: string;
+      }[];
+    }):
+      | { status: 'ready'; owners: ReturnType<typeof decodeOwner>[] }
+      | { status: 'mismatch'; owners: [] } {
+      if (
+        !text(input.instanceId) ||
+        !Number.isSafeInteger(input.policyRevision) ||
+        input.policyRevision < 1 ||
+        input.expected.some(
+          (owner) =>
+            !text(owner.libraryId) ||
+            !validAccountDirectory(owner.accountDirectory) ||
+            !text(owner.username),
+        )
+      )
+        return { status: 'mismatch', owners: [] };
+      const owners = db
+        .prepare(
+          'SELECT * FROM external_watch_owners WHERE instance_id=? AND policy_revision=? ORDER BY library_id,account_directory',
+        )
+        .all(input.instanceId, input.policyRevision)
+        .map(decodeOwner);
+      const expected = input.expected
+        .map((owner) => `${owner.libraryId}\0${owner.accountDirectory}\0${owner.username}`)
+        .sort();
+      const actual = owners
+        .map((owner) => `${owner.libraryId}\0${owner.accountDirectory}\0${owner.username}`)
+        .sort();
+      return JSON.stringify(expected) === JSON.stringify(actual)
+        ? { status: 'ready', owners }
+        : { status: 'mismatch', owners: [] };
     },
     ensureRoot(input: {
       libraryId: string;

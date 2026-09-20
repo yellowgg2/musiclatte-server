@@ -64,10 +64,18 @@ export function upstreamError(error: unknown): ApiError {
   }
   return new ApiError(503, 'upstream_unavailable');
 }
+export function createAuthSigner(signingKey: Uint8Array) {
+  const key = Buffer.from(signingKey);
+  if (key.length !== 32) throw new Error('Invalid authentication configuration');
+  return (purpose: string, value: string) =>
+    createHmac('sha256', key)
+      .update(JSON.stringify(['musiclatte-auth', 1, purpose, value]))
+      .digest('base64url');
+}
+
 export function createSessionService(input: AuthOptions) {
   const options = { ...input };
-  const key = Buffer.from(options.signingKey);
-  if (key.length !== 32) throw new Error('Invalid authentication configuration');
+  const sign = createAuthSigner(options.signingKey);
   const origin = new URL(options.origin);
   if (
     origin.origin !== options.origin ||
@@ -85,10 +93,6 @@ export function createSessionService(input: AuthOptions) {
   });
   // Bounded advisory observations only; eviction/restart returns unknown, never false.
   const randomSupport = new Set<string>();
-  const sign = (purpose: string, value: string) =>
-    createHmac('sha256', key)
-      .update(JSON.stringify(['musiclatte-auth', 1, purpose, value]))
-      .digest('base64url');
   const matches = (a: string, b: string) => {
     const left = Buffer.from(a);
     const right = Buffer.from(b);

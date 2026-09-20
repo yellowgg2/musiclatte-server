@@ -21,6 +21,7 @@ interface Library {
   musicFolderId: string;
   relativeRoot: string;
   allowedUsers: readonly string[];
+  watchExternalMp3: boolean;
 }
 interface Policy {
   enabled: boolean;
@@ -199,6 +200,7 @@ describe('import account policy', () => {
     expect(sut.resolveLibrary(policy, 'alice', 'library-1')).toMatchObject({
       musicFolderId: '1',
       relativeRoot: 'owner/imports',
+      watchExternalMp3: false,
     });
     for (const [user, id] of [
       ['bob', 'library-1'],
@@ -214,6 +216,54 @@ describe('import account policy', () => {
     expect(Object.isFrozen(policy.libraries[0])).toBe(true);
     expect(Object.isFrozen(policy.libraries[0]?.allowedUsers)).toBe(true);
     expect(Object.isFrozen(policy.engineManagers)).toBe(true);
+  });
+  /** Schema v2 alone may opt a library into external MP3 watching. */
+  it('should parse strict v2 watch flags while preserving v1 as watch disabled', async () => {
+    const sut = await makeSUT<PolicyModule>('policy');
+    const { root } = createTestContext();
+    const path = join(root, 'policy.json');
+    const v1 = policyFixture();
+    writeFileSync(path, JSON.stringify(v1));
+    expect(sut.loadImportPolicy(path, true).libraries[0]?.watchExternalMp3).toBe(false);
+
+    const v2 = {
+      ...v1,
+      schemaVersion: 2,
+      libraries: v1.libraries.map((library) => ({ ...library, watchExternalMp3: true })),
+    };
+    writeFileSync(path, JSON.stringify(v2));
+    expect(sut.loadImportPolicy(path, true).libraries[0]?.watchExternalMp3).toBe(true);
+
+    for (const value of [
+      { ...v2, libraries: [{ ...v2.libraries[0]!, watchExternalMp3: undefined }] },
+      { ...v2, libraries: [{ ...v2.libraries[0]!, watchExternalMp3: 'true' }] },
+      { ...v2, libraries: [{ ...v2.libraries[0]!, extra: true }] },
+      { ...v1, libraries: [{ ...v1.libraries[0]!, watchExternalMp3: false }] },
+    ]) {
+      writeFileSync(path, JSON.stringify(value));
+      expect(() => sut.loadImportPolicy(path, true)).toThrow('invalid_import_policy');
+    }
+  });
+  /** A watched root must map every principal to one safe, unique account directory. */
+  it('should reject unsafe or colliding watched account directories', async () => {
+    const sut = await makeSUT<PolicyModule>('policy');
+    const { root } = createTestContext();
+    const path = join(root, 'policy.json');
+    const library = {
+      ...policyFixture().libraries[0]!,
+      watchExternalMp3: true,
+    };
+    for (const allowedUsers of [[], ['alice', 'ALICE'], ['.', '..']]) {
+      writeFileSync(
+        path,
+        JSON.stringify({
+          ...policyFixture(),
+          schemaVersion: 2,
+          libraries: [{ ...library, allowedUsers }],
+        }),
+      );
+      expect(() => sut.loadImportPolicy(path, true)).toThrow('invalid_import_policy');
+    }
   });
   /** Unknown fields, duplicate principals, root overlap and path normalization are rejected before use. */
   it('should reject malformed policies without leaking file or input details', async () => {

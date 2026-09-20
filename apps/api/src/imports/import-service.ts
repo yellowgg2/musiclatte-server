@@ -20,6 +20,7 @@ import { createEngineRepository } from '../storage/engine-repository.js';
 import { createWorkerStateRepository } from '../storage/worker-state-repository.js';
 import type { ImportPolicy } from './policy.js';
 import { sanitizeMediaName } from './file-keys.js';
+import { importIdentityKey } from './identity.js';
 import { parseYouTubeSource } from './source-url.js';
 
 export interface ImportOptions {
@@ -62,7 +63,7 @@ export function createImportService(service: SessionService) {
       'hex',
     );
   const identity = (v: Verified) =>
-    fingerprint('identity', [v.session.instanceId, v.identity.username]);
+    importIdentityKey(service.sign, v.session.instanceId, v.identity.username);
   const libraries = (v: Verified) =>
     options?.policy.enabled
       ? options.policy.libraries

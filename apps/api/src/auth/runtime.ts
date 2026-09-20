@@ -23,6 +23,9 @@ import { loadKey } from '../security/key-store.js';
 import { createCredentialVault } from '../security/credential-vault.js';
 import { readSessionPolicy } from '../config/session-policy.js';
 import { readAutomationConfig } from '../automation/config.js';
+import { createAuthSigner } from './session-service.js';
+import { projectExternalWatchOwners } from '../imports/external-watch-config.js';
+import { createExternalWatchRepository } from '../storage/external-watch-repository.js';
 
 /** Startup uses operator-owned paths and an already provisioned key; never rekeys an existing DB. */
 export function createConfiguredApp(env: Record<string, string | undefined>) {
@@ -72,6 +75,16 @@ export function createConfiguredApp(env: Record<string, string | undefined>) {
       listening.recoverDispatching();
     }
     const instances = createInstanceRepository(database, vault.keyId);
+    const currentInstance = instances.get();
+    createExternalWatchRepository({ database, clock: Date.now }).syncOwners({
+      instanceId: currentInstance.id,
+      policyRevision: currentInstance.policyRevision,
+      owners: projectExternalWatchOwners({
+        policy: importConfig.policy,
+        instance: currentInstance,
+        sign: createAuthSigner(key),
+      }),
+    });
     const sessions = createSessionRepository({ database, vault, maxAgeMs, clock: Date.now });
     const playlistOperations = createPlaylistOperationRepository({ database, clock: Date.now });
     const musicRoot = env.IMPORT_MUSIC_ROOT ?? '/music';
