@@ -1,11 +1,12 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "libraries": [
     {
       "id": "music",
       "musicFolderId": "replace-with-gonic-folder-id",
       "relativeRoot": "jojo-music",
-      "allowedUsers": ["replace-with-gonic-username"]
+      "allowedUsers": ["replace-with-gonic-username"],
+      "watchExternalMp3": false
     }
   ],
   "engineManagers": ["replace-with-gonic-manager-username"]

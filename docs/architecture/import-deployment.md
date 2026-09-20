@@ -2,30 +2,33 @@
 
 Phase 3 adds an opt-in worker to the unchanged four-service base. `docker compose up -d --build` still runs volume-init/gonic/API/web with imports disabled. Use `docker compose -f compose.yaml -f deploy/compose.imports.yaml up -d --build` after private setup to add worker-volume-init and worker. No registry push, public worker port, Docker socket, or existing-service changes are involved.
 
-The worker waits for healthy gonic/API and successful worker-volume-init. API/web/gonic do not depend on worker health. API holds only the read-only policy and music mount; gonic remains read-only. Only worker writes music, and only under validated library-relative roots. All long-running services remain non-root, drop capabilities and use no-new-privileges. API owns key provisioning; worker shares management-data but never mounts management-keys. Both processes use SQLite WAL/short synchronous transactions and the same schema v8.
+The worker waits for healthy gonic/API and successful worker-volume-init. API/web/gonic do not depend on worker health. API holds only the read-only policy and music mount; gonic remains read-only. Only worker writes music, and only under validated library-relative roots. All long-running services remain non-root, drop capabilities and use no-new-privileges. API owns key provisioning; worker shares management-data but never mounts management-keys. Both processes use SQLite WAL/short synchronous transactions and the same current management schema.
 
 ## Private setup
 
 Keep both files outside the checkout and Docker context, in a private operator directory. Start new deployments from [`deploy/import-policy.example.json`](../../deploy/import-policy.example.json), whose default library-relative import root is `jojo-music`, and replace its synthetic folder ID and usernames before copying it to that private directory. Override `relativeRoot` only for a deployment that intentionally uses another library layout. `IMPORT_POLICY_FILE` and `IMPORT_CREDENTIAL_FILE` in `.env` are absolute **paths**, never credential contents. Compose mounts the policy read-only and the worker credential as a read-only secret. Local Compose file secrets retain host ownership/modes; do not rely on secret `uid` remapping. Give UID 1000 read access, for example owner 1000 and mode 0600. The policy must be readable by API UID 1000 too. Never put passwords in `.env`, CLI arguments, images or logs.
 
-Policy shape (replace synthetic IDs/usernames with the gonic folder ID and authorized users):
+Policy shape (replace synthetic IDs/usernames with the gonic folder ID and authorized users). Schema v1 remains valid and behaves as watch-disabled. Schema v2 requires the explicit boolean; the public example keeps it false so observation is opt-in:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "libraries": [
     {
       "id": "music",
       "musicFolderId": "1",
       "relativeRoot": "jojo-music",
-      "allowedUsers": ["listener"]
+      "allowedUsers": ["listener"],
+      "watchExternalMp3": false
     }
   ],
   "engineManagers": ["operator"]
 }
 ```
 
-The credential file is a JSON object with exactly `username` and `password` string fields. Create a dedicated gonic account through the existing loopback/SSH admin setup with the scan permission needed by `startScan`, then write its credential privately. Complete initial gonic administrator password setup first; never deploy default passwords. Verify the configured account and music folder during Steps 13–14. Policy has no credential or host absolute root, only logical library mappings and usernames.
+The credential file is a JSON object with exactly `username` and `password` string fields. Create a dedicated gonic account through the existing loopback/SSH admin setup with the scan permission needed by `startScan`, then write its credential privately. Complete initial gonic administrator password setup first; never deploy default passwords. Verify the configured account and music folder during the applicable acceptance flow. Policy has no credential or host absolute root, only logical library mappings and usernames.
+
+To enable post-baseline external MP3 observation for a library, follow the [external watch operations guide](../operations/external-mp3-watch.md) and set its boolean true only after the API identity projection is healthy. The existing imports overlay already supplies every required mount and secret; do not add the management signing key, another credential, a Docker socket, or a public port to the worker.
 
 `IMPORT_UID`/`IMPORT_GID` default to 1000:1000. The current API image uses private management storage owned by 1000:1000, so keep this pair for the shared SQLite deployment. Other values intentionally fail closed against that storage and are not a supported way to bypass permissions. Prepare the host music directory for this numeric worker account with narrowly scoped owner/group/ACL access; gonic/API need read/traverse. Do not chmod music world-writable or chown the library recursively. Worker-volume-init runs as root without network **only** to set ownership/mode on empty staging and engine volumes. It rejects a nonempty owner mismatch and never mounts music or management data. Private engine/staging/management roots require owner-only mode and canonical, disjoint paths.
 
@@ -41,10 +44,10 @@ The config probe requires initialized volumes (on first run, finish base startup
 
 Health opens existing SQLite read-only, validates current schema and checks an idle/working heartbeat no older than 30 seconds. It does not read credentials, run yt-dlp, access gonic or refresh the heartbeat. Unavailable/stale/future/stopped/missing DB returns exit 1 without diagnostic payload. API readiness remains independent. Health is process/DB liveness, not a guarantee that a particular external video can be downloaded.
 
-Normal run initializes the persisted engine provider, starts durable download/registration and serial mailbox/daily-check maintenance. Daily claims are persisted/coalesced; `check_now` cannot bypass the interval. SIGINT/SIGTERM abort work, await child cleanup and close the DB. Restart uses recorded leases/intents; active/previous version files remain immutable. URLs, process args, raw child output, paths and credentials are not logged. No actual YouTube import is part of Step 09; writable live tests belong to Step 14.
+Normal run initializes the persisted engine provider, starts durable download/registration and serial mailbox/daily-check maintenance. When explicitly enabled by policy, bounded external watch work uses the same serial import idle boundary and scan coordinator. Daily claims are persisted/coalesced; `check_now` cannot bypass the interval. SIGINT/SIGTERM abort work, close external watchers, await child cleanup and close the DB. Restart uses recorded leases/intents/observations; active/previous version files remain immutable. URLs, process args, raw child output, paths and credentials are not logged. Writable live tests belong to the applicable acceptance flow.
 
 ## Build, updates and rollback
 
 The source-only multi-stage worker image uses Node 24.20.0/npm 11.19.0, production API/contracts dependencies, Debian FFmpeg/ffprobe, the Python standard library required by the shared media-fence helper and a checksum-locked official standalone yt-dlp seed. The final image build imports the helper's `json` dependency under isolated Python before it can succeed. See [exact versions](runtime.md). Linux amd64 and arm64 have separate official hashes; unsupported targets fail. Runtime nightly candidates live in `engine-data`, never replace the image seed, and activate only after validation. No host Python/FFmpeg/yt-dlp installation is needed. The official standalone executable extracts shared libraries, so only the worker tmpfs `/tmp` explicitly permits execution (`exec,mode=1777`); the container root remains read-only with dropped capabilities and no-new-privileges. Docker’s default noexec tmpfs fails with a shared-library mapping error.
 
-Take the [matching backup](../../deploy/backup/README.md) before upgrading, then rebuild with the same two-file command. To disable new imports, stop worker using the overlay, then recreate API with base Compose; preserve volumes/music/engine. Removing the overlay does not reverse schema v8. To downgrade to v2 restore the matching pre-upgrade snapshot with its old build. Engine rollback uses the existing authorized API action, preserving running leases. Do not point an old image at new-schema storage.
+Take the [matching backup](../../deploy/backup/README.md) before upgrading, then rebuild with the same two-file command. To disable only external observation, set `watchExternalMp3` false and recreate API before worker; preserve its durable history and observations. To disable all new imports, stop worker using the overlay, then recreate API with base Compose; preserve volumes/music/engine. Removing the overlay does not reverse schema migrations. To downgrade, restore the matching pre-upgrade snapshot with its old build. Engine rollback uses the existing authorized API action, preserving running leases. Do not point an old image at new-schema storage.

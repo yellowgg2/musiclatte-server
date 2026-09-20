@@ -1,9 +1,9 @@
 # Recent downloads API
 
-Phase 3 Step 06 adds `GET /api/v1/recent-downloads` over the management DownloadEvent ledger.
-It does not enumerate the gonic library, invoke a scan, backfill legacy files or start playback.
-The web recent consumer remains disabled until Step 11; the same wire schemas and synthetic
-fixtures are available to the future P5 native consumer.
+`GET /api/v1/recent-downloads` reads the management DownloadEvent ledger. The read path does not
+enumerate the Gonic library, invoke a scan, backfill legacy files, or start playback. Phase 18's
+separate opt-in worker may add a provenance `external` event only for a post-baseline MP3 under an
+exact account directory; the existing wire schema and web consumer remain unchanged.
 
 ## Wire contract
 
@@ -31,10 +31,11 @@ are not projected to the wire.
 
 `createImportRepository.listRecent` executes `recentDownloadQuery`: one range seek per authorized
 library using `download_events_recent(identity_key,library_id,download_completed_at DESC,id DESC)`.
-It joins import items by their primary key, takes at most `limit+1` rows per library, merges with
-SQLite-compatible binary ID ordering and keeps the global `limit+1`. MediaLink reads use exact
-primary keys only for the returned page. There is no library/folder/tag crawl or management
-history deletion on this path.
+Each event owns a direct MediaLink reference; Musiclatte events additionally retain an ImportItem,
+while external events deliberately do not fabricate one. The query takes at most `limit+1` rows
+per library, merges with SQLite-compatible binary ID ordering and keeps the global `limit+1`.
+MediaLink reads use exact primary keys only for the returned page. There is no
+library/folder/tag crawl or management history deletion on this path.
 
 The HMAC uses a dedicated purpose and binds the instance/account fingerprint, sorted authorized
 library IDs **and their folder/root mappings**, from/to, asOf, insertion high-water mark and final
@@ -42,7 +43,7 @@ library IDs **and their folder/root mappings**, from/to, asOf, insertion high-wa
 Completion time is bounded by asOf as well as the requested range. The append-only ledger's
 `MAX(rowid)` insertion fence also excludes later inserts with backdated or identical completion
 times; a refreshed first page gets a new fence. The high-water lookup is an SQLite extremum lookup,
-not a library scan. No new schema migration is required (schema v6).
+not a library scan. The generic event/media provenance shape is stored by management schema v31.
 
 Snapshot membership survives normal process restarts and new insertions. This relies on the
 existing append-only event ledger: do not rebuild/renumber event rowids or use destructive ledger
@@ -57,6 +58,9 @@ are verified again before return, so a logout/policy revision during network I/O
 The durable identity HMAC is identical to the imports producer's instance/username key.
 
 - Unregistered events retain event/time with `state=registering` and no song.
+- Event provenance is internal authorization/history evidence and is never projected to clients.
+- Schema v1 policies never observe external files. Schema v2 watch opt-in performs a no-backfill
+  baseline and admits only a new, stable, account-owned MP3 after generic opened-file validation.
 - Registered candidates need an exact same-library MediaLink within the policy's relative root.
 - The read-only resolver checks every path component, rejects symlinks/escapes/nonregular files,
   and checks the file again after upstream verification. It never creates directories or opens

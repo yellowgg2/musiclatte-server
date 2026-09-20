@@ -376,23 +376,59 @@ it('should compose an isolated imports worker without changing base service beha
   expect(Object.keys(overlay.volumes).sort()).toEqual(
     [...Object.keys(base.volumes), 'engine-data', 'worker-staging'].sort(),
   );
+  expect(Object.keys(worker.environment).sort()).toEqual(
+    [
+      'GONIC_UPSTREAM',
+      'IMPORTS_ENABLED',
+      'IMPORT_CREDENTIAL_PATH',
+      'IMPORT_ENGINE_ROOT',
+      'IMPORT_MUSIC_ROOT',
+      'IMPORT_POLICY_PATH',
+      'IMPORT_SEED_MANIFEST',
+      'IMPORT_STAGING_ROOT',
+      'MANAGEMENT_DIRECTORY',
+      'NODE_ENV',
+    ].sort(),
+  );
+  expect(JSON.stringify(worker)).not.toMatch(/docker\.sock|CREDENTIAL_KEY_PATH|management-keys/);
+  expect(worker.volumes.map((mount: Mount) => mount.target).sort()).toEqual(
+    ['/engine', '/management', '/music', '/run/configs/import-policy.json', '/staging'].sort(),
+  );
 });
 
 /** New private policies start under the product import folder unless an operator overrides it. */
 it('should provide a secret-free import policy template rooted at jojo-music', () => {
   const policy = JSON.parse(read('deploy/import-policy.example.json'));
   expect(policy).toEqual({
-    schemaVersion: 1,
+    schemaVersion: 2,
     libraries: [
       {
         id: 'music',
         musicFolderId: 'replace-with-gonic-folder-id',
         relativeRoot: 'jojo-music',
         allowedUsers: ['replace-with-gonic-username'],
+        watchExternalMp3: false,
       },
     ],
     engineManagers: ['replace-with-gonic-manager-username'],
   });
+});
+
+it('should document external watch opt-in, baseline, recovery and non-destructive rollback', () => {
+  const architecture = read('docs/architecture/external-mp3-watch.md');
+  const operations = read('docs/operations/external-mp3-watch.md');
+  for (const term of [
+    'watchExternalMp3',
+    'baseline',
+    'account directory',
+    'exact path',
+    '30 seconds',
+    'one hour',
+    'schema v1',
+  ])
+    expect(`${architecture}\n${operations}`).toContain(term);
+  expect(operations).toContain('preserve');
+  expect(operations).toContain('60 seconds');
 });
 
 /** The seed is checked against an exact official digest and the final worker has no source/test tree. */
