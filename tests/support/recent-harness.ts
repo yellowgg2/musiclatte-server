@@ -48,6 +48,7 @@ export async function createRecentContext() {
       state?: 'ready' | 'registering';
       libraryId?: string;
       username?: string;
+      provenance?: 'musiclatte' | 'external';
     } = {},
   ) => {
     const n = ++counter;
@@ -55,6 +56,7 @@ export async function createRecentContext() {
     const libraryId = input.libraryId ?? 'music';
     const at = input.at ?? recentNow - 1000;
     const ready = input.state !== 'registering';
+    const provenance = input.provenance ?? 'musiclatte';
     const fileKey = `${libraryId === 'music' ? 'imports' : 'second'}/song-${n}.mp3`;
     const file = join(musicRoot, fileKey);
     mkdirSync(dirname(file), { recursive: true });
@@ -67,9 +69,10 @@ export async function createRecentContext() {
       'base64url',
     ).toString('hex');
     const db = ctx.storage.db.connection;
-    db.prepare(
-      'INSERT INTO import_jobs(id,identity_key,library_id,operation_id_hash,request_hash,created_at) VALUES(?,?,?,?,?,?)',
-    ).run(`job-${n}`, identityKey, libraryId, String(n).padStart(64, '0'), 'c'.repeat(64), at);
+    if (provenance === 'musiclatte')
+      db.prepare(
+        'INSERT INTO import_jobs(id,identity_key,library_id,operation_id_hash,request_hash,created_at) VALUES(?,?,?,?,?,?)',
+      ).run(`job-${n}`, identityKey, libraryId, String(n).padStart(64, '0'), 'c'.repeat(64), at);
     db.prepare(
       'INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at) VALUES(?,?,?,?,1,?,?)',
     ).run(
@@ -80,20 +83,30 @@ export async function createRecentContext() {
       ready ? 'available' : 'unavailable',
       at,
     );
+    if (provenance === 'musiclatte')
+      db.prepare(
+        'INSERT INTO import_items(id,job_id,item_order,source_id,stage,media_link_id,stage_changed_at,ready_at) VALUES(?,?,0,?,?,?,?,?)',
+      ).run(
+        `item-${n}`,
+        `job-${n}`,
+        `source-${n}`,
+        ready ? 'ready' : 'registering',
+        `media-${n}`,
+        at,
+        ready ? at : null,
+      );
     db.prepare(
-      'INSERT INTO import_items(id,job_id,item_order,source_id,stage,media_link_id,stage_changed_at,ready_at) VALUES(?,?,0,?,?,?,?,?)',
+      'INSERT INTO download_events(id,import_item_id,media_link_id,provenance,identity_key,library_id,download_completed_at,registered_at) VALUES(?,?,?,?,?,?,?,?)',
     ).run(
-      `item-${n}`,
-      `job-${n}`,
-      `source-${n}`,
-      ready ? 'ready' : 'registering',
+      id,
+      provenance === 'musiclatte' ? `item-${n}` : null,
       `media-${n}`,
+      provenance,
+      identityKey,
+      libraryId,
       at,
       ready ? at : null,
     );
-    db.prepare(
-      "INSERT INTO download_events(id,import_item_id,media_link_id,provenance,identity_key,library_id,download_completed_at,registered_at) VALUES(?,?,?,'musiclatte',?,?,?,?)",
-    ).run(id, `item-${n}`, `media-${n}`, identityKey, libraryId, at, ready ? at : null);
     const song = { id: `song-${n}`, title: `Synthetic song ${n}`, isDir: false, path: fileKey };
     songs.push(song);
     return { id, fileKey, file, song, identityKey };

@@ -181,6 +181,24 @@ describe('recent downloads API', () => {
     expect(c.requests.filter((url) => url.pathname === '/rest/getSong')).toHaveLength(1);
   });
 
+  it('should project registered external history through the same ready and missing contract', async () => {
+    const c = await makeSUT();
+    const ready = c.seed({ provenance: 'external' });
+    const missing = c.seed({ provenance: 'external' });
+    rmSync(missing.file);
+    const response = await c.get();
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items).toMatchObject([
+      { state: 'missing' },
+      { state: 'ready', song: { id: ready.song.id } },
+    ]);
+    expect(
+      c.storage.db.connection
+        .prepare("SELECT count(*) AS total FROM download_events WHERE provenance='external'")
+        .get(),
+    ).toEqual({ total: 2 });
+  });
+
   /** Nonregular files, symlink components and ID/path aliases never become playable. */
   it.each(['symlink', 'parent-symlink', 'directory', 'path', 'id', 'escape', 'missing-path'])(
     'should mark an unsafe %s candidate missing',

@@ -878,11 +878,151 @@ export function createExternalWatchRepository(options: {
         db.prepare(
           `UPDATE external_file_observations SET
             state='registering',event_id=?,media_link_id=?,failure_code=NULL,
-            lease_owner=NULL,lease_expires_at=NULL,next_attempt_at=?
+            attempt=0,lease_owner=NULL,lease_expires_at=NULL,next_attempt_at=?
            WHERE library_id=? AND relative_file_key=?`,
         ).run(input.eventId, media.id, completedAt, input.libraryId, input.relativeFileKey);
         return { status: 'admitted' as const, eventId: input.eventId, mediaLinkId: media.id };
       });
+    },
+    completeRegistration(input: {
+      libraryId: string;
+      relativeFileKey: string;
+      workerId: string;
+      generation: number;
+      fingerprint: ExternalFileFingerprint;
+      eventId: string;
+      mediaLinkId: string;
+      songId: string;
+      verifyFile(): void;
+    }) {
+      if (
+        !text(input.libraryId) ||
+        !validRelativeKey(input.relativeFileKey) ||
+        !text(input.workerId) ||
+        !Number.isSafeInteger(input.generation) ||
+        input.generation < 1 ||
+        !validFingerprint(input.fingerprint) ||
+        !text(input.eventId) ||
+        !text(input.mediaLinkId) ||
+        !text(input.songId)
+      )
+        throw new Error('Invalid external registration');
+      return database.transaction(() => {
+        const observation = readObservation(input.libraryId, input.relativeFileKey);
+        const expected = {
+          device: losslessInteger(input.fingerprint.device),
+          inode: losslessInteger(input.fingerprint.inode),
+          size: losslessInteger(input.fingerprint.size),
+          mtimeNs: losslessInteger(input.fingerprint.mtimeNs),
+          ctimeNs: losslessInteger(input.fingerprint.ctimeNs),
+          linkCount: input.fingerprint.linkCount,
+        };
+        if (
+          !observation ||
+          observation.state !== 'registering' ||
+          observation.leaseOwner !== input.workerId ||
+          observation.generation !== input.generation ||
+          observation.eventId !== input.eventId ||
+          observation.mediaLinkId !== input.mediaLinkId ||
+          JSON.stringify(observation.fingerprint) !== JSON.stringify(expected)
+        )
+          throw new Error('External registration conflict');
+        const current = db
+          .prepare(
+            `SELECT 1 FROM download_events e
+             JOIN media_links m ON m.id=e.media_link_id
+             WHERE e.id=? AND e.provenance='external' AND e.registered_at IS NULL
+               AND e.library_id=? AND e.media_link_id=?
+               AND m.library_id=e.library_id AND m.relative_file_key=?
+               AND (m.gonic_song_id IS NULL OR m.gonic_song_id=?)`,
+          )
+          .get(
+            input.eventId,
+            input.libraryId,
+            input.mediaLinkId,
+            input.relativeFileKey,
+            input.songId,
+          );
+        if (!current) throw new Error('External registration conflict');
+        input.verifyFile();
+        const completedAt = now();
+        const media = db
+          .prepare(
+            `UPDATE media_links SET
+              gonic_song_id=?,availability='available',revision=revision+1,validated_at=?
+             WHERE id=? AND library_id=? AND relative_file_key=?
+               AND (gonic_song_id IS NULL OR gonic_song_id=?)`,
+          )
+          .run(
+            input.songId,
+            completedAt,
+            input.mediaLinkId,
+            input.libraryId,
+            input.relativeFileKey,
+            input.songId,
+          );
+        const event = db
+          .prepare(
+            `UPDATE download_events SET registered_at=?
+             WHERE id=? AND provenance='external' AND registered_at IS NULL
+               AND library_id=? AND media_link_id=?`,
+          )
+          .run(completedAt, input.eventId, input.libraryId, input.mediaLinkId);
+        const observationUpdate = db
+          .prepare(
+            `UPDATE external_file_observations SET
+              state='ready',failure_code=NULL,next_attempt_at=?,
+              lease_owner=NULL,lease_expires_at=NULL
+             WHERE library_id=? AND relative_file_key=? AND state='registering'
+               AND lease_owner=? AND generation=? AND event_id=? AND media_link_id=?`,
+          )
+          .run(
+            completedAt,
+            input.libraryId,
+            input.relativeFileKey,
+            input.workerId,
+            input.generation,
+            input.eventId,
+            input.mediaLinkId,
+          );
+        if (media.changes !== 1 || event.changes !== 1 || observationUpdate.changes !== 1)
+          throw new Error('External registration conflict');
+        return readObservation(input.libraryId, input.relativeFileKey)!;
+      });
+    },
+    retryRegistration(input: {
+      libraryId: string;
+      relativeFileKey: string;
+      workerId: string;
+      generation: number;
+      failureCode: string;
+      nextAttemptAt: number;
+    }) {
+      if (
+        !text(input.workerId) ||
+        !Number.isSafeInteger(input.generation) ||
+        input.generation < 1 ||
+        !text(input.failureCode) ||
+        !integer(input.nextAttemptAt)
+      )
+        throw new Error('Invalid external registration retry');
+      const result = db
+        .prepare(
+          `UPDATE external_file_observations SET
+            failure_code=?,next_attempt_at=?,lease_owner=NULL,lease_expires_at=NULL
+           WHERE library_id=? AND relative_file_key=? AND state='registering'
+             AND lease_owner=? AND generation=?`,
+        )
+        .run(
+          input.failureCode,
+          input.nextAttemptAt,
+          input.libraryId,
+          input.relativeFileKey,
+          input.workerId,
+          input.generation,
+        );
+      if (result.changes !== 1) throw new Error('External observation lease lost');
+      return readObservation(input.libraryId, input.relativeFileKey)!;
     },
     claimObservations(input: {
       workerId: string;
