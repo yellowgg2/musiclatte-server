@@ -257,19 +257,65 @@ function decodeItemV3(value: unknown): Id3OrganizationBatchItem {
   } as const;
   const state = value.state as Id3OrganizationBatchItemState;
   const outcome = state in terminalOutcome;
+  const hasMetadataCheckpoint =
+    object(value.metadataSteps) &&
+    Object.values(value.metadataSteps as Record<string, unknown>).some(
+      (step) => object(step) && step.jobId !== null,
+    );
+  const reconciledDeletedDuplicate =
+    state === 'already_organized' && value.newTrackId !== null && hasMetadataCheckpoint;
+  const skippedDestinationConflict =
+    state === 'skipped' && value.errorCode === 'destination_conflict' && hasMetadataCheckpoint;
   const item = decodeItemV2(
-    outcome ? { ...legacyShape, state: 'pending', errorCode: null } : legacyShape,
+    outcome || skippedDestinationConflict
+      ? {
+          ...legacyShape,
+          state:
+            reconciledDeletedDuplicate || skippedDestinationConflict
+              ? 'metadata_accepted'
+              : 'pending',
+          errorCode: null,
+        }
+      : legacyShape,
   );
-  if (outcome) {
-    if (
-      value.errorCode !== terminalOutcome[state as keyof typeof terminalOutcome] ||
+  if (outcome || skippedDestinationConflict) {
+    const expectedError = skippedDestinationConflict
+      ? 'destination_conflict'
+      : terminalOutcome[state as keyof typeof terminalOutcome];
+    if (value.errorCode !== expectedError) failure('journal_invalid');
+    if (reconciledDeletedDuplicate) {
+      const finalMetadata =
+        item.metadataSteps.optional.jobId !== null
+          ? item.metadataSteps.optional
+          : item.metadataSteps.required;
+      if (
+        item.organizationJobId !== null ||
+        item.newTrackId === item.trackId ||
+        item.serverStage !== null ||
+        !metadataCanOrganize(finalMetadata)
+      )
+        failure('journal_invalid');
+    } else if (skippedDestinationConflict) {
+      const finalMetadata =
+        item.metadataSteps.optional.jobId !== null
+          ? item.metadataSteps.optional
+          : item.metadataSteps.required;
+      if (
+        item.organizationJobId !== null ||
+        item.newTrackId !== null ||
+        item.serverStage !== null ||
+        !metadataCanOrganize(finalMetadata)
+      )
+        failure('journal_invalid');
+    } else if (
       item.coverUploadId !== null ||
       Object.values(item.metadataSteps).some(({ jobId }) => jobId !== null) ||
       item.organizationJobId !== null ||
       item.newTrackId !== null ||
       item.serverStage !== null
-    )
+    ) {
       failure('journal_invalid');
+    }
     item.state = state;
     item.errorCode = value.errorCode as string;
   }
@@ -873,6 +919,28 @@ export function skipId3OrganizationBatchItem(
   });
 }
 
+export function skipId3OrganizationBatchDestinationConflict(path: string, trackId: string) {
+  return updateJournal(path, (journal) => {
+    if (journal.stopped || journal.schemaVersion !== 3 || journal.source.kind !== 'unorganized')
+      failure('journal_binding');
+    const item = currentBoundItem(journal, trackId);
+    const finalMetadata =
+      item.metadataSteps.optional.jobId !== null
+        ? item.metadataSteps.optional
+        : item.metadataSteps.required;
+    if (
+      item.state !== 'metadata_accepted' ||
+      item.organizationJobId !== null ||
+      item.newTrackId !== null ||
+      item.serverStage !== null ||
+      !metadataCanOrganize(finalMetadata)
+    )
+      failure('journal_transition');
+    item.state = 'skipped';
+    item.errorCode = 'destination_conflict';
+  });
+}
+
 export function completeId3OrganizationBatchSharedItem(
   path: string,
   trackId: string,
@@ -895,6 +963,34 @@ export function completeId3OrganizationBatchSharedItem(
     item.state = 'succeeded';
     item.newTrackId = newTrackId;
     item.serverStage = 'succeeded';
+  });
+}
+
+export function completeDeletedId3OrganizationDuplicate(
+  path: string,
+  trackId: string,
+  existingTrackId: string,
+) {
+  if (!opaque(existingTrackId) || existingTrackId === trackId) failure('journal_binding');
+  return updateJournal(path, (journal) => {
+    if (journal.stopped || journal.schemaVersion !== 3 || journal.source.kind !== 'unorganized')
+      failure('journal_binding');
+    const item = currentBoundItem(journal, trackId);
+    const finalMetadata =
+      item.metadataSteps.optional.jobId !== null
+        ? item.metadataSteps.optional
+        : item.metadataSteps.required;
+    if (
+      item.state !== 'metadata_accepted' ||
+      item.organizationJobId !== null ||
+      item.newTrackId !== null ||
+      item.serverStage !== null ||
+      !metadataCanOrganize(finalMetadata)
+    )
+      failure('journal_transition');
+    item.state = 'already_organized';
+    item.errorCode = 'already_organized';
+    item.newTrackId = existingTrackId;
   });
 }
 

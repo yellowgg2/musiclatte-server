@@ -97,6 +97,131 @@ describe('private ID3 organization batch journal', () => {
     ).toThrow('client_failed:journal_invalid');
   });
 
+  it('reconciles a deleted unorganized duplicate to an existing organized successor', async () => {
+    const module = await batchModule();
+    expect(module).toHaveProperty('completeDeletedId3OrganizationDuplicate');
+    if (!('completeDeletedId3OrganizationDuplicate' in module)) return;
+    const { stateFile } = paths();
+    module.createId3OrganizationSweepChildJournal({
+      path: stateFile,
+      api: 'https://music.example/api/v1',
+      token: 'mlpat_' + 'd'.repeat(48),
+      selectionId: 'selection-duplicate',
+      selectionRevision: 'f'.repeat(64),
+      items: [
+        {
+          ordinal: 0,
+          item: {
+            mediaLinkId: 'media-old',
+            trackId: 'track-old',
+            title: 'Exact title',
+            artist: 'Artist',
+            album: null,
+          },
+        },
+      ],
+    });
+    module.nextId3OrganizationBatchItem(stateFile);
+    module.checkpointId3OrganizationBatch(stateFile, 'track-old', {
+      kind: 'metadata',
+      step: 'required',
+      jobId: 'required-job',
+      resultRevision: 'required-revision',
+      serverStage: 'succeeded',
+    });
+    module.checkpointId3OrganizationBatch(stateFile, 'track-old', {
+      kind: 'metadata',
+      step: 'optional',
+      jobId: 'optional-job',
+      resultRevision: 'optional-revision',
+      serverStage: 'succeeded',
+    });
+
+    module.completeDeletedId3OrganizationDuplicate(stateFile, 'track-old', 'track-existing');
+
+    expect(module.readId3OrganizationBatchJournal(stateFile).items[0]).toMatchObject({
+      state: 'already_organized',
+      errorCode: 'already_organized',
+      newTrackId: 'track-existing',
+      organizationJobId: null,
+      serverStage: null,
+      metadataSteps: {
+        required: { jobId: 'required-job', serverStage: 'succeeded' },
+        optional: { jobId: 'optional-job', serverStage: 'succeeded' },
+      },
+    });
+    expect(module.id3OrganizationBatchStatus(stateFile)).toMatchObject({
+      succeeded: 0,
+      alreadyOrganized: 1,
+      pending: 0,
+    });
+  });
+
+  it('terminally skips a metadata-complete unorganized destination conflict', async () => {
+    const module = await batchModule();
+    expect(module).toHaveProperty('skipId3OrganizationBatchDestinationConflict');
+    if (!('skipId3OrganizationBatchDestinationConflict' in module)) return;
+    const { stateFile } = paths();
+    module.createId3OrganizationSweepChildJournal({
+      path: stateFile,
+      api: 'https://music.example/api/v1',
+      token: 'mlpat_' + 'c'.repeat(48),
+      selectionId: 'selection-conflict',
+      selectionRevision: 'f'.repeat(64),
+      items: [
+        {
+          ordinal: 0,
+          item: {
+            mediaLinkId: 'media-old',
+            trackId: 'track-old',
+            title: 'Exact title',
+            artist: 'Artist',
+            album: null,
+          },
+        },
+      ],
+    });
+    module.nextId3OrganizationBatchItem(stateFile);
+    module.checkpointId3OrganizationBatch(stateFile, 'track-old', {
+      kind: 'cover',
+      uploadId: 'cover-upload',
+    });
+    module.checkpointId3OrganizationBatch(stateFile, 'track-old', {
+      kind: 'metadata',
+      step: 'required',
+      jobId: 'required-job',
+      resultRevision: 'required-revision',
+      serverStage: 'succeeded',
+    });
+    module.checkpointId3OrganizationBatch(stateFile, 'track-old', {
+      kind: 'metadata',
+      step: 'optional',
+      jobId: 'optional-job',
+      resultRevision: 'optional-revision',
+      serverStage: 'succeeded',
+    });
+
+    module.skipId3OrganizationBatchDestinationConflict(stateFile, 'track-old');
+
+    expect(module.readId3OrganizationBatchJournal(stateFile).items[0]).toMatchObject({
+      state: 'skipped',
+      errorCode: 'destination_conflict',
+      coverUploadId: 'cover-upload',
+      newTrackId: null,
+      organizationJobId: null,
+      serverStage: null,
+      metadataSteps: {
+        required: { jobId: 'required-job', serverStage: 'succeeded' },
+        optional: { jobId: 'optional-job', serverStage: 'succeeded' },
+      },
+    });
+    expect(module.id3OrganizationBatchStatus(stateFile)).toMatchObject({
+      succeeded: 0,
+      skipped: 1,
+      pending: 0,
+    });
+  });
+
   /** Upgrades a live v1 journal without losing its stable metadata operation or accepted checkpoint. */
   it('normalizes a v1 journal into ordered required and optional metadata checkpoints', async () => {
     const module = await batchModule();

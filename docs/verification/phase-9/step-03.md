@@ -41,3 +41,38 @@ Final gates: project formatting, focused unit/contract tests, typecheck, build, 
   created its successor, restored both account snapshots (including one playlist occurrence), and
   passed final ID3, one-front-JPEG, and Gonic successor-binding checks. The frozen sweep then
   advanced normally; no replacement intent, direct database edit, or manual file move was used.
+
+## 2026-09-14 authorized duplicate deletion reconciliation
+
+- Incident: an unorganized MP3 reached `metadata_accepted`, then organization preview found an
+  existing organized file with the same verified release metadata and duration. Deleting only the
+  unorganized duplicate would otherwise leave the frozen child journal permanently unfinished.
+- RED/GREEN: schema-version-3 child journals now accept one narrow terminal shape that preserves
+  successful metadata checkpoints, records the verified existing successor, and ends as
+  `already_organized`. The transition is rejected outside an active unorganized item or before a
+  successful final metadata checkpoint.
+- Operator boundary: `batch-reconcile-deleted-duplicate` verifies that the deleted source is absent
+  from candidates, the existing successor exactly matches both manifests and one front JPEG, and
+  the authenticated reference snapshot contains no favorite or playlist occurrence. The command
+  never deletes media or references.
+- Runtime: after explicit user approval, only the duplicate source was unlinked; the organized copy
+  remained, both account reference snapshots were empty, Gonic completed a scan, and the preserved
+  journal advanced to the next item.
+- Verification: four focused contract files passed 61/61; typecheck and build passed. The production
+  API/server code was not changed or redeployed.
+
+## 2026-09-16 retained duplicate destination-conflict terminalization
+
+- Incident: a frozen unorganized item completed required and optional metadata, then a live
+  organization preview found an existing managed destination. The user chose to retain both files
+  and terminally skip this duplicate instead of deleting or renaming media.
+- RED/GREEN: schema-version-3 unorganized journals accept one narrow
+  `skipped(destination_conflict)` terminal shape that preserves successful metadata and cover
+  checkpoints. The dedicated client command replays organization preview at the final result
+  revision and refuses a ready target, another error, a non-current item, or any existing
+  organization job.
+- Safety: ordinary `batch-skip` remains pre-mutation only. The recovery command neither moves nor
+  deletes media, changes references, edits Gonic, nor creates a replacement intent. The retained
+  source remains eligible for a later fresh sweep.
+- Verification: four focused contract files passed 63/63; typecheck, build, formatting, and diff
+  checks passed. Production resume evidence is recorded after deployment.

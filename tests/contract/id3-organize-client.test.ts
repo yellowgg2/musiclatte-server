@@ -10,6 +10,7 @@ import {
 import {
   checkpointId3OrganizationBatch,
   createId3OrganizationBatchJournal,
+  createId3OrganizationSweepChildJournal,
   id3OrganizationBatchBinding,
   nextId3OrganizationBatchItem,
   readId3OrganizationBatchJournal,
@@ -35,6 +36,31 @@ it('accepts only a private non-symlink token file and never returns the token', 
   const link = path + '-link';
   symlinkSync(path, link);
   expect(() => readPrivateToken(link)).toThrow('client_failed:private_token');
+});
+
+it('starts and reads a scan through the authenticated private client', async () => {
+  const tokenFile = privateFile('token', 'mlpat_' + 's'.repeat(48));
+  const fetcher = vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+    init?.method === 'POST'
+      ? Response.json({ schemaVersion: 1, accepted: true })
+      : Response.json({ schemaVersion: 1, scanning: false, count: 7 }),
+  );
+  await expect(
+    runId3OrganizeCommand({
+      api: 'https://music.example/api/v1',
+      tokenFile,
+      command: 'scan-start',
+      fetch: fetcher,
+    }),
+  ).resolves.toEqual({ schemaVersion: 1, accepted: true });
+  await expect(
+    runId3OrganizeCommand({
+      api: 'https://music.example/api/v1',
+      tokenFile,
+      command: 'scan-status',
+      fetch: fetcher,
+    }),
+  ).resolves.toEqual({ schemaVersion: 1, scanning: false, count: 7 });
 });
 
 it('strictly decodes verified values, evidence, cover usage and rejects unknown fields', () => {
@@ -900,6 +926,295 @@ it.each([
     });
   },
 );
+
+it('reconciles a deleted unorganized duplicate only after the source is absent and references are empty', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-deleted-duplicate-'));
+  const token = 'mlpat_' + 'r'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const stateFile = join(directory, 'batch.json');
+  const referenceFile = join(directory, 'references.json');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  createId3OrganizationSweepChildJournal({
+    path: stateFile,
+    api: 'https://music.example/api/v1',
+    token,
+    selectionId: 'selection-1',
+    selectionRevision: 'a'.repeat(64),
+    items: [
+      {
+        ordinal: 0,
+        item: {
+          mediaLinkId: 'media-old',
+          trackId: 'old',
+          title: 'Video title',
+          artist: null,
+          album: null,
+        },
+      },
+    ],
+  });
+  nextId3OrganizationBatchItem(stateFile);
+  checkpointId3OrganizationBatch(stateFile, 'old', {
+    kind: 'metadata',
+    step: 'required',
+    jobId: 'required-job',
+    resultRevision: 'revision-2',
+    serverStage: 'succeeded',
+  });
+  checkpointId3OrganizationBatch(stateFile, 'old', {
+    kind: 'metadata',
+    step: 'optional',
+    jobId: 'optional-job',
+    resultRevision: 'revision-3',
+    serverStage: 'succeeded',
+  });
+  createId3ReferenceSnapshot({
+    path: referenceFile,
+    api: 'https://music.example/api/v1',
+    token,
+    trackId: 'old',
+    starred: false,
+    playlists: [],
+  });
+  const fetcher = vi.fn(async (input: string | URL | Request) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith('/metadata-organization/candidates'))
+      return Response.json({
+        schemaVersion: 1,
+        candidates: [
+          {
+            trackId: 'existing',
+            libraryId: 'music',
+            title: 'Exact title',
+            artist: ['Artist'],
+            album: 'Album',
+            currentRevision: 'revision-existing',
+            importSourceId: null,
+          },
+        ],
+        total: 1,
+      });
+    if (url.pathname.endsWith('/tracks/existing/metadata'))
+      return Response.json({
+        schemaVersion: 1,
+        trackId: 'existing',
+        editable: true,
+        reason: null,
+        format: 'mp3',
+        supportedFields: [
+          'title',
+          'artist',
+          'album',
+          'albumArtist',
+          'trackNumber',
+          'year',
+          'genre',
+          'cover',
+          'lyrics',
+        ],
+        fileRevision: 'revision-existing',
+        values: {
+          title: 'Exact title',
+          artist: ['Artist'],
+          album: 'Album',
+          albumArtist: ['Artist'],
+          trackNumber: '1/1',
+          year: '2024',
+          genre: ['Pop'],
+        },
+        coverFrames: [
+          {
+            frameId: 'cover',
+            pictureType: 3,
+            description: '',
+            mimeType: 'image/jpeg',
+            previewUrl: '/api/v1/cover',
+          },
+        ],
+        lyricsFrames: [],
+        lastVerifiedAt: 1,
+      });
+    throw new Error('unexpected request');
+  });
+  const result = await runId3OrganizeCommand({
+    api: 'https://music.example/api/v1',
+    tokenFile,
+    stateFile,
+    referenceFile,
+    fetch: fetcher,
+    command: 'batch-reconcile-deleted-duplicate',
+    trackId: 'old',
+    newTrackId: 'existing',
+    requiredManifest: {
+      schemaVersion: 1,
+      metadata: { title: 'Exact title', artist: ['Artist'] },
+      sourceEvidence: [
+        { url: 'https://artist.example/release', kind: 'official_artist', fields: ['title'] },
+      ],
+    },
+    manifest: {
+      schemaVersion: 1,
+      metadata: {
+        album: 'Album',
+        albumArtist: ['Artist'],
+        trackNumber: '1/1',
+        year: '2024',
+        genre: ['Pop'],
+      },
+      sourceEvidence: [
+        { url: 'https://artist.example/release', kind: 'official_artist', fields: ['album'] },
+      ],
+      cover: { path: '/private/cover.jpg', usageBasis: 'Private library' },
+    },
+  });
+  expect(result).toEqual({
+    schemaVersion: 1,
+    status: 'already_organized',
+    duplicateDeleted: true,
+  });
+  expect(readId3OrganizationBatchJournal(stateFile).items[0]).toMatchObject({
+    state: 'already_organized',
+    errorCode: 'already_organized',
+    newTrackId: 'existing',
+  });
+});
+
+it('terminally skips only a freshly verified post-metadata destination conflict', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'musiclatte-destination-conflict-'));
+  const token = 'mlpat_' + 'c'.repeat(48);
+  const tokenFile = join(directory, 'token');
+  const stateFile = join(directory, 'batch.json');
+  writeFileSync(tokenFile, token, { mode: 0o600 });
+  createId3OrganizationSweepChildJournal({
+    path: stateFile,
+    api: 'https://music.example/api/v1',
+    token,
+    selectionId: 'selection-1',
+    selectionRevision: 'a'.repeat(64),
+    items: [
+      {
+        ordinal: 0,
+        item: {
+          mediaLinkId: 'media-old',
+          trackId: 'old',
+          title: 'Video title',
+          artist: null,
+          album: null,
+        },
+      },
+    ],
+  });
+  nextId3OrganizationBatchItem(stateFile);
+  checkpointId3OrganizationBatch(stateFile, 'old', {
+    kind: 'metadata',
+    step: 'required',
+    jobId: 'required-job',
+    resultRevision: 'revision-2',
+    serverStage: 'succeeded',
+  });
+  checkpointId3OrganizationBatch(stateFile, 'old', {
+    kind: 'metadata',
+    step: 'optional',
+    jobId: 'optional-job',
+    resultRevision: 'revision-3',
+    serverStage: 'succeeded',
+  });
+  const fetcher = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      trackId: 'old',
+      expectedRevision: 'revision-3',
+      destinationPolicy: 'id3-managed-v1',
+    });
+    return Response.json({
+      schemaVersion: 1,
+      trackId: 'old',
+      libraryId: 'music',
+      currentRevision: 'revision-3',
+      currentKey: 'legacy/source.mp3',
+      targetKey: null,
+      writeGuaranteed: false,
+      status: 'error',
+      code: 'destination_conflict',
+    });
+  });
+
+  await expect(
+    runId3OrganizeCommand({
+      api: 'https://music.example/api/v1',
+      tokenFile,
+      stateFile,
+      fetch: fetcher,
+      command: 'batch-skip-destination-conflict',
+      trackId: 'old',
+    }),
+  ).resolves.toEqual({
+    schemaVersion: 1,
+    status: 'skipped',
+    reason: 'destination_conflict',
+  });
+  expect(readId3OrganizationBatchJournal(stateFile).items[0]).toMatchObject({
+    state: 'skipped',
+    errorCode: 'destination_conflict',
+    newTrackId: null,
+  });
+
+  const readyStateFile = join(directory, 'ready-batch.json');
+  createId3OrganizationSweepChildJournal({
+    path: readyStateFile,
+    api: 'https://music.example/api/v1',
+    token,
+    selectionId: 'selection-2',
+    selectionRevision: 'b'.repeat(64),
+    items: [
+      {
+        ordinal: 0,
+        item: {
+          mediaLinkId: 'media-ready',
+          trackId: 'ready',
+          title: 'Ready title',
+          artist: null,
+          album: null,
+        },
+      },
+    ],
+  });
+  nextId3OrganizationBatchItem(readyStateFile);
+  checkpointId3OrganizationBatch(readyStateFile, 'ready', {
+    kind: 'metadata',
+    step: 'required',
+    jobId: 'ready-job',
+    resultRevision: 'ready-revision',
+    serverStage: 'succeeded',
+  });
+  const readyFetcher = vi.fn(async () =>
+    Response.json({
+      schemaVersion: 1,
+      trackId: 'ready',
+      libraryId: 'music',
+      currentRevision: 'ready-revision',
+      currentKey: 'legacy/ready.mp3',
+      targetKey: 'managed/ready.mp3',
+      writeGuaranteed: false,
+      status: 'ready',
+      code: null,
+    }),
+  );
+  await expect(
+    runId3OrganizeCommand({
+      api: 'https://music.example/api/v1',
+      tokenFile,
+      stateFile: readyStateFile,
+      fetch: readyFetcher,
+      command: 'batch-skip-destination-conflict',
+      trackId: 'ready',
+    }),
+  ).rejects.toThrow('client_failed:destination_conflict');
+  expect(readId3OrganizationBatchJournal(readyStateFile).items[0]).toMatchObject({
+    state: 'metadata_accepted',
+    errorCode: null,
+  });
+});
 
 /** Releases the short-lived curation reservation as soon as the metadata job is accepted. */
 it('releases an accepted metadata claim before returning to the organizer', async () => {

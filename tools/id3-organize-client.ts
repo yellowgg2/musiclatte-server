@@ -26,6 +26,7 @@ import {
 } from '@musiclatte/contracts';
 import {
   checkpointId3OrganizationBatch,
+  completeDeletedId3OrganizationDuplicate,
   completeId3OrganizationBatchSharedItem,
   createId3OrganizationBatchJournal,
   finalizeId3OrganizationSweepItem,
@@ -36,6 +37,7 @@ import {
   id3OrganizationBatchStatus,
   nextId3OrganizationBatchItem,
   recordId3OrganizationBatchFailure,
+  skipId3OrganizationBatchDestinationConflict,
   skipId3OrganizationBatchItem,
   verifyId3OrganizationBatchContext,
 } from './id3-organize-batch-journal.js';
@@ -91,13 +93,17 @@ export interface Id3OrganizeCommandOptions {
     | 'batch-start'
     | 'batch-next'
     | 'batch-skip'
+    | 'batch-skip-destination-conflict'
     | 'batch-status'
+    | 'scan-start'
+    | 'scan-status'
     | 'sweep-start'
     | 'sweep-next'
     | 'sweep-status'
     | 'references-snapshot'
     | 'references-restore'
-    | 'batch-adopt-successor';
+    | 'batch-adopt-successor'
+    | 'batch-reconcile-deleted-duplicate';
   title?: string;
   libraryId?: string;
   trackId?: string;
@@ -391,6 +397,35 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     }
   };
 
+  if (options.command === 'scan-start') {
+    const response = await jsonPost('/scan', {}, [200]);
+    if (
+      !object(response) ||
+      !exact(response, ['schemaVersion', 'accepted']) ||
+      response.schemaVersion !== 1 ||
+      response.accepted !== true
+    )
+      fail('response');
+    return { schemaVersion: 1 as const, accepted: true as const };
+  }
+  if (options.command === 'scan-status') {
+    const response = await call('/scan');
+    if (
+      !object(response) ||
+      !exact(response, ['schemaVersion', 'scanning', 'count']) ||
+      response.schemaVersion !== 1 ||
+      typeof response.scanning !== 'boolean' ||
+      !Number.isSafeInteger(response.count) ||
+      Number(response.count) < 0
+    )
+      fail('response');
+    return {
+      schemaVersion: 1 as const,
+      scanning: response.scanning,
+      count: Number(response.count),
+    };
+  }
+
   if (options.command === 'sweep-start') {
     const stateFile = required(options.stateFile, 'state_file');
     const capture = async (pageValue: unknown) => {
@@ -542,6 +577,48 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     );
     return id3OrganizationBatchStatus(stateFile);
   }
+  if (options.command === 'batch-skip-destination-conflict') {
+    const stateFile = required(options.stateFile, 'state_file');
+    const trackId = required(options.trackId, 'target');
+    const journal = verifyId3OrganizationBatchContext(stateFile, base, token);
+    if (journal.schemaVersion !== 3 || journal.source.kind !== 'unorganized')
+      fail('journal_binding');
+    const binding = id3OrganizationBatchBinding(stateFile, trackId);
+    const finalMetadata = id3OrganizationFinalMetadataBinding(binding);
+    if (
+      binding.state !== 'metadata_accepted' ||
+      binding.organizationJobId !== null ||
+      binding.newTrackId !== null ||
+      binding.serverStage !== null
+    )
+      fail('journal_binding');
+    const revision = required(finalMetadata.resultRevision ?? undefined, 'revision');
+    const preview = decodeOrganizationPreview(
+      await jsonPost(
+        '/metadata-organization/previews',
+        {
+          trackId,
+          expectedRevision: revision,
+          destinationPolicy: 'id3-managed-v1',
+        },
+        [200],
+      ),
+    );
+    if (
+      preview.trackId !== trackId ||
+      preview.currentRevision !== revision ||
+      preview.status !== 'error' ||
+      preview.code !== 'destination_conflict' ||
+      preview.targetKey !== null
+    )
+      fail('destination_conflict');
+    skipId3OrganizationBatchDestinationConflict(stateFile, trackId);
+    return {
+      schemaVersion: 1 as const,
+      status: 'skipped' as const,
+      reason: 'destination_conflict' as const,
+    };
+  }
   if (options.command === 'batch-status') {
     const stateFile = required(options.stateFile, 'state_file');
     verifyId3OrganizationBatchContext(stateFile, base, token);
@@ -625,6 +702,73 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       fail('reference_conflict');
     completeId3OrganizationBatchSharedItem(stateFile, oldTrackId, newTrackId);
     return { schemaVersion: 1 as const, status: 'succeeded' as const, favoriteRestored: true };
+  }
+  if (options.command === 'batch-reconcile-deleted-duplicate') {
+    if (!options.manifest || !options.requiredManifest) fail('manifest');
+    const stateFile = required(options.stateFile, 'state_file');
+    const oldTrackId = required(options.trackId, 'target');
+    const existingTrackId = required(options.newTrackId, 'target');
+    const journal = verifyId3OrganizationBatchContext(stateFile, base, token);
+    if (journal.schemaVersion !== 3 || journal.source.kind !== 'unorganized')
+      fail('journal_binding');
+    const binding = id3OrganizationBatchBinding(stateFile, oldTrackId);
+    id3OrganizationFinalMetadataBinding(binding);
+    if (
+      binding.state !== 'metadata_accepted' ||
+      binding.organizationJobId !== null ||
+      binding.newTrackId !== null ||
+      binding.serverStage !== null ||
+      existingTrackId === oldTrackId
+    )
+      fail('journal_binding');
+    const references = verifyId3ReferenceContext(
+      required(options.referenceFile, 'reference_file'),
+      base,
+      token,
+    );
+    if (
+      references.trackId !== oldTrackId ||
+      references.starred ||
+      references.favoriteRestoredTo !== null ||
+      references.playlists.length !== 0
+    )
+      fail('reference_context');
+    const expectedMetadata = {
+      ...options.requiredManifest.metadata,
+      ...options.manifest.metadata,
+    };
+    const expectedTitle = expectedMetadata.title ?? binding.title;
+    const query = new URLSearchParams({ title: expectedTitle });
+    const candidates = decodeOrganizationCandidates(
+      await call('/metadata-organization/candidates?' + query.toString()),
+    );
+    if (
+      candidates.candidates.some((candidate) => candidate.trackId === oldTrackId) ||
+      candidates.candidates.filter((candidate) => candidate.trackId === existingTrackId).length !==
+        1
+    )
+      fail('shared_successor');
+    const inspected = decodeMetadataSnapshot(
+      await call('/tracks/' + encodeURIComponent(existingTrackId) + '/metadata'),
+    );
+    for (const [field, expected] of Object.entries(expectedMetadata)) {
+      const actual = inspected.values[field as keyof typeof inspected.values];
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) fail('shared_successor');
+    }
+    const expectedCover = options.manifest.cover ?? options.requiredManifest.cover;
+    if (
+      expectedCover &&
+      inspected.coverFrames.filter(
+        (frame) => frame.pictureType === 3 && frame.mimeType === 'image/jpeg',
+      ).length !== 1
+    )
+      fail('shared_successor');
+    completeDeletedId3OrganizationDuplicate(stateFile, oldTrackId, existingTrackId);
+    return {
+      schemaVersion: 1 as const,
+      status: 'already_organized' as const,
+      duplicateDeleted: true as const,
+    };
   }
   if (options.command === 'references-snapshot') {
     const referenceFile = required(options.referenceFile, 'reference_file');

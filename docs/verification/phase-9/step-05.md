@@ -26,3 +26,21 @@
 
 Final gates: project formatting, focused unit/contract tests, typecheck, build, `format:check`, and
 `git diff --check`.
+
+## 2026-09-14 stale destination binding recovery
+
+- An authorized cleanup found two same-release MP3s at the planned managed destination. The
+  unorganized source matched the official store duration, while the existing managed file was
+  longer. Both accounts had zero references to the managed file; the source had one owned-playlist
+  occurrence in the secondary account.
+- After the managed file was deleted and Gonic scanned, the source organization moved correctly and
+  received one exact-path Gonic candidate, but registration could not rebind because the deleted
+  file's old MediaLink still uniquely reserved the target key. The worker was paused after an
+  owner-only management DB/WAL and policy backup passed integrity validation.
+- The single stale MediaLink was moved to a deterministic unavailable retired key, its missing Gonic
+  ID was cleared, and its curation row was tombstoned in one transaction with an append-only
+  operator audit event. No Gonic DB row, unrelated MediaLink, reference, or media file was edited.
+- After the worker restarted healthy, the existing organization job immediately rebound and
+  succeeded. The secondary playlist occurrence was restored to the new track and the final ID3 plus
+  one-front-JPEG checks passed. This is a bounded production recovery record, not a general license
+  to merge duration-mismatched destination collisions automatically.

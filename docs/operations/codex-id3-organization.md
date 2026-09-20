@@ -10,6 +10,9 @@ Store the PAT and manifest outside the repository. Both files must be regular, o
 `metadata:read`, `metadata:write`, `media:organize`, plus `curation:write` for title/artist and
 `lyrics:write` only when lyrics are actually written.
 
+An operator PAT used for `scan-start` and `scan-status` must resolve to a currently verified
+upstream administrator. A non-administrator ID3 PAT must fail closed on those commands.
+
 Collection batches also require `collections:read`. Put the journal in a new absolute path inside
 an owner-owned mode-`0700` directory outside the repository. The state file is created with
 mode `0600`; state, temporary, lock, and parent symlinks are rejected.
@@ -58,6 +61,8 @@ npm run id3:organize -- metadata-recheck --api https://service.example/api/v1 --
 npm run id3:organize -- metadata-retry --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID
 npm run id3:organize -- organization-preview --api https://service.example/api/v1 --token-file /absolute/private/token --track-id TRACK_ID --revision RESULT_REVISION
 npm run id3:organize -- organization-submit --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision RESULT_REVISION --metadata-job-id METADATA_JOB_ID --operation-id STABLE_OPERATION_ID --poll-attempts 180 --poll-interval-ms 1000 --recovery-retries 1
+npm run id3:organize -- scan-start --api https://service.example/api/v1 --token-file /absolute/private/admin-token
+npm run id3:organize -- scan-status --api https://service.example/api/v1 --token-file /absolute/private/admin-token
 ```
 
 Title/artist claims and optional-field claims are separate server contracts. If a manifest mixes
@@ -111,6 +116,36 @@ unique successor candidate, manifest fields, front JPEG, favorite, and owned pla
 recording success without a second file move. For recovery when the pre-move snapshot does not
 exist, capture a new private `references-snapshot` of the successor and pass that file instead; the
 client accepts only a starred successor snapshot whose playlists all contain that successor.
+
+If an explicitly authorized unorganized sweep deletes a byte-level duplicate after metadata was
+accepted, do not edit the child journal. First prove that the source file is absent after a scan,
+that exactly one existing candidate matches the combined required/optional manifests and front
+JPEG, and that the source reference snapshot is unstarred with no owned-playlist occurrences. Then
+reconcile the accepted checkpoint to that existing track:
+
+```sh
+npm run id3:organize -- batch-reconcile-deleted-duplicate --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/unorganized-child.json --track-id DELETED_TRACK_ID --new-track-id EXISTING_TRACK_ID --required-manifest /absolute/private/required.json --manifest /absolute/private/optional.json --reference-file /absolute/private/deleted-track-references.json
+```
+
+This command never deletes media or references and is valid only for the current schema-version-3
+unorganized item at `metadata_accepted`. It preserves the accepted metadata checkpoints and records
+the verified existing track as `already_organized`; any still-visible source, nonempty reference,
+manifest mismatch, missing front JPEG, or unrelated journal fails closed.
+
+If the user instead explicitly chooses to keep both files and terminally skip the unorganized
+duplicate, do not delete either file and do not hand-edit the journal. Recheck the collision and
+record that narrow outcome with:
+
+```sh
+npm run id3:organize -- batch-skip-destination-conflict --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/unorganized-child.json --track-id TRACK_ID
+```
+
+This command is valid only for the current schema-version-3 unorganized item at
+`metadata_accepted`, with a successful final metadata checkpoint and no organization job. It sends
+a fresh organization preview using the checkpointed result revision and transitions to
+`skipped(destination_conflict)` only when the server still returns that exact error. It never moves
+or deletes media, changes references, or weakens ordinary `batch-skip`. The retained source can be
+selected again by a later fresh unorganized sweep.
 
 `batch-next` returns the first unfinished unique track and its occurrence count. Run the existing
 cover, metadata, organization submit, and status commands with both `--state-file` and that exact
