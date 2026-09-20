@@ -568,6 +568,72 @@ it('should resume registration through the worker runtime injection', async () =
   expect(s.events()).toHaveLength(1);
 });
 
+it('should run one external idle unit only after import publication has priority', async () => {
+  const s = await workerSUT();
+  const calls: string[] = [];
+  const worker = createWorkerRunner({
+    ...s.options,
+    idleTask: {
+      async runOnce() {
+        calls.push('external');
+        return true;
+      },
+      close() {},
+    },
+  });
+  expect(await worker.runOnce()).toBe(true);
+  expect(calls).toEqual([]);
+  expect(s.item().stage).toBe('registering');
+  expect(await worker.runOnce()).toBe(true);
+  expect(calls).toEqual(['external']);
+  expect(s.c.workerStates.get()).toMatchObject({ status: 'stopped', activeItemId: null });
+});
+
+it('should keep the worker heartbeat live and close external work on abort', async () => {
+  const s = await workerSUT();
+  await s.worker.runOnce();
+  let release!: () => void;
+  let entered = false;
+  let closed = 0;
+  let heartbeatNow = 1_000;
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const worker = createWorkerRunner({
+    ...s.options,
+    leaseDurationMs: 60,
+    clock: () => heartbeatNow,
+    idleTask: {
+      async runOnce() {
+        entered = true;
+        await waiting;
+        return true;
+      },
+      close() {
+        closed += 1;
+      },
+    },
+  });
+  const abort = new AbortController();
+  const running = worker.run(abort.signal);
+  try {
+    await expect.poll(() => entered).toBe(true);
+    expect(s.c.workerStates.get()).toMatchObject({
+      status: 'idle',
+      heartbeatAt: 1_000,
+      activeItemId: null,
+    });
+    heartbeatNow = 2_000;
+    await expect.poll(() => s.c.workerStates.get().heartbeatAt).toBe(2_000);
+  } finally {
+    abort.abort();
+    release();
+    await running;
+  }
+  expect(closed).toBe(1);
+  expect(s.c.workerStates.get().status).toBe('stopped');
+});
+
 /** A finished attempt releases its engine only after the subprocess and staging cleanup settle. */
 it.each(['ok', 'exit'])('should release the engine after %s completion', async (mode) => {
   const s = await workerSUT(mode);

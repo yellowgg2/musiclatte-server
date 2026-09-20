@@ -178,9 +178,22 @@ it('should probe private mounts and recover the worker engine across process lif
   };
   for (const name of ['music', 'staging', 'engine'])
     mkdirSync(join(fixtureRoot, name), { mode: 0o700 });
+  mkdirSync(join(fixtureRoot, 'music', 'imports', 'alice'), { recursive: true });
   writeFileSync(
     env.IMPORT_POLICY_PATH!,
-    JSON.stringify({ schemaVersion: 1, libraries: [], engineManagers: [] }),
+    JSON.stringify({
+      schemaVersion: 2,
+      libraries: [
+        {
+          id: 'music',
+          musicFolderId: '0',
+          relativeRoot: 'imports',
+          allowedUsers: ['alice'],
+          watchExternalMp3: true,
+        },
+      ],
+      engineManagers: [],
+    }),
   );
   writeFileSync(
     env.IMPORT_CREDENTIAL_PATH!,
@@ -188,6 +201,20 @@ it('should probe private mounts and recover the worker engine across process lif
     { mode: 0o600 },
   );
   try {
+    const { createExternalWatchRepository } =
+      await import('../src/storage/external-watch-repository.js');
+    createExternalWatchRepository({ database: ctx.storage.db, clock: Date.now }).syncOwners({
+      instanceId: 'instance-1',
+      policyRevision: 2,
+      owners: [
+        {
+          libraryId: 'music',
+          accountDirectory: 'alice',
+          username: 'alice',
+          identityKey: 'a'.repeat(64),
+        },
+      ],
+    });
     expect(readWorkerConfig(env).enabled).toBe(true);
     chmodSync(env.IMPORT_CREDENTIAL_PATH!, 0o644);
     expect(() => readWorkerConfig(env)).toThrow(/^invalid_worker_config$/);

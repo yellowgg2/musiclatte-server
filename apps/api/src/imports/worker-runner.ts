@@ -29,6 +29,10 @@ export interface WorkerOptions {
 
   database: ManagementDatabase;
   registration?: Omit<RegistrationOptions, 'database' | 'clock'>;
+  idleTask?: {
+    runOnce(signal: AbortSignal): Promise<boolean>;
+    close(): void | Promise<void>;
+  };
   clock: () => number;
   musicRoot: string;
   stagingRoot: string;
@@ -145,7 +149,6 @@ export function createWorkerRunner(options: WorkerOptions) {
       cleanupCompleted();
       const claim = ledger.claim();
       if (!claim) {
-        if (!registration) return false;
         active = new AbortController();
         ledger.idle();
         timer = setInterval(
@@ -158,7 +161,8 @@ export function createWorkerRunner(options: WorkerOptions) {
           },
           Math.max(10, Math.floor(options.leaseDurationMs / 3)),
         );
-        return await registration.runOnce(active.signal);
+        if (registration && (await registration.runOnce(active.signal))) return true;
+        return (await options.idleTask?.runOnce(active.signal)) ?? false;
       }
       const { job, item, recovering } = claim;
       itemId = item.id;
@@ -471,6 +475,7 @@ export function createWorkerRunner(options: WorkerOptions) {
       } finally {
         process.off('SIGTERM', stop);
         signal.removeEventListener('abort', stop);
+        await options.idleTask?.close();
         ledger.stop();
       }
     },

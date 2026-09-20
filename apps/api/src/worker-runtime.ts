@@ -11,6 +11,7 @@ import { isAbsolute, join, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { setTimeout as delay } from 'node:timers/promises';
 import { readImportConfig } from './imports/config.js';
+import { createExternalWatchRuntime } from './imports/external-watch-runtime.js';
 import { createWorkerRunner } from './imports/worker-runner.js';
 import { importHeartbeatMaxAgeMs } from './imports/import-service.js';
 import { createEngineProvider } from './engine/provider.js';
@@ -138,6 +139,7 @@ export async function runWorker(env: Environment, signal: AbortSignal) {
   const stop = new AbortController();
   const combined = AbortSignal.any([signal, stop.signal]);
   const tasks: Promise<void>[] = [];
+  let externalWatch: ReturnType<typeof createExternalWatchRuntime> | undefined;
   try {
     const provider = createEngineProvider({
       database,
@@ -182,6 +184,15 @@ export async function runWorker(env: Environment, signal: AbortSignal) {
         inspect: (key: string) => access.inspect(key),
       };
     }
+    if (config.policy.libraries.some((library) => library.watchExternalMp3 === true))
+      externalWatch = createExternalWatchRuntime({
+        database,
+        musicRoot: config.musicRoot,
+        ffprobe: config.ffprobe,
+        scanClient,
+        libraries: config.policy.libraries,
+        clock: Date.now,
+      });
     const runner = createWorkerRunner({
       ...(mediaProtection ? { mediaProtection } : {}),
       database,
@@ -198,6 +209,7 @@ export async function runWorker(env: Environment, signal: AbortSignal) {
       },
       acquireEngine: (source, abort) => provider.acquire(source, abort),
       registration: { scanClient, libraries: config.policy.libraries },
+      ...(externalWatch ? { idleTask: externalWatch } : {}),
     });
     const requests = createEngineRequestWorker({ database, clock: Date.now, provider });
     const maintenance = async () => {
@@ -212,6 +224,7 @@ export async function runWorker(env: Environment, signal: AbortSignal) {
   } finally {
     stop.abort();
     await Promise.allSettled(tasks);
+    await externalWatch?.close();
     database.close();
   }
 }
