@@ -61,6 +61,10 @@ and ordinary playlist/favorite routes do not inherit this permission.
 - `POST /api/v1/metadata-organization-jobs` requires one succeeded metadata job from the same PAT,
   one stable operation ID, and 1–8 HTTPS evidence entries. Evidence contains only source kind,
   URL, and supported field names; claimed fields must agree with the changed or present result.
+- `POST /api/v1/metadata-organization-no-op-jobs` accepts the same request only when a fresh plan
+  proves that the current and policy-derived target keys are identical. It records a terminal
+  succeeded audit item with identical old/new track IDs and never creates worker work, moves a
+  file, scans Gonic, or mutates references.
 - `GET /api/v1/metadata-organization-jobs/:id` returns only the submitting token's library-scoped
   stage, old/new opaque IDs, error code, and recovery owner. It omits paths, evidence, file/audio
   digests, upstream proof, and raw database rows.

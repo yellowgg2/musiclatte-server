@@ -1,5 +1,5 @@
 import type { MetadataReferences } from './reference-check.js';
-import { decodeMetadataReferences } from './reference-check.js';
+import { captureMetadataReferences, decodeMetadataReferences } from './reference-check.js';
 import type { OrganizationClaim } from '../storage/organization-repository.js';
 import type { SubsonicClient } from '../subsonic/client.js';
 
@@ -12,7 +12,18 @@ export const withoutReference = (values: readonly string[], oldId: string) =>
 const same = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
+const collapseSuccessor = (values: readonly string[], successorId: string) => {
+  let seen = false;
+  return values.filter((value) => {
+    if (value !== successorId) return true;
+    if (seen) return false;
+    seen = true;
+    return true;
+  });
+};
+
 interface ReferenceRepositoryPort {
+  approvedTargetReplacement(itemId: string, displacedTrackId: string): boolean;
   readBaseline(claim: OrganizationClaim): MetadataReferences;
   transition(
     input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
@@ -40,6 +51,7 @@ interface ReferenceRepositoryPort {
       referenceId: string;
       baseline: unknown;
       desired: unknown;
+      allowApprovedReplacementExpansion?: boolean;
     },
   ): unknown;
   completeReferenceCheckpoint(
@@ -84,6 +96,14 @@ export function createReferenceMigration(options: {
         const { username, client } = await options.authorize(claim);
         const baseline = decodeMetadataReferences(options.repository.readBaseline(claim));
         if (baseline.trackId !== claim.oldTrackId) throw new Error('reference_conflict');
+        const approvedReplacement = options.repository.approvedTargetReplacement(
+          claim.itemId,
+          claim.newTrackId,
+        );
+        const successorBaseline = approvedReplacement
+          ? await captureMetadataReferences(client, claim.newTrackId, signal)
+          : { trackId: claim.newTrackId, starred: false, playlists: [] };
+        const desiredStarred = baseline.starred || successorBaseline.starred;
         const completed = new Set(
           options.repository
             .referenceCheckpoints(claim.itemId)
@@ -114,7 +134,8 @@ export function createReferenceMigration(options: {
             current.owner === username;
           const allowed =
             same(currentIds, entry.songIds) ||
-            same(currentIds, withoutReference(entry.songIds, claim.oldTrackId));
+            same(currentIds, withoutReference(entry.songIds, claim.oldTrackId)) ||
+            (approvedReplacement && same(currentIds, collapseSuccessor(desired, claim.newTrackId)));
           if (!metadataMatches || (!allowed && !same(currentIds, desired))) {
             options.repository.failReferenceCheckpoint({
               ...fence(claim),
@@ -158,12 +179,13 @@ export function createReferenceMigration(options: {
             kind: 'star',
             referenceId: 'star',
             baseline: baseline.starred,
-            desired: baseline.starred,
+            desired: desiredStarred,
+            ...(approvedReplacement ? { allowApprovedReplacementExpansion: true } : {}),
           });
           let starred = (await client.getStarred2(request)).some(
             (entry) => entry.id === claim.newTrackId,
           );
-          if (baseline.starred && !starred) {
+          if (desiredStarred && !starred) {
             try {
               await client.starSong(claim.newTrackId, request);
             } catch {
@@ -173,7 +195,7 @@ export function createReferenceMigration(options: {
               (entry) => entry.id === claim.newTrackId,
             );
           }
-          if (starred !== baseline.starred) {
+          if (starred !== desiredStarred) {
             options.repository.failReferenceCheckpoint({
               ...fence(claim),
               kind: 'star',
@@ -189,28 +211,18 @@ export function createReferenceMigration(options: {
           });
         }
         options.repository.transition({ ...fence(claim), stage: 'verifying' });
-        const summaries = await client.getPlaylists(request);
-        const actual: MetadataReferences['playlists'] = [];
-        for (const summary of summaries) {
-          const playlist = await client.getPlaylist(summary.id, request);
-          if (ids(playlist).includes(claim.newTrackId))
-            actual.push({
-              id: playlist.id,
-              name: playlist.name,
-              owner: playlist.owner,
-              songIds: ids(playlist),
-            });
-        }
         const expected = baseline.playlists.map((entry) => ({
           ...entry,
           songIds: migrateReferenceSequence(entry.songIds, claim.oldTrackId, claim.newTrackId!),
         }));
-        actual.sort((a, b) => a.id.localeCompare(b.id));
+        const expectedIds = new Set(expected.map((entry) => entry.id));
+        expected.push(...successorBaseline.playlists.filter((entry) => !expectedIds.has(entry.id)));
         expected.sort((a, b) => a.id.localeCompare(b.id));
-        const starred = (await client.getStarred2(request)).some(
-          (entry) => entry.id === claim.newTrackId,
-        );
-        if (starred !== baseline.starred || JSON.stringify(actual) !== JSON.stringify(expected))
+        const actual = await captureMetadataReferences(client, claim.newTrackId, signal);
+        if (
+          actual.starred !== desiredStarred ||
+          JSON.stringify(actual.playlists) !== JSON.stringify(expected)
+        )
           throw new Error('reference_conflict');
         options.repository.completeVerifiedReferences(fence(claim));
       } catch (cause) {

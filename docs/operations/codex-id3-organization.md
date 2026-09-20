@@ -61,6 +61,7 @@ npm run id3:organize -- metadata-recheck --api https://service.example/api/v1 --
 npm run id3:organize -- metadata-retry --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID
 npm run id3:organize -- organization-preview --api https://service.example/api/v1 --token-file /absolute/private/token --track-id TRACK_ID --revision RESULT_REVISION
 npm run id3:organize -- organization-submit --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision RESULT_REVISION --metadata-job-id METADATA_JOB_ID --operation-id STABLE_OPERATION_ID --poll-attempts 180 --poll-interval-ms 1000 --recovery-retries 1
+npm run id3:organize -- organization-adopt-no-op --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision RESULT_REVISION --metadata-job-id METADATA_JOB_ID --operation-id STABLE_OPERATION_ID
 npm run id3:organize -- scan-start --api https://service.example/api/v1 --token-file /absolute/private/admin-token
 npm run id3:organize -- scan-status --api https://service.example/api/v1 --token-file /absolute/private/admin-token
 ```
@@ -70,6 +71,13 @@ them, split the change into sequential manifests. Keep the last successful metad
 result revision for organization submission. Reuse the same operation ID after a lost response.
 If that replay is already `succeeded`, the client checkpoints the terminal response once and does
 not attempt a second identical journal transition.
+
+When the fresh organization preview returns exact `no_op`, use
+`organization-adopt-no-op` instead of `organization-submit`. The distinct endpoint repeats the
+same metadata job, result revision, evidence, current binding, and exact managed-path checks, then
+records a terminal succeeded organization without a worker claim, file move, scan, or reference
+mutation. Any `ready` plan, stale revision, changed request body, or nonidentical old/new binding is
+rejected. Do not use this command to bypass a destination conflict or a real move.
 
 A deployed worker may have recorded pre-rename SQLite contention as a terminal failure before the
 contention recovery fix. Preserve the journal and replay `organization-submit` with the exact same
@@ -82,7 +90,8 @@ after a claim was granted, the client idempotently releases that claim. The acce
 under its durable grant and file fence, so the next claim need not wait for the lease to expire.
 
 Stop when candidate search is not exact, evidence is incomplete, metadata preview rejects a field,
-or organization preview reports a collision. `status` performs a read; `retry` is valid only for a
+or organization preview reports a collision. A `ready` preview uses `organization-submit`; an exact
+`no_op` preview uses only `organization-adopt-no-op`. `status` performs a read; `retry` is valid only for a
 server-reported `recovery_required` checkpoint. Polling and automatic recovery are bounded.
 
 ## Collection batch lifecycle
@@ -147,6 +156,42 @@ a fresh organization preview using the checkpointed result revision and transiti
 or deletes media, changes references, or weakens ordinary `batch-skip`. The retained source can be
 selected again by a later fresh unorganized sweep.
 
+If the user explicitly chooses to replace a duplicate normalized destination, first snapshot the
+source and displaced track references for every configured account and copy the exact regular-file
+destination to an owner-only recoverable backup. After verifying the backup, remove only that
+destination and submit the same journal-bound organization job. A previously managed different-
+audio destination can leave that accepted job in gonic-owned conflict recovery even though the new
+file is already at the target. In that case create a mode-`0600` replacement manifest outside the
+repository containing `schemaVersion: 1`, the displaced track ID, the absolute private backup
+receipt path, and every absolute private reference-snapshot path, then run:
+
+```sh
+npm run id3:organize -- organization-replacement-approve --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/unorganized-child.json --track-id TRACK_ID --replacement-manifest /absolute/private/replacement.json
+```
+
+The client sends only SHA-256 evidence digests. The API accepts the approval only for the same PAT,
+accepted job, exact target-bound displaced MediaLink, and a scanning/recovery item. Rebinding still
+requires one verified regular MP3 curation row per side, no active claims or active displaced work,
+and no retired-key collision. It retires only the displaced binding, tombstones its current
+curation projection, preserves its immutable metadata/organization history, and keeps the source
+MediaLink as the successor. Restore and compare both the source and displaced reference snapshots
+for every configured account before advancing. When Gonic reuses the displaced ID as the
+successor, restore the verified per-account union in one request:
+
+```sh
+npm run id3:organize -- references-restore --api https://service.example/api/v1 --token-file /absolute/private/account-token --track-id SOURCE_TRACK_ID --new-track-id DISPLACED_SUCCESSOR_ID --reference-file /absolute/private/source-references.json --replacement-reference-file /absolute/private/displaced-references.json
+```
+
+The replacement snapshot must be bound to the same API and PAT, must identify the reused successor
+ID, and must have the same name, owner, and complete ordered members as the source snapshot for any
+playlist appearing in both. The
+client unions disjoint playlists and favorite state, submits one ledger-validated restore, requires
+an exact combined readback, and checkpoints both private snapshots. If both predecessor IDs
+occurred in the same playlist, Gonic may temporarily collapse them to one successor; the restore
+endpoint accepts only that ledger-proven collapsed state and reconstructs every captured occurrence
+in order. Do not use this approval to bypass an unbacked collision, an ambiguous target, or a
+missing snapshot.
+
 `batch-next` returns the first unfinished unique track and its occurrence count. Run the existing
 cover, metadata, organization submit, and status commands with both `--state-file` and that exact
 `--track-id`. The journal creates all stable operation IDs before mutation, reuses them after a
@@ -197,6 +242,12 @@ If an accepted metadata submit returns before its item succeeds, use `metadata-s
 same state file and track. It reads the journal-owned job ID and checkpoints the server's current
 stage/result revision without acquiring a new claim or replaying the mutation. Continue to the next
 metadata step only after that checkpoint reports a successful nonempty result revision.
+`metadata-status` is also the recovery command when the saved step is already successful but Gonic
+assigned a different current track ID during reflection. The client re-reads that exact saved job
+and atomically rebinds only the active journal item after a successful result with a nonempty
+revision; the stable metadata and organization operation IDs remain unchanged. Resume later
+inspect, optional metadata, reference, and organization commands with the rebound track ID returned
+by `batch-next` or `sweep-next`.
 
 If a saved item remains `reflecting` after bounded status polling, use `metadata-recheck` once with
 the same state file and track. The client binds the parent job and item to the current journal,

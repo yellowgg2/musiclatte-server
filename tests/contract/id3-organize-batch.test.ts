@@ -50,6 +50,73 @@ function paths() {
 }
 
 describe('private ID3 organization batch journal', () => {
+  it('rebinds the active item only after a succeeded metadata checkpoint', async () => {
+    const module = await batchModule();
+    expect(module).toHaveProperty('checkpointId3OrganizationBatch');
+    if (!('checkpointId3OrganizationBatch' in module)) return;
+    const { stateFile } = paths();
+    module.createId3OrganizationBatchJournal({
+      path: stateFile,
+      api: 'https://music.example/api/v1',
+      token: 'mlpat_' + 'b'.repeat(48),
+      selection,
+    });
+    module.nextId3OrganizationBatchItem(stateFile);
+
+    module.checkpointId3OrganizationBatch(stateFile, 'A', {
+      kind: 'metadata',
+      step: 'required',
+      jobId: 'required-job',
+      resultRevision: 'revision-2',
+      serverStage: 'reflecting',
+      currentTrackId: 'A-rebound',
+    });
+    expect(module.nextId3OrganizationBatchItem(stateFile)).toMatchObject({
+      trackId: 'A',
+      state: 'metadata_accepted',
+    });
+
+    module.checkpointId3OrganizationBatch(stateFile, 'A', {
+      kind: 'metadata',
+      step: 'required',
+      jobId: 'required-job',
+      resultRevision: 'revision-2',
+      serverStage: 'succeeded',
+      currentTrackId: 'A-rebound',
+    });
+
+    expect(module.nextId3OrganizationBatchItem(stateFile)).toMatchObject({
+      trackId: 'A-rebound',
+      state: 'metadata_accepted',
+    });
+    expect(() => module.id3OrganizationBatchBinding(stateFile, 'A')).toThrow(
+      'client_failed:journal_binding',
+    );
+    expect(module.id3OrganizationBatchBinding(stateFile, 'A-rebound')).toMatchObject({
+      trackId: 'A-rebound',
+      metadataSteps: {
+        required: {
+          jobId: 'required-job',
+          resultRevision: 'revision-2',
+          serverStage: 'succeeded',
+        },
+      },
+    });
+    expect(() =>
+      module.checkpointId3OrganizationBatch(stateFile, 'A-rebound', {
+        kind: 'metadata',
+        step: 'required',
+        jobId: 'required-job',
+        resultRevision: 'revision-2',
+        serverStage: 'succeeded',
+        currentTrackId: 'B',
+      }),
+    ).toThrow('client_failed:journal_binding');
+    expect(module.nextId3OrganizationBatchItem(stateFile)).toMatchObject({
+      trackId: 'A-rebound',
+    });
+  });
+
   it('adds media-link identity and deterministic operations only to unorganized v3 children', async () => {
     const module = await batchModule();
     expect(module).toHaveProperty('createId3OrganizationSweepChildJournal');
@@ -219,6 +286,55 @@ describe('private ID3 organization batch journal', () => {
       succeeded: 0,
       skipped: 1,
       pending: 0,
+    });
+  });
+
+  it('reads a preserved metadata-complete deleted-duplicate terminal outcome', async () => {
+    const module = await batchModule();
+    expect(module).toHaveProperty('readId3OrganizationBatchJournal');
+    if (!('readId3OrganizationBatchJournal' in module)) return;
+    const { stateFile } = paths();
+    module.createId3OrganizationSweepChildJournal({
+      path: stateFile,
+      api: 'https://music.example/api/v1',
+      token: 'mlpat_' + 'h'.repeat(48),
+      selectionId: 'selection-history',
+      selectionRevision: 'e'.repeat(64),
+      items: [
+        {
+          ordinal: 0,
+          item: {
+            mediaLinkId: 'media-history',
+            trackId: 'track-history',
+            title: 'Historical title',
+            artist: 'Artist',
+            album: null,
+          },
+        },
+      ],
+    });
+    module.nextId3OrganizationBatchItem(stateFile);
+    module.checkpointId3OrganizationBatch(stateFile, 'track-history', {
+      kind: 'metadata',
+      step: 'required',
+      jobId: 'required-job',
+      resultRevision: 'required-revision',
+      serverStage: 'succeeded',
+    });
+    const preserved = module.readId3OrganizationBatchJournal(stateFile);
+    const preservedItem = preserved.items[0]!;
+    preservedItem.state = 'already_organized';
+    preservedItem.errorCode = 'already_organized';
+    preservedItem.newTrackId = 'track-existing';
+    writeFileSync(stateFile, JSON.stringify(preserved), { mode: 0o600 });
+
+    expect(module.readId3OrganizationBatchJournal(stateFile).items[0]).toMatchObject({
+      state: 'already_organized',
+      errorCode: 'already_organized',
+      newTrackId: 'track-existing',
+      metadataSteps: {
+        required: { jobId: 'required-job', serverStage: 'succeeded' },
+      },
     });
   });
 

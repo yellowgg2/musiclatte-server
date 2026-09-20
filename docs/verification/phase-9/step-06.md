@@ -21,3 +21,28 @@
 
 Final gates: project formatting, focused unit/contract tests, typecheck, build, `format:check`, and
 `git diff --check`.
+
+## 2026-09-17 overlapping replacement references
+
+- RED: an approved target replacement whose source and displaced IDs both occurred in one playlist
+  was scanned as one successor occurrence; either single-baseline restore returned conflict and
+  could not reconstruct the second occurrence.
+- GREEN: the restore service obtains the source/displaced predecessor set only from the successful
+  replacement ledger, accepts the exact collapsed successor projection, and rebuilds both
+  occurrences in their captured order. The second predecessor restore is idempotent and can apply
+  the final favorite union.
+- Safety: ordinary jobs retain the single-predecessor contract. Replacement restore still requires
+  the same successful successor relation, unchanged playlist metadata, one of the enumerated scan
+  projections, and exact authenticated readback; unrelated edits remain conflicts.
+
+## 2026-09-18 reused-identity account union
+
+- RED: when Gonic reused the displaced track ID, restoring a source snapshot and displaced snapshot
+  separately made each exact readback reject the other predecessor's legitimate references.
+- GREEN: the CLI can verify and union the source and reused-displaced snapshots for one API/PAT,
+  submit the complete favorite/playlist baseline once, and checkpoint both private snapshots only
+  after the exact combined response succeeds.
+- Safety: the additional snapshot must identify the successor ID, a duplicate playlist must have
+  identical name, owner, and complete ordered members in both snapshots, and existing playlist and
+  occurrence limits remain enforced before the request. The server still derives the only accepted
+  predecessor set from the successful replacement ledger.

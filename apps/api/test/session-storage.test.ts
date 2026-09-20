@@ -25,7 +25,7 @@ describe('session and instance storage', () => {
     c.db.close();
     const reopened = c.open();
     expect(c.createInstanceRepository(reopened, c.vault.keyId).get()).toEqual(instance);
-    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 29 });
+    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 30 });
     const tables = reopened.connection
       .prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
       .all()
@@ -80,6 +80,7 @@ describe('session and instance storage', () => {
       'organization_selection_snapshot_items',
       'organization_selection_snapshots',
       'organization_source_locations',
+      'organization_target_replacements',
       'playlist_operations',
       'registration_attempts',
       'registration_cycle',
@@ -108,7 +109,7 @@ describe('session and instance storage', () => {
     raw.close();
 
     const migrated = c.open(legacy);
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 29 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 30 });
     expect(
       migrated.connection.prepare('SELECT id,policy_revision,key_id FROM instance').get(),
     ).toEqual({ id: 'legacy-instance', policy_revision: 7, key_id: c.vault.keyId });
@@ -184,7 +185,7 @@ describe('session and instance storage', () => {
     raw.close();
 
     const upgraded = c.open(legacy);
-    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 29 });
+    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 30 });
     expect(
       upgraded.connection.prepare('SELECT * FROM curation_inventory_queue').get(),
     ).toMatchObject({

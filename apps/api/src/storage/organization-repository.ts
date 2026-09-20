@@ -50,6 +50,8 @@ export interface OrganizationIntent {
   grantEpoch: string;
 }
 
+export type OrganizationNoOpIntent = Omit<OrganizationIntent, 'encryptedJobGrant' | 'grantEpoch'>;
+
 export interface OrganizationClaim {
   itemId: string;
   jobId: string;
@@ -129,6 +131,29 @@ export function validateOrganizationStorage(db: DatabaseSync): void {
       throw new Error('Storage unavailable');
     if (row.baseline_json !== null && Buffer.byteLength(text(row.baseline_json)) > 1024 * 1024)
       throw new Error('Storage unavailable');
+    const verifiedNoOp =
+      item.stage === 'succeeded' &&
+      item.sourceKey === item.targetKey &&
+      item.oldTrackId === item.newTrackId &&
+      row.baseline_json === null &&
+      row.source_device === null &&
+      row.source_inode === null &&
+      row.source_digest === null &&
+      row.source_mode === null &&
+      row.source_uid === null &&
+      row.source_gid === null &&
+      row.target_parent_device === null &&
+      row.target_parent_inode === null &&
+      row.encrypted_job_grant === null &&
+      row.grant_epoch === null &&
+      row.generation === 0 &&
+      Boolean(
+        db
+          .prepare(
+            "SELECT 1 FROM organization_events WHERE item_id=? AND kind='stage_changed' AND json_extract(payload_json,'$.stage')='succeeded' AND json_extract(payload_json,'$.mode')='verified_no_op' LIMIT 1",
+          )
+          .get(item.itemId),
+      );
     if (
       [
         'moving',
@@ -139,6 +164,7 @@ export function validateOrganizationStorage(db: DatabaseSync): void {
         'verifying',
         'succeeded',
       ].includes(item.stage) &&
+      !verifiedNoOp &&
       (!hex(row.source_digest) ||
         typeof row.source_device !== 'string' ||
         !/^\d+$/.test(row.source_device) ||
@@ -158,6 +184,26 @@ export function validateOrganizationStorage(db: DatabaseSync): void {
       !['pending', 'completed', 'conflict', 'failed'].includes(text(row.status)) ||
       Buffer.byteLength(text(row.baseline_json)) > 1024 * 1024 ||
       Buffer.byteLength(text(row.desired_json)) > 1024 * 1024
+    )
+      throw new Error('Storage unavailable');
+  }
+  for (const raw of db.prepare('SELECT * FROM organization_target_replacements').iterate()) {
+    const row = raw as Row;
+    let referenceDigests: unknown;
+    try {
+      referenceDigests = JSON.parse(text(row.reference_snapshot_digests_json));
+    } catch {
+      throw new Error('Storage unavailable');
+    }
+    if (
+      !hex(row.operation_id_hash) ||
+      !hex(row.request_hash) ||
+      !hex(row.backup_receipt_digest) ||
+      !Array.isArray(referenceDigests) ||
+      referenceDigests.length < 1 ||
+      referenceDigests.length > 16 ||
+      new Set(referenceDigests).size !== referenceDigests.length ||
+      !referenceDigests.every(hex)
     )
       throw new Error('Storage unavailable');
   }
@@ -493,6 +539,106 @@ export function createOrganizationRepository(options: {
         return readJob(input.id, input.identityKey)!;
       });
     },
+    createOrReplayNoOp(input: OrganizationNoOpIntent) {
+      return atomic(() => {
+        const replay = db
+          .prepare(
+            'SELECT id,request_hash FROM organization_jobs WHERE identity_key=? AND operation_id_hash=?',
+          )
+          .get(input.identityKey, input.operationIdHash);
+        if (replay) {
+          if (replay.request_hash !== input.requestHash) throw new Error('conflict');
+          return readJob(text(replay.id), input.identityKey)!;
+        }
+        if (
+          !input.id ||
+          !input.itemId ||
+          !hex(input.identityKey) ||
+          !hex(input.operationIdHash) ||
+          !hex(input.requestHash) ||
+          !hex(input.fileIdentity) ||
+          !hex(input.audioIdentity) ||
+          input.policyVersion !== 'id3-managed-v1' ||
+          !Number.isSafeInteger(input.policyRevision) ||
+          input.policyRevision < 1 ||
+          !Array.isArray(input.sourceEvidence) ||
+          Buffer.byteLength(JSON.stringify(input.sourceEvidence)) > 65536 ||
+          input.sourceKey !== input.targetKey ||
+          !input.oldTrackId
+        )
+          throw new Error('invalid_organization_intent');
+        validateExistingRelativeKey(input.sourceKey);
+        validateRelativeKey(input.targetKey);
+        const link = db.prepare('SELECT * FROM media_links WHERE id=?').get(input.mediaLinkId) as
+          Row | undefined;
+        if (
+          !link ||
+          link.library_id !== input.libraryId ||
+          link.relative_file_key !== input.targetKey ||
+          link.gonic_song_id !== input.oldTrackId ||
+          link.availability !== 'available'
+        )
+          throw new Error('conflict');
+        const timestamp = now();
+        db.prepare(
+          'INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+        ).run(
+          input.id,
+          input.identityKey,
+          input.libraryId,
+          input.operationIdHash,
+          input.requestHash,
+          input.actorTokenId,
+          input.policyRevision,
+          input.policyVersion,
+          input.metadataJobId,
+          input.metadataRevision,
+          JSON.stringify(input.sourceEvidence),
+          timestamp,
+        );
+        db.prepare(
+          "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES(?,?,?,?,?,?,?,?,?,'succeeded',?)",
+        ).run(
+          input.itemId,
+          input.id,
+          input.mediaLinkId,
+          input.sourceKey,
+          input.targetKey,
+          input.oldTrackId,
+          input.oldTrackId,
+          input.fileIdentity,
+          input.audioIdentity,
+          timestamp,
+        );
+        const provenance = db
+          .prepare(
+            "SELECT source_id FROM import_items WHERE media_link_id=? AND stage IN ('registering','ready','duplicate') ORDER BY id LIMIT 1",
+          )
+          .get(input.mediaLinkId);
+        if (provenance)
+          db.prepare(
+            'INSERT INTO organization_source_locations(media_link_id,source_id,managed_key,organization_item_id,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(media_link_id) DO UPDATE SET source_id=excluded.source_id,managed_key=excluded.managed_key,organization_item_id=excluded.organization_item_id,updated_at=excluded.updated_at',
+          ).run(
+            input.mediaLinkId,
+            text(provenance.source_id),
+            input.targetKey,
+            input.itemId,
+            timestamp,
+          );
+        event(input.itemId, 'accepted', {
+          policyVersion: input.policyVersion,
+          metadataRevision: input.metadataRevision,
+          mode: 'verified_no_op',
+        });
+        event(input.itemId, 'stage_changed', {
+          stage: 'succeeded',
+          errorCode: null,
+          nextOwner: null,
+          mode: 'verified_no_op',
+        });
+        return readJob(input.id, input.identityKey)!;
+      });
+    },
     getJob: readJob,
     requestRetry(input: {
       itemId: string;
@@ -802,6 +948,7 @@ export function createOrganizationRepository(options: {
         referenceId: string;
         baseline: unknown;
         desired: unknown;
+        allowApprovedReplacementExpansion?: boolean;
       },
     ) {
       return atomic(() => {
@@ -815,8 +962,33 @@ export function createOrganizationRepository(options: {
           )
           .get(input.itemId, input.kind, input.referenceId);
         if (existing) {
-          if (existing.baseline_json !== baseline || existing.desired_json !== desired)
-            throw new Error('conflict');
+          if (existing.baseline_json !== baseline || existing.desired_json !== desired) {
+            const approvedExpansion =
+              input.allowApprovedReplacementExpansion === true &&
+              input.kind === 'star' &&
+              input.referenceId === 'star' &&
+              existing.baseline_json === baseline &&
+              existing.desired_json === baseline &&
+              baseline === 'false' &&
+              desired === 'true' &&
+              existing.status !== 'completed' &&
+              Boolean(
+                db
+                  .prepare(
+                    `SELECT 1
+                     FROM organization_target_replacements r
+                     JOIN organization_items i ON i.id=r.item_id
+                     WHERE r.item_id=? AND r.displaced_track_id=i.new_track_id`,
+                  )
+                  .get(input.itemId),
+              );
+            if (!approvedExpansion) throw new Error('conflict');
+            db.prepare(
+              "UPDATE organization_reference_checkpoints SET desired_json=?,status='pending',error_code=NULL,updated_at=? WHERE item_id=? AND kind='star' AND reference_id='star'",
+            ).run(desired, now(), input.itemId);
+            event(input.itemId, 'reference_checkpoint_expanded', {});
+            return;
+          }
           if (existing.status !== 'completed')
             db.prepare(
               "UPDATE organization_reference_checkpoints SET status='pending',error_code=NULL,updated_at=? WHERE item_id=? AND kind=? AND reference_id=?",
@@ -861,6 +1033,15 @@ export function createOrganizationRepository(options: {
       const row = owned(claim);
       if (row.baseline_json === null) throw new Error('reference_conflict');
       return decodeMetadataReferences(JSON.parse(text(row.baseline_json)));
+    },
+    approvedTargetReplacement(itemId: string, displacedTrackId: string) {
+      return Boolean(
+        db
+          .prepare(
+            'SELECT 1 FROM organization_target_replacements WHERE item_id=? AND displaced_track_id=?',
+          )
+          .get(itemId, displacedTrackId),
+      );
     },
     failReferenceCheckpoint(
       input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
@@ -907,6 +1088,81 @@ export function createOrganizationRepository(options: {
           }
         : null;
     },
+    approveTargetReplacement(input: {
+      itemId: string;
+      operationIdHash: string;
+      requestHash: string;
+      displacedTrackId: string;
+      backupReceiptDigest: string;
+      referenceSnapshotDigests: string[];
+    }) {
+      return atomic(() => {
+        if (
+          !input.displacedTrackId ||
+          !hex(input.operationIdHash) ||
+          !hex(input.requestHash) ||
+          !hex(input.backupReceiptDigest) ||
+          input.referenceSnapshotDigests.length < 1 ||
+          input.referenceSnapshotDigests.length > 16 ||
+          new Set(input.referenceSnapshotDigests).size !== input.referenceSnapshotDigests.length ||
+          !input.referenceSnapshotDigests.every(hex)
+        )
+          throw new Error('conflict');
+        const item = rowFor(input.itemId);
+        if (!item || !['scanning', 'recovery_required'].includes(text(item.stage)))
+          throw new Error('conflict');
+        const job = db
+          .prepare('SELECT library_id FROM organization_jobs WHERE id=?')
+          .get(text(item.job_id)) as Row | undefined;
+        if (!job) throw new Error('conflict');
+        const aliases = db
+          .prepare(
+            'SELECT * FROM media_links WHERE library_id=? AND id<>? AND relative_file_key=? AND gonic_song_id=?',
+          )
+          .all(
+            text(job.library_id),
+            text(item.media_link_id),
+            text(item.target_key),
+            input.displacedTrackId,
+          ) as Row[];
+        if (aliases.length !== 1 || aliases[0]!.availability !== 'available')
+          throw new Error('conflict');
+        const aliasId = text(aliases[0]!.id);
+        const referenceSnapshotDigests = JSON.stringify(input.referenceSnapshotDigests);
+        const replay = db
+          .prepare(
+            'SELECT * FROM organization_target_replacements WHERE item_id=? OR operation_id_hash=?',
+          )
+          .get(input.itemId, input.operationIdHash) as Row | undefined;
+        if (replay) {
+          if (
+            replay.item_id !== input.itemId ||
+            replay.displaced_media_link_id !== aliasId ||
+            replay.displaced_track_id !== input.displacedTrackId ||
+            replay.operation_id_hash !== input.operationIdHash ||
+            replay.request_hash !== input.requestHash ||
+            replay.backup_receipt_digest !== input.backupReceiptDigest ||
+            replay.reference_snapshot_digests_json !== referenceSnapshotDigests
+          )
+            throw new Error('conflict');
+          return { displacedMediaLinkId: aliasId };
+        }
+        db.prepare(
+          'INSERT INTO organization_target_replacements(item_id,displaced_media_link_id,displaced_track_id,operation_id_hash,request_hash,backup_receipt_digest,reference_snapshot_digests_json,created_at) VALUES(?,?,?,?,?,?,?,?)',
+        ).run(
+          input.itemId,
+          aliasId,
+          input.displacedTrackId,
+          input.operationIdHash,
+          input.requestHash,
+          input.backupReceiptDigest,
+          referenceSnapshotDigests,
+          now(),
+        );
+        event(input.itemId, 'target_replacement_approved', {});
+        return { displacedMediaLinkId: aliasId };
+      });
+    },
     rebindCurrent(
       input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
         newTrackId: string;
@@ -947,6 +1203,7 @@ export function createOrganizationRepository(options: {
         if (curation.length > 1) throw new Error('conflict');
         let trackRef = curation.length ? text(curation[0]!.id) : null;
         let adoptedTrackRef: string | null = null;
+        let replacedTrackRef: string | null = null;
         if (conflictingLinks.length) {
           const alias = conflictingLinks.length === 1 ? conflictingLinks[0]! : null;
           const aliasId = alias ? text(alias.id) : '';
@@ -956,8 +1213,17 @@ export function createOrganizationRepository(options: {
                 .all(aliasId) as Row[])
             : [];
           const candidate = aliases.length === 1 ? aliases[0]! : null;
+          const replacement = alias
+            ? (db
+                .prepare('SELECT * FROM organization_target_replacements WHERE item_id=?')
+                .get(input.itemId) as Row | undefined)
+            : undefined;
+          const replacementApproved =
+            replacement !== undefined &&
+            replacement.displaced_media_link_id === aliasId &&
+            replacement.displaced_track_id === alias?.gonic_song_id;
           const retiredKey = validateRelativeKey(
-            `.musiclatte-retired/${input.targetFileIdentity}.mp3`,
+            `.musiclatte-retired/${replacementApproved && candidate ? text(candidate.file_identity) : input.targetFileIdentity}.mp3`,
           );
           const aliasOwned = alias
             ? db
@@ -972,6 +1238,17 @@ export function createOrganizationRepository(options: {
                     EXISTS(SELECT 1 FROM organization_selection_snapshot_items WHERE media_link_id=?)`,
                 )
                 .get(aliasId, aliasId, aliasId, aliasId, aliasId, aliasId, aliasId)
+            : null;
+          const aliasActiveWork = alias
+            ? db
+                .prepare(
+                  `SELECT 1 WHERE
+                    EXISTS(SELECT 1 FROM metadata_items WHERE media_link_id=? AND stage NOT IN ('succeeded','conflict','failed','recovery_required')) OR
+                    EXISTS(SELECT 1 FROM import_items WHERE media_link_id=? AND stage NOT IN ('ready','failed','cancelled','duplicate')) OR
+                    EXISTS(SELECT 1 FROM organization_items WHERE media_link_id=? AND stage NOT IN ('succeeded','conflict','failed')) OR
+                    EXISTS(SELECT 1 FROM organization_source_locations WHERE media_link_id=?)`,
+                )
+                .get(aliasId, aliasId, aliasId, aliasId)
             : null;
           const activeClaim =
             candidate && trackRef
@@ -1000,10 +1277,9 @@ export function createOrganizationRepository(options: {
                 )
                 .get(libraryId, aliasId, retiredKey)
             : null;
-          if (
+          const currentInvalid =
             !alias ||
             alias.relative_file_key !== targetKey ||
-            alias.gonic_song_id !== input.newTrackId ||
             alias.availability !== 'available' ||
             !candidate ||
             !trackRef ||
@@ -1017,25 +1293,34 @@ export function createOrganizationRepository(options: {
             curation[0]!.base_status !== 'unreviewed' ||
             curation[0]!.receipt_id !== null ||
             candidate.library_id !== libraryId ||
-            candidate.track_id !== input.newTrackId ||
             candidate.media_link_id !== aliasId ||
-            candidate.file_identity !== input.targetFileIdentity ||
-            candidate.binding_revision !== alias.revision ||
-            candidate.audio_identity !== row.audio_identity ||
             candidate.validation !== 'verified' ||
             candidate.tombstoned !== 0 ||
             candidate.format !== 'mp3' ||
             candidate.base_status !== 'unreviewed' ||
             candidate.receipt_id !== null ||
-            aliasOwned ||
             activeClaim ||
-            retiredKeyConflict
-          )
+            retiredKeyConflict;
+          const invalidApprovedReplacement =
+            replacementApproved &&
+            (alias!.gonic_song_id !== replacement!.displaced_track_id ||
+              candidate!.track_id !== replacement!.displaced_track_id ||
+              aliasActiveWork);
+          const invalidAutomaticAdoption =
+            !replacementApproved &&
+            (alias!.gonic_song_id !== input.newTrackId ||
+              candidate!.track_id !== input.newTrackId ||
+              candidate!.file_identity !== input.targetFileIdentity ||
+              candidate!.binding_revision !== alias!.revision ||
+              candidate!.audio_identity !== row.audio_identity ||
+              aliasOwned);
+          if (currentInvalid || invalidApprovedReplacement || invalidAutomaticAdoption)
             throw new Error('conflict');
           db.prepare(
             "UPDATE media_links SET relative_file_key=?,gonic_song_id=NULL,availability='unavailable',revision=revision+1,validated_at=? WHERE id=?",
           ).run(retiredKey, now(), aliasId);
-          adoptedTrackRef = text(candidate.id);
+          if (replacementApproved) replacedTrackRef = text(candidate!.id);
+          else adoptedTrackRef = text(candidate!.id);
         }
         if (
           link.relative_file_key !== targetKey ||
@@ -1054,7 +1339,31 @@ export function createOrganizationRepository(options: {
           input.newTrackId,
           input.itemId,
         );
-        if (adoptedTrackRef && trackRef) {
+        if (replacedTrackRef && trackRef) {
+          const replacedCuration = db
+            .prepare('SELECT library_id,track_id FROM curation_tracks WHERE id=?')
+            .get(replacedTrackRef)!;
+          if (text(replacedCuration.track_id) === input.newTrackId) {
+            const retiredTrackId = `musiclatte-retired:${replacedTrackRef}`;
+            const retiredConflict = db
+              .prepare(
+                'SELECT 1 FROM curation_tracks WHERE library_id=? AND track_id=? AND id<>? LIMIT 1',
+              )
+              .get(libraryId, retiredTrackId, replacedTrackRef);
+            if (retiredConflict) throw new Error('conflict');
+            db.prepare(
+              "UPDATE curation_tracks SET track_id=?,media_link_id=NULL,file_identity=NULL,binding_revision=NULL,validation='stale',tombstoned=1 WHERE id=?",
+            ).run(retiredTrackId, replacedTrackRef);
+          } else {
+            db.prepare(
+              "UPDATE curation_tracks SET media_link_id=NULL,file_identity=NULL,binding_revision=NULL,validation='stale',tombstoned=1 WHERE id=?",
+            ).run(replacedTrackRef);
+          }
+          db.prepare(
+            "UPDATE curation_tracks SET track_id=?,file_identity=?,binding_revision=?,format='mp3',tombstoned=0 WHERE id=?",
+          ).run(input.newTrackId, input.targetFileIdentity, integer(rebound.revision), trackRef);
+          event(input.itemId, 'target_alias_replaced', {});
+        } else if (adoptedTrackRef && trackRef) {
           db.prepare(
             "UPDATE curation_tracks SET media_link_id=NULL,file_identity=NULL,binding_revision=NULL,validation='stale',tombstoned=1 WHERE id=?",
           ).run(trackRef);

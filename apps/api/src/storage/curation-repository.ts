@@ -485,6 +485,14 @@ export function createCurationRepository(options: {
       if (row.intent_hash !== hash(intent)) throw new Error('operation_conflict');
       return parse(row.result_json);
     },
+    operationResult(actorKey: string, route: string, operationId: string): unknown | null {
+      const row = db
+        .prepare(
+          'SELECT result_json FROM curation_operations WHERE actor_key=? AND route=? AND operation_hash=?',
+        )
+        .get(actorKey, route, hash(operationId));
+      return row ? parse(row.result_json) : null;
+    },
     recordOperation(
       actorKey: string,
       route: string,
@@ -502,6 +510,31 @@ export function createCurationRepository(options: {
         JSON.stringify(admissionResults),
         clock(),
       );
+    },
+    replaceOperationResult(
+      actorKey: string,
+      route: string,
+      operationId: string,
+      expectedIntent: unknown,
+      intent: unknown,
+      result: unknown,
+      admissionResults: unknown[] = [],
+    ) {
+      const updated = db
+        .prepare(
+          'UPDATE curation_operations SET intent_hash=?,result_json=?,admission_results_json=?,created_at=? WHERE actor_key=? AND route=? AND operation_hash=? AND intent_hash=?',
+        )
+        .run(
+          hash(intent),
+          JSON.stringify(result),
+          JSON.stringify(admissionResults),
+          clock(),
+          actorKey,
+          route,
+          hash(operationId),
+          hash(expectedIntent),
+        );
+      if (updated.changes !== 1) throw new Error('operation_conflict');
     },
     list(scope: CurationScope, input: CurationFilter, limit = 25, nextCursor?: string) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)

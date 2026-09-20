@@ -290,7 +290,10 @@ export function createCurationInventory(options: CurationInventoryOptions) {
         )
         .get(library.id, generation)!.n,
     );
-    if (run.status === 'ready' || (run.status === 'partial' && checkpoint.discoveryComplete))
+    if (
+      run.status === 'ready' ||
+      (run.status === 'partial' && checkpoint.discoveryComplete && errors > 0)
+    )
       return false;
     database.transaction(() => {
       if (!errors) {
@@ -299,10 +302,11 @@ export function createCurationInventory(options: CurationInventoryOptions) {
         ).run(library.id, library.id, generation);
       }
       db.prepare(
-        'UPDATE curation_inventory_runs SET status=?,last_reconciled_at=?,checkpoint_json=? WHERE library_id=?',
+        'UPDATE curation_inventory_runs SET status=?,last_reconciled_at=?,last_error_code=CASE WHEN ?=0 THEN NULL ELSE last_error_code END,checkpoint_json=? WHERE library_id=?',
       ).run(
         errors ? 'partial' : 'ready',
         clock(),
+        errors,
         JSON.stringify({ ...checkpoint, discoveryComplete: true }),
         library.id,
       );

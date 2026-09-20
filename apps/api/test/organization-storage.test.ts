@@ -4,7 +4,10 @@ import { createTestContext, proof } from '../../../tests/support/session-storage
 import { organizationGrantContext } from '../src/auth/metadata-job-authorizer.js';
 import { createAccessTokenRepository } from '../src/storage/access-token-repository.js';
 import { createCurationRepository } from '../src/storage/curation-repository.js';
-import { createOrganizationRepository } from '../src/storage/organization-repository.js';
+import {
+  createOrganizationRepository,
+  validateOrganizationStorage,
+} from '../src/storage/organization-repository.js';
 import { createWorkerLedger } from '../src/imports/worker-state.js';
 import { createMetadataRepository } from '../src/storage/metadata-repository.js';
 
@@ -98,6 +101,89 @@ async function setup() {
 }
 
 describe('organization storage', () => {
+  /** An exact managed-path no-op is terminal, replay-safe, and never enters the worker queue. */
+  it('should record a verified no-op as an auditable succeeded organization', async () => {
+    const s = await setup();
+    const input = {
+      ...s.input,
+      sourceKey: s.input.targetKey,
+      oldTrackId: 'song-1',
+    };
+    s.c.db.connection
+      .prepare('UPDATE media_links SET relative_file_key=? WHERE id=?')
+      .run(input.targetKey, input.mediaLinkId);
+
+    const first = s.repository.createOrReplayNoOp(input);
+    expect(first.item).toMatchObject({
+      stage: 'succeeded',
+      sourceKey: input.targetKey,
+      targetKey: input.targetKey,
+      oldTrackId: 'song-1',
+      newTrackId: 'song-1',
+      preimage: null,
+    });
+    expect(
+      s.repository.createOrReplayNoOp({ ...input, id: 'discarded', itemId: 'discarded' }),
+    ).toEqual(first);
+    expect(() =>
+      s.repository.createOrReplayNoOp({ ...input, requestHash: 'f'.repeat(64) }),
+    ).toThrow('conflict');
+    expect(
+      s.c.db.connection
+        .prepare('SELECT count(*) AS count FROM organization_attempts WHERE item_id=?')
+        .get(input.itemId)!.count,
+    ).toBe(0);
+    expect(
+      s.c.db.connection
+        .prepare('SELECT kind FROM organization_events WHERE item_id=? ORDER BY sequence')
+        .all(input.itemId)
+        .map((row) => row.kind),
+    ).toEqual(['accepted', 'stage_changed']);
+    expect(() => validateOrganizationStorage(s.c.db.connection)).not.toThrow();
+  });
+
+  /** A terminal row cannot impersonate verified no-op adoption without its append-only receipt. */
+  it('should reject an unmarked preimage-free succeeded row during storage validation', async () => {
+    const s = await setup();
+    const input = { ...s.input, sourceKey: s.input.targetKey };
+    s.c.db.connection
+      .prepare('UPDATE media_links SET relative_file_key=? WHERE id=?')
+      .run(input.targetKey, input.mediaLinkId);
+    s.c.db.connection
+      .prepare(
+        'INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,1000)',
+      )
+      .run(
+        input.id,
+        input.identityKey,
+        input.libraryId,
+        input.operationIdHash,
+        input.requestHash,
+        input.actorTokenId,
+        input.policyRevision,
+        input.policyVersion,
+        input.metadataJobId,
+        input.metadataRevision,
+        JSON.stringify(input.sourceEvidence),
+      );
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES(?,?,?,?,?,?,?,?,?,'succeeded',1000)",
+      )
+      .run(
+        input.itemId,
+        input.id,
+        input.mediaLinkId,
+        input.targetKey,
+        input.targetKey,
+        input.oldTrackId,
+        input.oldTrackId,
+        input.fileIdentity,
+        input.audioIdentity,
+      );
+    expect(() => validateOrganizationStorage(s.c.db.connection)).toThrow('Storage unavailable');
+  });
+
   /** Status projection resolves bounded targets in order and keeps current library identity isolated. */
   it('should project latest organization states for current scoped media links', async () => {
     const s = await setup();
@@ -465,7 +551,7 @@ describe('organization storage', () => {
   /** The additive migration installs the dedicated deterministic latest-state lookup index. */
   it('should migrate the organization status lookup index and use it in the bounded plan', async () => {
     const s = await setup();
-    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 29 });
+    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 30 });
     const plan = s.c.db.connection
       .prepare(
         'EXPLAIN QUERY PLAN SELECT id FROM organization_items WHERE media_link_id=? ORDER BY stage_changed_at DESC,id DESC LIMIT 1',
@@ -505,7 +591,7 @@ describe('organization storage', () => {
 
   it('migrates through the organization schemas and keeps immutable intent idempotent', async () => {
     const s = await setup();
-    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 29 });
+    expect(s.c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 30 });
     const first = s.repository.createOrReplay(s.input);
     expect(
       s.repository.createOrReplay({ ...s.input, id: 'discarded', itemId: 'discarded-item' }),
@@ -865,6 +951,215 @@ describe('organization storage', () => {
       { track_ref: originalTrackRef, kind: 'discovered' },
       { track_ref: discoveredTrackRef, kind: 'discovered' },
     ]);
+  });
+
+  it('replaces an explicitly approved managed target while preserving its audit history', async () => {
+    const s = await setup();
+    s.repository.createOrReplay(s.input);
+    const curation = createCurationRepository({
+      database: s.c.db,
+      clock: () => 1_000,
+      cursorKey: new Uint8Array(32),
+      limits: {
+        claimLeaseMs: 100,
+        maxTargets: 10,
+        snapshotMaxAgeMs: 100,
+        snapshotMaxItems: 10,
+        snapshotMaxCount: 10,
+      },
+    });
+    const originalTrackRef = curation.discover({
+      libraryId: 'library-1',
+      trackId: 'song-1',
+      format: 'mp3',
+      mediaLinkId: 'media-1',
+      fileIdentity: s.input.fileIdentity,
+      bindingRevision: 1,
+    });
+    s.c.mediaLinks.create({
+      id: 'media-target-alias',
+      libraryId: 'library-1',
+      relativeFileKey: s.input.targetKey,
+      gonicSongId: 'song-2',
+    });
+    const displacedTrackRef = curation.discover({
+      libraryId: 'library-1',
+      trackId: 'song-2',
+      format: 'mp3',
+      mediaLinkId: 'media-target-alias',
+      fileIdentity: '5'.repeat(64),
+      bindingRevision: 1,
+    });
+    s.c.db.connection
+      .prepare(
+        "UPDATE curation_tracks SET audio_identity=?,validation='verified',last_verified_at=1000 WHERE id=?",
+      )
+      .run(s.input.audioIdentity, originalTrackRef);
+    s.c.db.connection
+      .prepare(
+        "UPDATE curation_tracks SET audio_identity=?,validation='verified',last_verified_at=1000 WHERE id=?",
+      )
+      .run('6'.repeat(64), displacedTrackRef);
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO curation_source_events(library_id,media_link_id,track_id,kind,source_key,created_at) VALUES('library-1','media-target-alias','song-2','organization_rebound','organization:previous:rebound',900)",
+      )
+      .run();
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO organization_selection_snapshots(id,actor_token_id,scope_hash,inventory_revision,captured_at,expires_at,summary_json) VALUES('selection-1',?,?,?,900,2000,'{}')",
+      )
+      .run(s.issued.accessToken.id, 'd'.repeat(64), 'e'.repeat(64));
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO organization_selection_snapshot_items(selection_id,ordinal,media_link_id,track_id,title,artist,album) VALUES('selection-1',0,'media-target-alias','song-2','Title','Artist','Album')",
+      )
+      .run();
+
+    const move = s.repository.claimNext({ workerId: 'filesystem', leaseDurationMs: 100 })!;
+    s.repository.recordReferences({
+      ...move,
+      baseline: { trackId: 'song-1', starred: false, playlists: [] },
+    });
+    s.repository.recordMovePreimage({ ...move, preimage: s.preimage });
+    s.repository.transition({ ...move, stage: 'moving' });
+    s.repository.transition({ ...move, stage: 'moved' });
+    const registration = s.repository.claimNext({
+      workerId: 'gonic',
+      leaseDurationMs: 100,
+      registrationOnly: true,
+    })!;
+    s.repository.transition({ ...registration, stage: 'scanning' });
+
+    expect(() =>
+      s.repository.rebindCurrent({
+        ...registration,
+        newTrackId: 'song-3',
+        targetFileIdentity: '7'.repeat(64),
+      }),
+    ).toThrow('conflict');
+
+    expect(
+      s.repository.approveTargetReplacement({
+        itemId: registration.itemId,
+        operationIdHash: '8'.repeat(64),
+        requestHash: '9'.repeat(64),
+        displacedTrackId: 'song-2',
+        backupReceiptDigest: 'a'.repeat(64),
+        referenceSnapshotDigests: ['b'.repeat(64), 'c'.repeat(64)],
+      }),
+    ).toMatchObject({ displacedMediaLinkId: 'media-target-alias' });
+    expect(s.repository.approvedTargetReplacement(registration.itemId, 'song-2')).toBe(true);
+    expect(s.repository.approvedTargetReplacement(registration.itemId, 'song-3')).toBe(false);
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO metadata_jobs(id,identity_key,library_id,operation_id_hash,request_hash,kind,created_at) VALUES('displaced-metadata-job',?,'library-1',?,?,'edit',900)",
+      )
+      .run('4'.repeat(64), '5'.repeat(64), '6'.repeat(64));
+    s.c.db.connection
+      .prepare(
+        "INSERT INTO metadata_items(id,job_id,item_order,media_link_id,file_identity,binding_revision,original_track_id,current_track_id,expected_revision,expected_digest,patch_json,actor_session_id,policy_revision,stage,stage_changed_at,file_saved_at,result_revision,result_digest,error_code,changed_fields_json) VALUES('displaced-metadata-item','displaced-metadata-job',0,'media-target-alias',?,1,'song-2','song-2','revision-before',?,'{}',(SELECT id_hash FROM sessions LIMIT 1),1,'reflecting',900,900,'revision-after',?,NULL,'[]')",
+      )
+      .run('5'.repeat(64), '6'.repeat(64), '7'.repeat(64));
+    expect(() =>
+      s.repository.rebindCurrent({
+        ...registration,
+        newTrackId: 'song-3',
+        targetFileIdentity: '7'.repeat(64),
+      }),
+    ).toThrow('conflict');
+    s.c.db.connection
+      .prepare(
+        "UPDATE metadata_items SET stage='recovery_required',error_code='permission_changed' WHERE id='displaced-metadata-item'",
+      )
+      .run();
+    expect(
+      s.repository.rebindCurrent({
+        ...registration,
+        newTrackId: 'song-2',
+        targetFileIdentity: '7'.repeat(64),
+      }),
+    ).toEqual({ trackRef: originalTrackRef });
+    expect(s.c.mediaLinks.get('media-1')).toMatchObject({
+      relativeFileKey: s.input.targetKey,
+      gonicSongId: 'song-2',
+      revision: 2,
+      availability: 'available',
+    });
+    expect(s.c.mediaLinks.get('media-target-alias')).toMatchObject({
+      relativeFileKey: `.musiclatte-retired/${'5'.repeat(64)}.mp3`,
+      gonicSongId: null,
+      revision: 2,
+      availability: 'unavailable',
+    });
+    expect(curation.rowFor(originalTrackRef)).toMatchObject({
+      track_id: 'song-2',
+      media_link_id: 'media-1',
+      file_identity: '7'.repeat(64),
+      binding_revision: 2,
+      validation: 'verified',
+      tombstoned: 0,
+    });
+    expect(curation.rowFor(displacedTrackRef)).toMatchObject({
+      track_id: `musiclatte-retired:${displacedTrackRef}`,
+      media_link_id: null,
+      file_identity: null,
+      binding_revision: null,
+      validation: 'stale',
+      tombstoned: 1,
+    });
+    expect(
+      s.c.db.connection
+        .prepare(
+          "SELECT displaced_track_id FROM organization_target_replacements WHERE item_id='organization-item'",
+        )
+        .get(),
+    ).toEqual({ displaced_track_id: 'song-2' });
+    expect(
+      s.c.db.connection
+        .prepare(
+          "SELECT kind,payload_json FROM organization_events WHERE item_id='organization-item' AND kind LIKE 'target_%' ORDER BY sequence",
+        )
+        .all(),
+    ).toEqual([
+      { kind: 'target_replacement_approved', payload_json: '{}' },
+      { kind: 'target_alias_replaced', payload_json: '{}' },
+    ]);
+    s.repository.completeRegistration({ ...registration, newTrackId: 'song-2' });
+    const references = s.repository.claimNext({
+      workerId: 'references',
+      leaseDurationMs: 100,
+    })!;
+    expect(references).toMatchObject({ stage: 'rebound', newTrackId: 'song-2' });
+    s.repository.transition({ ...references, stage: 'migrating_references' });
+    s.repository.putReferenceCheckpoint({
+      ...references,
+      kind: 'star',
+      referenceId: 'star',
+      baseline: false,
+      desired: false,
+    });
+    s.repository.failReferenceCheckpoint({
+      ...references,
+      kind: 'star',
+      referenceId: 'star',
+      errorCode: 'reference_conflict',
+    });
+    s.repository.putReferenceCheckpoint({
+      ...references,
+      kind: 'star',
+      referenceId: 'star',
+      baseline: false,
+      desired: true,
+      allowApprovedReplacementExpansion: true,
+    });
+    expect(
+      s.c.db.connection
+        .prepare(
+          "SELECT desired_json,status,error_code FROM organization_reference_checkpoints WHERE item_id=? AND kind='star' AND reference_id='star'",
+        )
+        .get(references.itemId),
+    ).toEqual({ desired_json: 'true', status: 'pending', error_code: null });
   });
 
   /** Rebinding publishes one durable pending delta while preserving the original audit payload. */

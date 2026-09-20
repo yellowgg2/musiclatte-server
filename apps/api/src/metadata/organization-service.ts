@@ -5,6 +5,7 @@ import {
   type MetadataField,
   type OrganizationJobRequest,
   type OrganizationPreviewRequest,
+  type OrganizationTargetReplacementRequest,
   type OrganizationSelectionRequest,
   type OrganizationSelectionSource,
   type OrganizationReferenceRestoreRequest,
@@ -152,6 +153,82 @@ export function createOrganizationService(service: SessionService) {
     checkMetadataPrincipal(service, principal);
     return { file, snapshot, plan };
   };
+  const validatedIntent = async (
+    principal: Principal,
+    body: OrganizationJobRequest,
+    expectedStatus: 'ready' | 'no_op',
+    operationIdHash: string,
+    requestHash: string,
+    ids: { id: string; itemId: string },
+  ) => {
+    const { file, snapshot, plan } = await inspect(principal, body);
+    if (plan.status !== expectedStatus) throw new ApiError(422, 'invalid_request');
+    const metadataItem = db
+      .prepare(
+        'SELECT i.id,i.result_revision,i.changed_fields_json,i.stage,i.error_code,e.reflection_json,j.identity_key,j.library_id FROM metadata_items i JOIN metadata_jobs j ON j.id=i.job_id LEFT JOIN metadata_item_evidence e ON e.item_id=i.id WHERE j.id=? AND i.actor_token_id=? AND i.current_track_id=?',
+      )
+      .get(body.metadataJobId, principal.accessToken.id, body.trackId);
+    let changed: MetadataField[] = [];
+    try {
+      changed = JSON.parse(String(metadataItem?.changed_fields_json)) as MetadataField[];
+    } catch {
+      changed = [];
+    }
+    if (
+      !metadataItem ||
+      (metadataItem.stage !== 'succeeded' && !isOrganizationAlbumProjectionPending(metadataItem)) ||
+      metadataItem.identity_key !== principal.actorIdentityKey ||
+      metadataItem.library_id !== file.libraryId ||
+      metadataItem.result_revision !== file.fileRevision
+    )
+      throw new ApiError(422, 'invalid_request');
+    const present = new Set<MetadataField>([
+      ...(snapshot.values.title ? (['title'] as const) : []),
+      ...(snapshot.values.artist.length ? (['artist'] as const) : []),
+      ...(snapshot.values.album ? (['album'] as const) : []),
+      ...(snapshot.values.albumArtist.length ? (['albumArtist'] as const) : []),
+      ...(snapshot.values.trackNumber ? (['trackNumber'] as const) : []),
+      ...(snapshot.values.year ? (['year'] as const) : []),
+      ...(snapshot.values.genre.length ? (['genre'] as const) : []),
+      ...(snapshot.coverFrames.length ? (['cover'] as const) : []),
+      ...(snapshot.lyricsFrames.length ? (['lyrics'] as const) : []),
+    ]);
+    const evidenced = new Set(body.sourceEvidence.flatMap((entry) => entry.fields));
+    if (
+      changed.some((field) => !evidenced.has(field)) ||
+      [...evidenced].some(
+        (field) =>
+          !metadataFields.includes(field) || (!changed.includes(field) && !present.has(field)),
+      ) ||
+      (changed.includes('lyrics') && !principal.accessToken.scopes.includes('lyrics:write'))
+    )
+      throw new ApiError(422, 'invalid_request');
+    for (const evidence of body.sourceEvidence) {
+      const url = new URL(evidence.url);
+      if (url.protocol !== 'https:' || url.username || url.password)
+        throw new ApiError(422, 'invalid_request');
+    }
+    await revalidateMetadataPrincipal(service, principal);
+    return {
+      ...ids,
+      identityKey: principal.actorIdentityKey,
+      libraryId: file.libraryId,
+      operationIdHash,
+      requestHash,
+      actorTokenId: principal.accessToken.id,
+      policyRevision: principal.policyRevision,
+      policyVersion: 'id3-managed-v1' as const,
+      metadataJobId: body.metadataJobId,
+      metadataRevision: file.fileRevision,
+      sourceEvidence: body.sourceEvidence,
+      mediaLinkId: file.mediaLinkId,
+      sourceKey: file.relativeFileKey,
+      targetKey: plan.targetKey,
+      oldTrackId: file.trackId,
+      fileIdentity: file.fileIdentity,
+      audioIdentity: curationSnapshot(snapshot).audioIdentity,
+    };
+  };
   return {
     async unorganizedSelection(
       principal: Principal,
@@ -244,7 +321,6 @@ export function createOrganizationService(service: SessionService) {
       signal?: AbortSignal,
     ) {
       available();
-      if (body.trackId === body.newTrackId) throw new ApiError(422, 'invalid_request');
       let baseline;
       try {
         baseline = decodeMetadataReferences({
@@ -257,11 +333,20 @@ export function createOrganizationService(service: SessionService) {
       }
       const successor = db
         .prepare(
-          "SELECT j.library_id AS libraryId,i.media_link_id AS mediaLinkId FROM organization_items i JOIN organization_jobs j ON j.id=i.job_id WHERE i.old_track_id=? AND i.new_track_id=? AND i.stage='succeeded' ORDER BY i.stage_changed_at DESC LIMIT 1",
+          "SELECT j.library_id AS libraryId,i.media_link_id AS mediaLinkId,i.old_track_id AS oldTrackId,r.displaced_track_id AS displacedTrackId FROM organization_items i JOIN organization_jobs j ON j.id=i.job_id LEFT JOIN organization_target_replacements r ON r.item_id=i.id WHERE (i.old_track_id=? OR r.displaced_track_id=?) AND i.new_track_id=? AND i.stage='succeeded' ORDER BY i.stage_changed_at DESC LIMIT 1",
         )
-        .get(body.trackId, body.newTrackId) as
-        { libraryId: string; mediaLinkId: string } | undefined;
+        .get(body.trackId, body.trackId, body.newTrackId) as
+        | {
+            libraryId: string;
+            mediaLinkId: string;
+            oldTrackId: string;
+            displacedTrackId: string | null;
+          }
+        | undefined;
       if (!successor || !principal.allowedLibraries.includes(successor.libraryId))
+        throw new ApiError(422, 'invalid_request');
+      const identityReused = body.trackId === body.newTrackId;
+      if (identityReused && successor.displacedTrackId !== body.trackId)
         throw new ApiError(422, 'invalid_request');
       const resolved = await provider.resolver.resolve(principal, body.newTrackId, 'read');
       if (
@@ -276,6 +361,10 @@ export function createOrganizationService(service: SessionService) {
           username: principal.identity.username,
           baseline,
           newTrackId: body.newTrackId,
+          predecessorTrackIds: [successor.oldTrackId, successor.displacedTrackId].filter(
+            (trackId): trackId is string => trackId !== null,
+          ),
+          allowIdentityReuse: identityReused,
           ...(signal ? { signal } : {}),
         });
         await revalidateMetadataPrincipal(service, principal);
@@ -420,77 +509,37 @@ export function createOrganizationService(service: SessionService) {
             job: publicJob(scopedJob(principal, String(replay.id))),
           };
       }
-      const { file, snapshot, plan } = await inspect(principal, body);
-      if (plan.status !== 'ready') throw new ApiError(422, 'invalid_request');
-      const metadataItem = db
-        .prepare(
-          'SELECT i.id,i.result_revision,i.changed_fields_json,i.stage,i.error_code,e.reflection_json,j.identity_key,j.library_id FROM metadata_items i JOIN metadata_jobs j ON j.id=i.job_id LEFT JOIN metadata_item_evidence e ON e.item_id=i.id WHERE j.id=? AND i.actor_token_id=? AND i.current_track_id=?',
-        )
-        .get(body.metadataJobId, principal.accessToken.id, body.trackId);
-      let changed: MetadataField[] = [];
-      try {
-        changed = JSON.parse(String(metadataItem?.changed_fields_json)) as MetadataField[];
-      } catch {
-        changed = [];
-      }
-      if (
-        !metadataItem ||
-        (metadataItem.stage !== 'succeeded' &&
-          !isOrganizationAlbumProjectionPending(metadataItem)) ||
-        metadataItem.identity_key !== principal.actorIdentityKey ||
-        metadataItem.library_id !== file.libraryId ||
-        metadataItem.result_revision !== file.fileRevision
-      )
-        throw new ApiError(422, 'invalid_request');
-      const present = new Set<MetadataField>([
-        ...(snapshot.values.title ? (['title'] as const) : []),
-        ...(snapshot.values.artist.length ? (['artist'] as const) : []),
-        ...(snapshot.values.album ? (['album'] as const) : []),
-        ...(snapshot.values.albumArtist.length ? (['albumArtist'] as const) : []),
-        ...(snapshot.values.trackNumber ? (['trackNumber'] as const) : []),
-        ...(snapshot.values.year ? (['year'] as const) : []),
-        ...(snapshot.values.genre.length ? (['genre'] as const) : []),
-        ...(snapshot.coverFrames.length ? (['cover'] as const) : []),
-        ...(snapshot.lyricsFrames.length ? (['lyrics'] as const) : []),
-      ]);
-      const evidenced = new Set(body.sourceEvidence.flatMap((entry) => entry.fields));
-      if (
-        changed.some((field) => !evidenced.has(field)) ||
-        [...evidenced].some(
-          (field) =>
-            !metadataFields.includes(field) || (!changed.includes(field) && !present.has(field)),
-        ) ||
-        (changed.includes('lyrics') && !principal.accessToken.scopes.includes('lyrics:write'))
-      )
-        throw new ApiError(422, 'invalid_request');
-      for (const evidence of body.sourceEvidence) {
-        const url = new URL(evidence.url);
-        if (url.protocol !== 'https:' || url.username || url.password)
-          throw new ApiError(422, 'invalid_request');
-      }
-      await revalidateMetadataPrincipal(service, principal);
-      const intent = {
+      const intent = await validatedIntent(principal, body, 'ready', operationIdHash, requestHash, {
         id: replayJob?.id ?? randomUUID(),
         itemId: replayJob?.item.itemId ?? randomUUID(),
-        identityKey: principal.actorIdentityKey,
-        libraryId: file.libraryId,
-        operationIdHash,
-        requestHash,
-        actorTokenId: principal.accessToken.id,
-        policyRevision: principal.policyRevision,
-        policyVersion: 'id3-managed-v1' as const,
-        metadataJobId: body.metadataJobId,
-        metadataRevision: file.fileRevision,
-        sourceEvidence: body.sourceEvidence,
-        mediaLinkId: file.mediaLinkId,
-        sourceKey: file.relativeFileKey,
-        targetKey: plan.targetKey,
-        oldTrackId: file.trackId,
-        fileIdentity: file.fileIdentity,
-        audioIdentity: curationSnapshot(snapshot).audioIdentity,
-      };
+      });
       const grant = grants.createOrganizationGrant(principal, intent);
       const job = repository.createOrReplay({ ...intent, ...grant });
+      return { schemaVersion: 1 as const, job: publicJob(job) };
+    },
+    async adoptNoOp(principal: Principal, body: OrganizationJobRequest) {
+      const operationIdHash = hash('no-op-operation', [
+        metadataCredentialFingerprint(principal),
+        body.operationId,
+      ]);
+      const requestHash = hash('no-op-request', body);
+      const replay = db
+        .prepare(
+          'SELECT id,request_hash FROM organization_jobs WHERE identity_key=? AND operation_id_hash=?',
+        )
+        .get(principal.actorIdentityKey, operationIdHash);
+      if (replay) {
+        if (replay.request_hash !== requestHash) throw new ApiError(409, 'conflict');
+        return {
+          schemaVersion: 1 as const,
+          job: publicJob(scopedJob(principal, String(replay.id))),
+        };
+      }
+      const intent = await validatedIntent(principal, body, 'no_op', operationIdHash, requestHash, {
+        id: randomUUID(),
+        itemId: randomUUID(),
+      });
+      const job = repository.createOrReplayNoOp(intent);
       return { schemaVersion: 1 as const, job: publicJob(job) };
     },
     detail(principal: Principal, id: string) {
@@ -510,6 +559,35 @@ export function createOrganizationService(service: SessionService) {
         requestHash,
       });
       return { schemaVersion: 1 as const, job: publicJob(result) };
+    },
+    async approveTargetReplacement(
+      principal: Principal,
+      id: string,
+      body: OrganizationTargetReplacementRequest,
+    ) {
+      const job = scopedJob(principal, id);
+      await revalidateMetadataPrincipal(service, principal);
+      try {
+        repository.approveTargetReplacement({
+          itemId: job.item.itemId,
+          operationIdHash: hash('target-replacement-operation', [
+            metadataCredentialFingerprint(principal),
+            body.operationId,
+          ]),
+          requestHash: hash('target-replacement-request', [id, body]),
+          displacedTrackId: body.displacedTrackId,
+          backupReceiptDigest: body.backupReceiptDigest,
+          referenceSnapshotDigests: body.referenceSnapshotDigests,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === 'conflict')
+          throw new ApiError(409, 'conflict');
+        throw error;
+      }
+      return {
+        schemaVersion: 1 as const,
+        job: publicJob(scopedJob(principal, id)),
+      };
     },
   };
 }

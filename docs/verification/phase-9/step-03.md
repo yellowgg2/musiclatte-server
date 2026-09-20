@@ -70,9 +70,10 @@ Final gates: project formatting, focused unit/contract tests, typecheck, build, 
   `skipped(destination_conflict)` terminal shape that preserves successful metadata and cover
   checkpoints. The dedicated client command replays organization preview at the final result
   revision and refuses a ready target, another error, a non-current item, or any existing
-  organization job.
+  organization job. The decoder also preserves compatibility with an earlier verified
+  metadata-complete deleted-duplicate terminal checkpoint already present in the frozen journal.
 - Safety: ordinary `batch-skip` remains pre-mutation only. The recovery command neither moves nor
   deletes media, changes references, edits Gonic, nor creates a replacement intent. The retained
   source remains eligible for a later fresh sweep.
-- Verification: four focused contract files passed 63/63; typecheck, build, formatting, and diff
+- Verification: four focused contract files passed 70/70; typecheck, build, formatting, and diff
   checks passed. Production resume evidence is recorded after deployment.

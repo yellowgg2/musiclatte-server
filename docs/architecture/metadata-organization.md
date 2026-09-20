@@ -114,6 +114,25 @@ append-only receipt or event history. A fresh trusted snapshot reconciliation up
 field state. The import item that originally established the MediaLink supplies the YouTube source
 ID for `organization_source_locations`; no raw source or media payload is copied into this mapping.
 
+An explicitly approved target replacement still rejects any displaced alias with live metadata,
+import, organization, or curation-claim work. A metadata `recovery_required` row is a terminal audit
+checkpoint without a runnable claim, so it does not by itself keep the displaced alias active. Its
+immutable history and backup remain preserved after the alias is retired; every nonterminal
+metadata stage continues to block replacement.
+
+Gonic may reuse the displaced destination's song ID when the replacement keeps the exact managed
+path. The active source curation row owns that live ID after rebind. To satisfy the curation table's
+all-history uniqueness constraint without deleting audit history, the displaced tombstoned row is
+moved to a deterministic `musiclatte-retired:<curation-row-id>` internal identity only in this
+reuse case. The replacement ledger retains the displaced Gonic song ID, and the tombstoned row
+retains its immutable receipts and events.
+
+The same successful replacement relation also authorizes a reference restore whose displaced
+track ID equals the successor ID. That request performs no identity translation: it restores and
+exactly reads back the authenticated account's saved favorite and playlist state for the reused
+ID. Same-ID restores remain invalid for the source predecessor and for every relation without the
+approved displaced-track match.
+
 Organization status treats that source-location row as import provenance, not as universal success
 evidence. A succeeded item must always match the current MediaLink track ID, relative key, policy,
 and metadata watermark. When the same MediaLink has a qualifying import item in `registering`,
@@ -130,6 +149,14 @@ preserved. A post-scan playlist is eligible only when its name and owner are unc
 ordered members equal either the captured baseline, the baseline with all old occurrences removed,
 or the exact desired new-ID list. Any other concurrent edit is `reference_conflict` and is never
 overwritten.
+
+An explicitly approved target replacement has two ledger-proven predecessor IDs: the source and
+the displaced target. Reference restore treats only those two IDs as equivalent to the verified
+successor. When a Gonic scan has collapsed overlapping predecessor occurrences to one successor,
+that exact collapsed projection is also an eligible post-scan state; restore reconstructs every
+captured occurrence in its original order. Ordinary organization jobs still admit only their one
+old ID. For each account, restore an unstarred predecessor snapshot before a starred one, then
+compare the combined source/displaced projection so the final favorite is their logical union.
 
 Each playlist and the star state has a durable checkpoint written before the upstream operation.
 Completed checkpoints are skipped on retry; incomplete conflict/failed checkpoints can be reclaimed

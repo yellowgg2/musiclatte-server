@@ -1021,6 +1021,7 @@ export function checkpointId3OrganizationBatch(
         jobId: string;
         resultRevision: string | null;
         serverStage: string;
+        currentTrackId?: string;
       }
     | {
         kind: 'organization';
@@ -1053,7 +1054,8 @@ export function checkpointId3OrganizationBatch(
         !['researching', 'metadata_accepted'].includes(item.state) ||
         !opaque(checkpoint.jobId) ||
         !nullableOpaque(checkpoint.resultRevision) ||
-        !opaque(checkpoint.serverStage)
+        !opaque(checkpoint.serverStage) ||
+        (checkpoint.currentTrackId !== undefined && !opaque(checkpoint.currentTrackId))
       )
         failure('journal_transition');
       if (
@@ -1068,6 +1070,20 @@ export function checkpointId3OrganizationBatch(
       target.jobId = checkpoint.jobId;
       target.resultRevision = checkpoint.resultRevision;
       target.serverStage = checkpoint.serverStage;
+      if (
+        checkpoint.serverStage === 'succeeded' &&
+        checkpoint.resultRevision !== null &&
+        checkpoint.currentTrackId !== undefined &&
+        checkpoint.currentTrackId !== item.trackId
+      ) {
+        if (
+          journal.items.some(
+            (candidate) => candidate !== item && candidate.trackId === checkpoint.currentTrackId,
+          )
+        )
+          failure('journal_binding');
+        item.trackId = checkpoint.currentTrackId;
+      }
       return;
     }
     if (
@@ -1124,6 +1140,22 @@ export function id3OrganizationPendingMetadataBinding(item: Id3OrganizationBatch
       (target.serverStage !== 'succeeded' || target.resultRevision === null)
     )
       return { step, target };
+  }
+  failure('journal_binding');
+}
+
+export function id3OrganizationMetadataStatusBinding(item: Id3OrganizationBatchItem) {
+  for (const step of ['required', 'optional'] as const) {
+    const target = item.metadataSteps[step];
+    if (
+      target.jobId !== null &&
+      (target.serverStage !== 'succeeded' || target.resultRevision === null)
+    )
+      return { step, target };
+  }
+  for (const step of ['optional', 'required'] as const) {
+    const target = item.metadataSteps[step];
+    if (target.jobId !== null) return { step, target };
   }
   failure('journal_binding');
 }

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { mkdirSync, realpathSync } from 'node:fs';
+import { mkdirSync, realpathSync, renameSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMetadataFixture } from '../../../packages/test-support/src/metadata-fixtures.js';
 import { browserHeaders, cookieOf, native, password } from '../../../tests/support/auth-harness.js';
@@ -30,22 +30,38 @@ afterEach(async () => {
 async function setup({
   sourceAccountDirectory = 'account',
   actorAccountDirectory = 'account',
+  alreadyManaged = false,
 }: {
   sourceAccountDirectory?: string;
   actorAccountDirectory?: string;
+  alreadyManaged?: boolean;
 } = {}) {
   const c = await createRecentContext();
-  const fixtureRoot = join(c.musicRoot, 'imports', sourceAccountDirectory, 'Legacy');
+  const fixtureRoot = alreadyManaged
+    ? join(
+        c.musicRoot,
+        'imports',
+        sourceAccountDirectory,
+        'ID3-managed',
+        'Original album artist',
+        'Original album',
+      )
+    : join(c.musicRoot, 'imports', sourceAccountDirectory, 'Legacy');
   mkdirSync(fixtureRoot, { recursive: true });
   await createMetadataFixture({ root: fixtureRoot, ...helper, version: 4 });
+  if (alreadyManaged)
+    renameSync(join(fixtureRoot, 'source.mp3'), join(fixtureRoot, '01 - Original synthetic.mp3'));
   const trackId = 'organization-track';
+  const relativePath = alreadyManaged
+    ? `imports/${sourceAccountDirectory}/ID3-managed/Original album artist/Original album/01 - Original synthetic.mp3`
+    : `imports/${sourceAccountDirectory}/Legacy/source.mp3`;
   c.songs.push({
     id: trackId,
     title: 'Original synthetic',
     artist: 'Original artist',
     album: 'Original album',
     isDir: false,
-    path: `imports/${sourceAccountDirectory}/Legacy/source.mp3`,
+    path: relativePath,
   });
   const uploadRoot = join(realpathSync(c.storage.root), 'organization-uploads');
   mkdirSync(uploadRoot, { mode: 0o700 });
@@ -226,6 +242,121 @@ async function setup({
 }
 
 describe('metadata organization PAT API', () => {
+  /** A no-op adoption requires a fresh exact-path plan and records no runnable worker work. */
+  it('should adopt an already managed path as a verified organization success', async () => {
+    const s = await setup({ alreadyManaged: true });
+    const body = {
+      trackId: s.trackId,
+      expectedRevision: s.revision,
+      destinationPolicy: 'id3-managed-v1' as const,
+      operationId: 'organization_no_op_0001',
+      metadataJobId: 'completed-metadata',
+      sourceEvidence: [
+        {
+          url: 'https://example.invalid/official',
+          kind: 'official_artist' as const,
+          fields: ['title' as const],
+        },
+      ],
+    };
+    const preview = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/previews',
+      headers: s.headers,
+      payload: {
+        trackId: body.trackId,
+        expectedRevision: body.expectedRevision,
+        destinationPolicy: body.destinationPolicy,
+      },
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json()).toMatchObject({
+      status: 'no_op',
+      currentKey: expect.stringContaining('/ID3-managed/'),
+      targetKey: expect.stringContaining('/ID3-managed/'),
+    });
+
+    const adopted = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization-no-op-jobs',
+      headers: s.headers,
+      payload: body,
+    });
+    expect(adopted.statusCode, adopted.body).toBe(202);
+    expect(adopted.json().job).toMatchObject({
+      trackId: s.trackId,
+      newTrackId: s.trackId,
+      stage: 'succeeded',
+      errorCode: null,
+      nextOwner: null,
+    });
+    expect(
+      s.c.storage.db.connection
+        .prepare("SELECT count(*) AS count FROM organization_items WHERE stage<>'succeeded'")
+        .get()!.count,
+    ).toBe(0);
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: '/api/v1/metadata-organization-no-op-jobs',
+          headers: s.headers,
+          payload: body,
+        })
+      ).json(),
+    ).toEqual(adopted.json());
+    const mediaLinkId = String(
+      s.c.storage.db.connection
+        .prepare('SELECT id FROM media_links WHERE gonic_song_id=?')
+        .get(s.trackId)!.id,
+    );
+    s.c.storage.db.connection
+      .prepare(
+        "INSERT INTO metadata_changes(item_id,media_link_id,identity_key,library_id,old_revision,new_revision,related_ids_json,cover_generation,changed_fields_json,reflection_result,created_at) VALUES('completed-item',?,?,'music','old',?,'{}','cover','[\"title\"]','verified',?)",
+      )
+      .run(mediaLinkId, s.actorIdentityKey, s.revision, recentNow);
+    const status = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/statuses',
+      headers: s.headers,
+      payload: {
+        schemaVersion: 1,
+        targets: [{ kind: 'track', trackId: s.trackId }],
+      },
+    });
+    expect(status.statusCode, status.body).toBe(200);
+    expect(status.json().items[0]).toMatchObject({
+      state: 'organized',
+      reason: 'verified',
+      stage: 'succeeded',
+    });
+  });
+
+  /** The no-op endpoint cannot bypass a real move or stale metadata binding. */
+  it('should reject no-op adoption unless the current path is already exact', async () => {
+    const s = await setup();
+    const response = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization-no-op-jobs',
+      headers: s.headers,
+      payload: {
+        trackId: s.trackId,
+        expectedRevision: s.revision,
+        destinationPolicy: 'id3-managed-v1',
+        operationId: 'organization_no_op_reject_0001',
+        metadataJobId: 'completed-metadata',
+        sourceEvidence: [
+          {
+            url: 'https://example.invalid/official',
+            kind: 'official_artist',
+            fields: ['title'],
+          },
+        ],
+      },
+    });
+    expect(response.statusCode).toBe(422);
+  });
+
   /** Whole-library selection is an explicit PAT-only endpoint, separate from collection selection. */
   it('should expose the unorganized selection endpoint', async () => {
     const s = await setup();
@@ -787,6 +918,189 @@ describe('metadata organization PAT API', () => {
     expect(s.c.state.playlistEntryIds).toEqual(['replacement-track', 'tr-B', 'replacement-track']);
   });
 
+  /** An approved target replacement preserves the displaced track's account references too. */
+  it('restores displaced target references through the approved successor relation', async () => {
+    const s = await setup();
+    const displacedTrackId = 'tr-displaced';
+    const snapshot = { trackId: displacedTrackId, starred: true, playlists: [] };
+
+    const db = s.c.storage.db.connection;
+    const sourceMediaLinkId = String(
+      db.prepare("SELECT media_link_id FROM metadata_items WHERE id='completed-item'").get()!
+        .media_link_id,
+    );
+    const displacedMediaLinkId = 'displaced-media-link';
+    db.prepare(
+      "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at,validated_at) VALUES(?,'music','imports/account/Legacy/displaced.mp3',?,1,'available',?,?)",
+    ).run(displacedMediaLinkId, displacedTrackId, recentNow, recentNow);
+    db.prepare(
+      "INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES('replacement-job',?,'music',?,?,?,1,'id3-managed-v1','completed-metadata','revision','[]',?)",
+    ).run('7'.repeat(64), '8'.repeat(64), '9'.repeat(64), s.accessTokenId, recentNow);
+    db.prepare(
+      "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('replacement-item','replacement-job',?,'imports/account/Legacy/source.mp3','imports/account/Managed/source.mp3',?,?,?,?, 'succeeded',?)",
+    ).run(
+      sourceMediaLinkId,
+      s.trackId,
+      displacedTrackId,
+      'a'.repeat(64),
+      'b'.repeat(64),
+      recentNow,
+    );
+    db.prepare(
+      "INSERT INTO organization_target_replacements(item_id,displaced_media_link_id,displaced_track_id,operation_id_hash,request_hash,backup_receipt_digest,reference_snapshot_digests_json,created_at) VALUES('replacement-item',?,?,?,?,?,?,?)",
+    ).run(
+      displacedMediaLinkId,
+      displacedTrackId,
+      'c'.repeat(64),
+      'd'.repeat(64),
+      'e'.repeat(64),
+      JSON.stringify(['f'.repeat(64)]),
+      recentNow,
+    );
+    db.prepare(
+      "UPDATE media_links SET gonic_song_id=NULL,availability='unavailable',revision=revision+1 WHERE id=?",
+    ).run(displacedMediaLinkId);
+    db.prepare('UPDATE media_links SET gonic_song_id=?,revision=revision+1 WHERE id=?').run(
+      displacedTrackId,
+      sourceMediaLinkId,
+    );
+    s.c.songs.push({
+      id: displacedTrackId,
+      title: 'Original synthetic',
+      artist: 'Original artist',
+      album: 'Original album',
+      isDir: false,
+      path: 'imports/account/Legacy/source.mp3',
+    });
+    s.c.state.favoriteSongIdsByUsername.set(password.username, []);
+
+    const restored = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/reference-restores',
+      headers: s.headers,
+      payload: {
+        trackId: displacedTrackId,
+        newTrackId: displacedTrackId,
+        starred: snapshot.starred,
+        playlists: snapshot.playlists,
+      },
+    });
+    expect(restored.statusCode, restored.body).toBe(200);
+    expect(restored.json()).toMatchObject({
+      trackId: displacedTrackId,
+      newTrackId: displacedTrackId,
+      starred: true,
+    });
+    expect(s.c.state.favoriteSongIdsByUsername.get(password.username)).toEqual([displacedTrackId]);
+  });
+
+  /** A replacement restores both predecessor occurrences when gonic collapses them to one ID. */
+  it('restores overlapping source and displaced playlist references after replacement', async () => {
+    const s = await setup();
+    const displacedTrackId = 'tr-displaced';
+    const replacementTrackId = 'replacement-track';
+    const db = s.c.storage.db.connection;
+    const sourceMediaLinkId = String(
+      db.prepare("SELECT media_link_id FROM metadata_items WHERE id='completed-item'").get()!
+        .media_link_id,
+    );
+    const displacedMediaLinkId = 'displaced-media-link';
+    db.prepare(
+      "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at,validated_at) VALUES(?,'music','imports/account/Legacy/displaced.mp3',?,1,'available',?,?)",
+    ).run(displacedMediaLinkId, displacedTrackId, recentNow, recentNow);
+    s.c.songs.push({
+      id: displacedTrackId,
+      title: 'Displaced synthetic',
+      artist: 'Original artist',
+      album: 'Original album',
+      isDir: false,
+      path: 'imports/account/Legacy/displaced.mp3',
+    });
+    s.c.state.favoriteSongIdsByUsername.set(password.username, [displacedTrackId]);
+    s.c.state.playlistEntryIds = [s.trackId, displacedTrackId];
+
+    const playlists = [
+      {
+        id: 'pl-1',
+        name: 'Synthetic List',
+        owner: password.username,
+        songIds: [s.trackId, displacedTrackId],
+      },
+    ];
+    const sourceSnapshot = { trackId: s.trackId, starred: false, playlists };
+    const displacedSnapshot = { trackId: displacedTrackId, starred: true, playlists };
+
+    db.prepare(
+      "INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES('replacement-job',?,'music',?,?,?,1,'id3-managed-v1','completed-metadata','revision','[]',?)",
+    ).run('7'.repeat(64), '8'.repeat(64), '9'.repeat(64), s.accessTokenId, recentNow);
+    db.prepare(
+      "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('replacement-item','replacement-job',?,'imports/account/Legacy/source.mp3','imports/account/Managed/source.mp3',?,?,?,?,'succeeded',?)",
+    ).run(
+      sourceMediaLinkId,
+      s.trackId,
+      replacementTrackId,
+      'a'.repeat(64),
+      'b'.repeat(64),
+      recentNow,
+    );
+    db.prepare(
+      "INSERT INTO organization_target_replacements(item_id,displaced_media_link_id,displaced_track_id,operation_id_hash,request_hash,backup_receipt_digest,reference_snapshot_digests_json,created_at) VALUES('replacement-item',?,?,?,?,?,?,?)",
+    ).run(
+      displacedMediaLinkId,
+      displacedTrackId,
+      'c'.repeat(64),
+      'd'.repeat(64),
+      'e'.repeat(64),
+      JSON.stringify(['f'.repeat(64)]),
+      recentNow,
+    );
+    db.prepare('UPDATE media_links SET gonic_song_id=?,revision=revision+1 WHERE id=?').run(
+      replacementTrackId,
+      sourceMediaLinkId,
+    );
+    s.c.songs.push({
+      id: replacementTrackId,
+      title: 'Original synthetic',
+      artist: 'Original artist',
+      album: 'Original album',
+      isDir: false,
+      path: 'imports/account/Legacy/source.mp3',
+    });
+    s.c.state.favoriteSongIdsByUsername.set(password.username, []);
+    s.c.state.playlistEntryIds = [replacementTrackId];
+
+    const sourceRestored = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/reference-restores',
+      headers: s.headers,
+      payload: {
+        trackId: sourceSnapshot.trackId,
+        newTrackId: replacementTrackId,
+        starred: sourceSnapshot.starred,
+        playlists: sourceSnapshot.playlists,
+      },
+    });
+    expect(sourceRestored.statusCode, sourceRestored.body).toBe(200);
+    expect(s.c.state.playlistEntryIds).toEqual([replacementTrackId, replacementTrackId]);
+
+    const displacedRestored = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/reference-restores',
+      headers: s.headers,
+      payload: {
+        trackId: displacedSnapshot.trackId,
+        newTrackId: replacementTrackId,
+        starred: displacedSnapshot.starred,
+        playlists: displacedSnapshot.playlists,
+      },
+    });
+    expect(displacedRestored.statusCode, displacedRestored.body).toBe(200);
+    expect(s.c.state.favoriteSongIdsByUsername.get(password.username)).toEqual([
+      replacementTrackId,
+    ]);
+    expect(s.c.state.playlistEntryIds).toEqual([replacementTrackId, replacementTrackId]);
+  });
+
   /** Restore cannot mutate collections without an exact successful organization relation. */
   it('rejects an unrecorded successor without collection writes', async () => {
     const s = await setup();
@@ -1229,6 +1543,89 @@ describe('metadata organization PAT API', () => {
         .prepare("SELECT count(*) AS count FROM organization_events WHERE kind='retry_requested'")
         .get()!.count,
     ).toBe(1);
+  });
+
+  it('records one scoped target-replacement approval without exposing evidence paths', async () => {
+    const s = await setup();
+    const previewBody = {
+      trackId: s.trackId,
+      expectedRevision: s.revision,
+      destinationPolicy: 'id3-managed-v1' as const,
+    };
+    const preview = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/previews',
+      headers: s.headers,
+      payload: previewBody,
+    });
+    expect(preview.statusCode).toBe(200);
+    const targetKey = String(preview.json().targetKey);
+    const submit = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization-jobs',
+      headers: s.headers,
+      payload: {
+        ...previewBody,
+        operationId: 'organization_replace_submit_0001',
+        metadataJobId: 'completed-metadata',
+        sourceEvidence: [
+          {
+            url: 'https://example.invalid/official',
+            kind: 'official_artist',
+            fields: ['title'],
+          },
+        ],
+      },
+    });
+    expect(submit.statusCode).toBe(202);
+    const job = submit.json().job;
+    s.c.storage.mediaLinks.create({
+      id: 'managed-target-alias',
+      libraryId: 'music',
+      relativeFileKey: targetKey,
+      gonicSongId: 'displaced-track',
+    });
+    s.c.storage.db.connection
+      .prepare(
+        "UPDATE organization_items SET stage='scanning',lease_owner=NULL,lease_expires_at=NULL WHERE id=?",
+      )
+      .run(job.itemId);
+    const body = {
+      operationId: 'target_replacement_approval_0001',
+      displacedTrackId: 'displaced-track',
+      backupReceiptDigest: 'a'.repeat(64),
+      referenceSnapshotDigests: ['b'.repeat(64), 'c'.repeat(64)],
+    };
+    const approved = await s.app.inject({
+      method: 'POST',
+      url: `/api/v1/metadata-organization-jobs/${job.id}/target-replacements`,
+      headers: s.headers,
+      payload: body,
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect(approved.body).not.toContain('backupReceiptDigest');
+    expect(approved.body).not.toContain('referenceSnapshotDigests');
+    expect(approved.json().job).toMatchObject({ id: job.id, stage: 'scanning' });
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: `/api/v1/metadata-organization-jobs/${job.id}/target-replacements`,
+          headers: s.headers,
+          payload: body,
+        })
+      ).json(),
+    ).toEqual(approved.json());
+    expect(
+      (
+        await s.app.inject({
+          method: 'POST',
+          url: `/api/v1/metadata-organization-jobs/${job.id}/target-replacements`,
+          headers: s.headers,
+          payload: { ...body, backupReceiptDigest: 'd'.repeat(64) },
+        })
+      ).statusCode,
+    ).toBe(409);
   });
 
   it('admits an album-only reflection mismatch so the managed move can repair the directory projection', async () => {

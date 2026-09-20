@@ -7,6 +7,7 @@ import {
   type OrganizationSelectionRequest,
   type OrganizationReferenceRestoreRequest,
   type OrganizationStatusRequest,
+  type OrganizationTargetReplacementRequest,
   type UnorganizedSelectionRequest,
   type AccessTokenScope,
   decodeOrganizationStatusRequest,
@@ -266,6 +267,26 @@ export function registerMetadataOrganizationRoutes(
           ),
         ),
   );
+  app.post<{ Body: OrganizationJobRequest }>(
+    '/api/v1/metadata-organization-no-op-jobs',
+    {
+      attachValidation: true,
+      bodyLimit: 65536,
+      schema: {
+        querystring: requests.empty,
+        body: requests.create,
+        response: { 202: responses.job },
+      },
+    },
+    async (request, reply) =>
+      reply
+        .code(202)
+        .send(
+          await boundary(request, writeBoundary, (principal) =>
+            getService().adoptNoOp(principal, request.body),
+          ),
+        ),
+  );
   app.get<{ Params: { id: string } }>(
     '/api/v1/metadata-organization-jobs/:id',
     {
@@ -300,5 +321,21 @@ export function registerMetadataOrganizationRoutes(
             getService().retry(principal, request.params.id, request.body),
           ),
         ),
+  );
+  app.post<{ Params: { id: string }; Body: OrganizationTargetReplacementRequest }>(
+    '/api/v1/metadata-organization-jobs/:id/target-replacements',
+    {
+      attachValidation: true,
+      schema: {
+        params: requests.params,
+        querystring: requests.empty,
+        body: requests.targetReplacement,
+        response: { 200: responses.job },
+      },
+    },
+    (request) =>
+      boundary(request, writeBoundary, (principal) =>
+        getService().approveTargetReplacement(principal, request.params.id, request.body),
+      ),
   );
 }

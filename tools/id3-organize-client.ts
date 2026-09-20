@@ -33,6 +33,7 @@ import {
   id3OrganizationBatchBinding,
   id3OrganizationFinalMetadataBinding,
   id3OrganizationMetadataBinding,
+  id3OrganizationMetadataStatusBinding,
   id3OrganizationPendingMetadataBinding,
   id3OrganizationBatchStatus,
   nextId3OrganizationBatchItem,
@@ -72,6 +73,13 @@ export interface Id3OrganizationManifest {
   cover?: { path: string; usageBasis: string };
 }
 
+export interface Id3OrganizationReplacementManifest {
+  schemaVersion: 1;
+  displacedTrackId: string;
+  backupReceiptPath: string;
+  referenceSnapshotPaths: string[];
+}
+
 type PollOptions = { attempts: number; intervalMs: number; recoveryRetries: number };
 
 export interface Id3OrganizeCommandOptions {
@@ -87,7 +95,9 @@ export interface Id3OrganizeCommandOptions {
     | 'metadata-recheck'
     | 'metadata-retry'
     | 'organization-preview'
+    | 'organization-replacement-approve'
     | 'organization-submit'
+    | 'organization-adopt-no-op'
     | 'status'
     | 'retry'
     | 'batch-start'
@@ -112,6 +122,7 @@ export interface Id3OrganizeCommandOptions {
   metadataJobId?: string;
   operationId?: string;
   manifest?: Id3OrganizationManifest;
+  replacementManifest?: Id3OrganizationReplacementManifest;
   requiredManifest?: Id3OrganizationManifest;
   sourceEvidence?: OrganizationSourceEvidence[];
   coverUploadId?: string;
@@ -120,6 +131,7 @@ export interface Id3OrganizeCommandOptions {
   playlistId?: string;
   skipReason?: string;
   referenceFile?: string;
+  replacementReferenceFile?: string;
   newTrackId?: string;
   poll?: PollOptions;
   fetch?: typeof fetch;
@@ -248,6 +260,44 @@ export function readPrivateManifest(path: string) {
   }
 }
 
+export function readPrivateReplacementManifest(path: string): Id3OrganizationReplacementManifest {
+  try {
+    const value = JSON.parse(
+      privateFile(path, 65536, 'private_replacement_manifest').toString('utf8'),
+    ) as unknown;
+    if (
+      !object(value) ||
+      !exact(value, [
+        'schemaVersion',
+        'displacedTrackId',
+        'backupReceiptPath',
+        'referenceSnapshotPaths',
+      ]) ||
+      value.schemaVersion !== 1 ||
+      !text(value.displacedTrackId, 2048) ||
+      !text(value.backupReceiptPath) ||
+      !isAbsolute(value.backupReceiptPath) ||
+      !Array.isArray(value.referenceSnapshotPaths) ||
+      value.referenceSnapshotPaths.length < 1 ||
+      value.referenceSnapshotPaths.length > 16 ||
+      new Set(value.referenceSnapshotPaths).size !== value.referenceSnapshotPaths.length ||
+      !value.referenceSnapshotPaths.every(
+        (referencePath) => text(referencePath) && isAbsolute(referencePath),
+      )
+    )
+      fail('replacement_manifest');
+    return {
+      schemaVersion: 1,
+      displacedTrackId: value.displacedTrackId,
+      backupReceiptPath: value.backupReceiptPath,
+      referenceSnapshotPaths: value.referenceSnapshotPaths as string[],
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('client_failed:')) throw error;
+    return fail('replacement_manifest');
+  }
+}
+
 function patchFor(manifest: Id3OrganizationManifest, coverUploadId?: string): MetadataPatch {
   const patch = Object.fromEntries(
     Object.entries(manifest.metadata).map(([key, value]) => [key, { op: 'set', value }]),
@@ -275,6 +325,14 @@ function decodeMetadataJobDetail(value: unknown) {
   }
   if (!exact(value, ['schemaVersion', 'job'])) fail('response');
   return { schemaVersion: 1 as const, job: decodeMetadataJob(value.job) };
+}
+
+function metadataJobItem(job: ReturnType<typeof decodeMetadataJob>, trackId: string) {
+  const matches = job.items.filter(
+    (item) => item.originalTrackId === trackId || item.currentTrackId === trackId,
+  );
+  if (matches.length !== 1) fail('response');
+  return matches[0]!;
 }
 
 function required(value: string | undefined, code: string): string {
@@ -796,19 +854,44 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const snapshot = verifyId3ReferenceContext(referenceFile, base, token);
     if (options.trackId !== undefined && options.trackId !== snapshot.trackId)
       fail('reference_context');
+    const replacementFile = options.replacementReferenceFile;
+    const replacement = replacementFile
+      ? verifyId3ReferenceContext(replacementFile, base, token)
+      : undefined;
+    if (
+      replacement &&
+      (replacementFile === referenceFile ||
+        replacement.trackId !== newTrackId ||
+        replacement.trackId === snapshot.trackId)
+    )
+      fail('reference_context');
+    const playlists = new Map<
+      string,
+      { id: string; name: string; owner: string; songIds: string[] }
+    >();
+    for (const current of [snapshot, ...(replacement ? [replacement] : [])])
+      for (const { id, name, owner, songIds } of current.playlists) {
+        const entry = { id, name, owner, songIds };
+        const existing = playlists.get(id);
+        if (existing && JSON.stringify(existing) !== JSON.stringify(entry))
+          fail('reference_context');
+        playlists.set(id, entry);
+      }
+    if (playlists.size > 1000) fail('reference_context');
+    const combinedPlaylists = [...playlists.values()].sort((left, right) =>
+      left.id.localeCompare(right.id),
+    );
+    if (combinedPlaylists.reduce((total, entry) => total + entry.songIds.length, 0) > 100000)
+      fail('reference_context');
+    const starred = snapshot.starred || replacement?.starred === true;
     const restored = decodeReferenceRestore(
       await jsonPost(
         '/metadata-organization/reference-restores',
         {
           trackId: snapshot.trackId,
           newTrackId,
-          starred: snapshot.starred,
-          playlists: snapshot.playlists.map(({ id, name, owner, songIds }) => ({
-            id,
-            name,
-            owner,
-            songIds,
-          })),
+          starred,
+          playlists: combinedPlaylists,
         },
         [200],
       ),
@@ -816,21 +899,26 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     if (
       restored.trackId !== snapshot.trackId ||
       restored.newTrackId !== newTrackId ||
-      restored.starred !== snapshot.starred ||
-      restored.playlistsRestored !== snapshot.playlists.length
+      restored.starred !== starred ||
+      restored.playlistsRestored !== combinedPlaylists.length
     )
       fail('reference_conflict');
-    checkpointId3ReferenceRestore(referenceFile, { kind: 'favorite', newTrackId });
-    for (const saved of snapshot.playlists)
-      checkpointId3ReferenceRestore(referenceFile, {
-        kind: 'playlist',
-        playlistId: saved.id,
-        newTrackId,
-      });
+    const checkpoints = [{ path: referenceFile, snapshot }];
+    if (replacement && replacementFile)
+      checkpoints.push({ path: replacementFile, snapshot: replacement });
+    for (const { path, snapshot: current } of checkpoints) {
+      checkpointId3ReferenceRestore(path, { kind: 'favorite', newTrackId });
+      for (const saved of current.playlists)
+        checkpointId3ReferenceRestore(path, {
+          kind: 'playlist',
+          playlistId: saved.id,
+          newTrackId,
+        });
+    }
     return {
       schemaVersion: 1 as const,
-      favoriteRestored: snapshot.starred,
-      playlistsRestored: snapshot.playlists.length,
+      favoriteRestored: starred,
+      playlistsRestored: combinedPlaylists.length,
     };
   }
 
@@ -861,6 +949,52 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         [200],
       ),
     );
+  if (options.command === 'organization-replacement-approve') {
+    const binding = batchBinding();
+    const replacement = options.replacementManifest;
+    if (
+      !binding ||
+      !replacement ||
+      binding.state !== 'organization_accepted' ||
+      !binding.organizationJobId
+    )
+      fail('journal_binding');
+    const digest = (filePath: string) =>
+      createHash('sha256')
+        .update(privateFile(filePath, 4 * 1024 * 1024, 'replacement_evidence'))
+        .digest('hex');
+    const backupReceiptDigest = digest(replacement.backupReceiptPath);
+    const referenceSnapshotDigests = replacement.referenceSnapshotPaths.map(digest);
+    if (new Set(referenceSnapshotDigests).size !== referenceSnapshotDigests.length)
+      fail('replacement_evidence');
+    const operationId =
+      'target-replacement-' +
+      createHash('sha256')
+        .update(
+          JSON.stringify([
+            binding.operations.organization,
+            replacement.displacedTrackId,
+            backupReceiptDigest,
+            referenceSnapshotDigests,
+          ]),
+        )
+        .digest('hex');
+    return decodeOrganizationJobResponse(
+      await jsonPost(
+        '/metadata-organization-jobs/' +
+          encodeURIComponent(binding.organizationJobId) +
+          '/target-replacements',
+        {
+          operationId,
+          displacedTrackId: replacement.displacedTrackId,
+          backupReceiptDigest,
+          referenceSnapshotDigests,
+        },
+        [200],
+        true,
+      ),
+    );
+  }
   if (options.command === 'metadata-preview') {
     if (!options.manifest) fail('manifest');
     return decodeMetadataPreview(
@@ -995,13 +1129,14 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       );
       if (!accepted.job || accepted.admissionResults[0]?.status !== 'accepted') fail('admission');
       if (binding && options.stateFile) {
-        const result = accepted.job.items.find((item) => item.originalTrackId === binding.trackId);
+        const result = metadataJobItem(accepted.job, binding.trackId);
         checkpointId3OrganizationBatch(options.stateFile, binding.trackId, {
           kind: 'metadata',
           step: metadataStep,
           jobId: accepted.job.id,
-          resultRevision: result?.resultRevision ?? null,
-          serverStage: result?.stage ?? accepted.job.status,
+          resultRevision: result.resultRevision,
+          serverStage: result.stage,
+          currentTrackId: result.currentTrackId,
         });
       }
       return accepted;
@@ -1017,17 +1152,18 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
   if (options.command === 'metadata-status') {
     const binding = batchBinding();
     if (!binding || binding.state !== 'metadata_accepted') fail('journal_binding');
-    const pending = id3OrganizationPendingMetadataBinding(binding);
-    const response = await call('/metadata-jobs/' + encodeURIComponent(pending.target.jobId!));
+    const status = id3OrganizationMetadataStatusBinding(binding);
+    const response = await call('/metadata-jobs/' + encodeURIComponent(status.target.jobId!));
     const job = decodeMetadataJobDetail(response).job;
-    const result = job.items.find((item) => item.originalTrackId === binding.trackId);
-    if (!result) fail('response');
+    if (job.id !== status.target.jobId) fail('response');
+    const result = metadataJobItem(job, binding.trackId);
     checkpointId3OrganizationBatch(options.stateFile!, binding.trackId, {
       kind: 'metadata',
-      step: pending.step,
+      step: status.step,
       jobId: job.id,
       resultRevision: result.resultRevision,
       serverStage: result.stage,
+      currentTrackId: result.currentTrackId,
     });
     return { schemaVersion: 1 as const, job };
   }
@@ -1038,9 +1174,7 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const parent = decodeMetadataJobDetail(
       await call('/metadata-jobs/' + encodeURIComponent(pending.target.jobId!)),
     );
-    const reflecting = parent.job.items.find(
-      (item) => item.originalTrackId === binding.trackId && item.currentTrackId === binding.trackId,
-    );
+    const reflecting = metadataJobItem(parent.job, binding.trackId);
     if (
       !reflecting ||
       !['file_saved', 'reflecting'].includes(reflecting.stage) ||
@@ -1070,16 +1204,14 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       ),
     );
     if (rechecked.job.id !== parent.job.id) fail('response');
-    const result = rechecked.job.items.find(
-      (item) => item.originalTrackId === binding.trackId && item.currentTrackId === binding.trackId,
-    );
-    if (!result) fail('response');
+    const result = metadataJobItem(rechecked.job, binding.trackId);
     checkpointId3OrganizationBatch(options.stateFile!, binding.trackId, {
       kind: 'metadata',
       step: pending.step,
       jobId: rechecked.job.id,
       resultRevision: result.resultRevision,
       serverStage: result.stage,
+      currentTrackId: result.currentTrackId,
     });
     return rechecked;
   }
@@ -1090,9 +1222,7 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const parent = decodeMetadataJobDetail(
       await call('/metadata-jobs/' + encodeURIComponent(pending.target.jobId!)),
     );
-    const failed = parent.job.items.find(
-      (item) => item.originalTrackId === binding.trackId && item.currentTrackId === binding.trackId,
-    );
+    const failed = metadataJobItem(parent.job, binding.trackId);
     if (
       !failed ||
       !['failed', 'conflict'].includes(failed.stage) ||
@@ -1116,16 +1246,14 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         true,
       ),
     );
-    const result = retried.job.items.find(
-      (item) => item.originalTrackId === binding.trackId && item.currentTrackId === binding.trackId,
-    );
-    if (!result) fail('response');
+    const result = metadataJobItem(retried.job, binding.trackId);
     checkpointId3OrganizationBatch(options.stateFile!, binding.trackId, {
       kind: 'metadata',
       step: pending.step,
       jobId: retried.job.id,
       resultRevision: result.resultRevision,
       serverStage: result.stage,
+      currentTrackId: result.currentTrackId,
     });
     return retried;
   }
@@ -1181,6 +1309,51 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
         serverStage: completed.job.stage,
       });
     return completed;
+  }
+  if (options.command === 'organization-adopt-no-op') {
+    const binding = batchBinding();
+    const finalMetadata = binding ? id3OrganizationFinalMetadataBinding(binding) : undefined;
+    if (
+      binding &&
+      (binding.state !== 'metadata_accepted' ||
+        finalMetadata?.jobId !== options.metadataJobId ||
+        finalMetadata?.resultRevision !== options.revision ||
+        (options.operationId !== undefined &&
+          options.operationId !== binding.operations.organization))
+    )
+      fail('journal_binding');
+    const evidence = decodeEvidence(options.sourceEvidence ?? options.manifest?.sourceEvidence);
+    const adopted = decodeOrganizationJobResponse(
+      await jsonPost(
+        '/metadata-organization-no-op-jobs',
+        {
+          ...target(),
+          destinationPolicy: 'id3-managed-v1',
+          operationId: binding?.operations.organization ?? options.operationId ?? randomUUID(),
+          metadataJobId: required(options.metadataJobId, 'metadata_job'),
+          sourceEvidence: evidence,
+        },
+        [202],
+        true,
+      ),
+    );
+    const trackId = required(options.trackId, 'track');
+    if (
+      adopted.job.stage !== 'succeeded' ||
+      adopted.job.trackId !== trackId ||
+      adopted.job.trackId !== adopted.job.newTrackId ||
+      adopted.job.errorCode !== null ||
+      adopted.job.nextOwner !== null
+    )
+      fail('response');
+    if (binding && options.stateFile)
+      checkpointId3OrganizationBatch(options.stateFile, binding.trackId, {
+        kind: 'organization',
+        jobId: adopted.job.id,
+        newTrackId: adopted.job.newTrackId,
+        serverStage: adopted.job.stage,
+      });
+    return adopted;
   }
   if (options.command === 'status') {
     const binding = batchBinding();
@@ -1327,6 +1500,9 @@ function parseArgs(argv: string[]) {
   const requiredManifest = values.get('required-manifest')
     ? readPrivateManifest(resolve(values.get('required-manifest')!))
     : undefined;
+  const replacementManifest = values.get('replacement-manifest')
+    ? readPrivateReplacementManifest(resolve(values.get('replacement-manifest')!))
+    : undefined;
   const result: Id3OrganizeCommandOptions = {
     command,
     api: required(values.get('api'), 'api'),
@@ -1345,6 +1521,7 @@ function parseArgs(argv: string[]) {
     ['playlist-id', 'playlistId'],
     ['skip-reason', 'skipReason'],
     ['reference-file', 'referenceFile'],
+    ['replacement-reference-file', 'replacementReferenceFile'],
     ['new-track-id', 'newTrackId'],
   ] as const;
   for (const [flag, property] of optional) {
@@ -1358,6 +1535,7 @@ function parseArgs(argv: string[]) {
   }
   if (manifest) result.manifest = manifest;
   if (requiredManifest) result.requiredManifest = requiredManifest;
+  if (replacementManifest) result.replacementManifest = replacementManifest;
   if (values.get('poll-attempts'))
     result.poll = {
       attempts: Number(values.get('poll-attempts')),
