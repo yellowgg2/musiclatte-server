@@ -721,6 +721,169 @@ export function createExternalWatchRepository(options: {
       );
       return readObservation(input.libraryId, input.relativeFileKey)!;
     },
+    finishClaim(input: {
+      libraryId: string;
+      relativeFileKey: string;
+      workerId: string;
+      generation: number;
+      state: 'settling' | 'rejected';
+      failureCode: string | null;
+      nextAttemptAt: number;
+    }) {
+      if (
+        !text(input.workerId) ||
+        !Number.isSafeInteger(input.generation) ||
+        input.generation < 1 ||
+        !integer(input.nextAttemptAt) ||
+        (input.failureCode !== null && !text(input.failureCode))
+      )
+        throw new Error('Invalid external observation claim');
+      const result = db
+        .prepare(
+          `UPDATE external_file_observations SET
+            state=?,failure_code=?,next_attempt_at=?,lease_owner=NULL,lease_expires_at=NULL
+           WHERE library_id=? AND relative_file_key=? AND lease_owner=? AND generation=?`,
+        )
+        .run(
+          input.state,
+          input.failureCode,
+          input.nextAttemptAt,
+          input.libraryId,
+          input.relativeFileKey,
+          input.workerId,
+          input.generation,
+        );
+      if (result.changes !== 1) throw new Error('External observation lease lost');
+      return readObservation(input.libraryId, input.relativeFileKey)!;
+    },
+    admitExternal(input: {
+      libraryId: string;
+      relativeFileKey: string;
+      accountDirectory: string;
+      identityKey: string;
+      instanceId: string;
+      policyRevision: number;
+      workerId: string;
+      generation: number;
+      fingerprint: ExternalFileFingerprint;
+      eventId: string;
+      mediaLinkId: string;
+    }): { status: 'admitted' | 'internal'; eventId?: string; mediaLinkId?: string } {
+      if (
+        !text(input.eventId) ||
+        !text(input.mediaLinkId) ||
+        !validFingerprint(input.fingerprint) ||
+        !Number.isSafeInteger(input.generation) ||
+        input.generation < 1
+      )
+        throw new Error('Invalid external admission');
+      return database.transaction(() => {
+        const owner = db
+          .prepare(
+            `SELECT 1 FROM external_watch_owners
+             WHERE library_id=? AND account_directory=? AND identity_key=?
+               AND instance_id=? AND policy_revision=?`,
+          )
+          .get(
+            input.libraryId,
+            input.accountDirectory,
+            input.identityKey,
+            input.instanceId,
+            input.policyRevision,
+          );
+        const observation = readObservation(input.libraryId, input.relativeFileKey);
+        const expected = {
+          device: losslessInteger(input.fingerprint.device),
+          inode: losslessInteger(input.fingerprint.inode),
+          size: losslessInteger(input.fingerprint.size),
+          mtimeNs: losslessInteger(input.fingerprint.mtimeNs),
+          ctimeNs: losslessInteger(input.fingerprint.ctimeNs),
+          linkCount: input.fingerprint.linkCount,
+        };
+        if (
+          !owner ||
+          !observation ||
+          observation.state !== 'settling' ||
+          observation.accountDirectory !== input.accountDirectory ||
+          observation.identityKey !== input.identityKey ||
+          observation.leaseOwner !== input.workerId ||
+          observation.generation !== input.generation ||
+          JSON.stringify(observation.fingerprint) !== JSON.stringify(expected)
+        )
+          throw new Error('External observation lease lost');
+        const internal = db
+          .prepare(
+            `SELECT 1 WHERE
+              EXISTS(
+                SELECT 1 FROM import_publish_intents p
+                JOIN import_items i ON i.id=p.item_id JOIN import_jobs j ON j.id=i.job_id
+                WHERE j.library_id=? AND p.relative_file_key=?
+              ) OR
+              EXISTS(
+                SELECT 1 FROM download_events e JOIN media_links m ON m.id=e.media_link_id
+                WHERE e.provenance='musiclatte' AND m.library_id=? AND m.relative_file_key=?
+              ) OR
+              EXISTS(
+                SELECT 1 FROM metadata_items i JOIN media_links m ON m.id=i.media_link_id
+                WHERE m.library_id=? AND m.relative_file_key=?
+              ) OR
+              EXISTS(
+                SELECT 1 FROM organization_jobs j JOIN organization_items i ON i.job_id=j.id
+                WHERE j.library_id=? AND (i.source_key=? OR i.target_key=?)
+              ) OR
+              EXISTS(
+                SELECT 1 FROM organization_source_locations s JOIN media_links m ON m.id=s.media_link_id
+                WHERE m.library_id=? AND (s.managed_key=? OR m.relative_file_key=?)
+              )`,
+          )
+          .get(
+            input.libraryId,
+            input.relativeFileKey,
+            input.libraryId,
+            input.relativeFileKey,
+            input.libraryId,
+            input.relativeFileKey,
+            input.libraryId,
+            input.relativeFileKey,
+            input.relativeFileKey,
+            input.libraryId,
+            input.relativeFileKey,
+            input.relativeFileKey,
+          );
+        if (internal) {
+          db.prepare(
+            `UPDATE external_file_observations SET
+              state='rejected',failure_code='internal_path',lease_owner=NULL,lease_expires_at=NULL
+             WHERE library_id=? AND relative_file_key=?`,
+          ).run(input.libraryId, input.relativeFileKey);
+          return { status: 'internal' as const };
+        }
+        let media = db
+          .prepare('SELECT id FROM media_links WHERE library_id=? AND relative_file_key=?')
+          .get(input.libraryId, input.relativeFileKey) as { id?: unknown } | undefined;
+        if (!media) {
+          db.prepare(
+            "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at,validated_at) VALUES(?,?,?,NULL,1,'unavailable',?,NULL)",
+          ).run(input.mediaLinkId, input.libraryId, input.relativeFileKey, now());
+          media = { id: input.mediaLinkId };
+        }
+        if (!text(media.id)) throw new Error('Storage unavailable');
+        const completedAt = now();
+        db.prepare(
+          `INSERT INTO download_events(
+            id,import_item_id,media_link_id,provenance,identity_key,library_id,
+            download_completed_at,registered_at
+          ) VALUES(?,NULL,?,'external',?,?,?,NULL)`,
+        ).run(input.eventId, media.id, input.identityKey, input.libraryId, completedAt);
+        db.prepare(
+          `UPDATE external_file_observations SET
+            state='registering',event_id=?,media_link_id=?,failure_code=NULL,
+            lease_owner=NULL,lease_expires_at=NULL,next_attempt_at=?
+           WHERE library_id=? AND relative_file_key=?`,
+        ).run(input.eventId, media.id, completedAt, input.libraryId, input.relativeFileKey);
+        return { status: 'admitted' as const, eventId: input.eventId, mediaLinkId: media.id };
+      });
+    },
     claimObservations(input: {
       workerId: string;
       leaseDurationMs: number;

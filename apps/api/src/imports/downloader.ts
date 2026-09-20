@@ -3,6 +3,7 @@ import { open, type FileHandle } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { runProcess } from './process-runner.js';
 import { resolveFileKey } from './file-keys.js';
+import { createMp3Inspector } from './mp3-inspector.js';
 
 export interface Engine {
   version: string;
@@ -51,6 +52,11 @@ export function createDownloader(options: {
   ffprobe: string;
   timeoutMs: number;
 }) {
+  const inspector = createMp3Inspector({
+    ffprobe: options.ffprobe,
+    cwd: options.stagingRoot,
+    timeoutMs: options.timeoutMs,
+  });
   const execute = async (
     executable: string,
     args: string[],
@@ -81,39 +87,8 @@ export function createDownloader(options: {
     }
   };
   const inspectAudio = async (file: FileHandle, signal: AbortSignal) => {
-    const info = json(
-      await execute(
-        options.ffprobe,
-        [
-          '-v',
-          'error',
-          '-protocol_whitelist',
-          'pipe',
-          '-show_entries',
-          'stream=codec_type,codec_name:format=format_name:format_tags=comment',
-          '-of',
-          'json',
-          '-i',
-          'pipe:0',
-        ],
-        options.stagingRoot,
-        signal,
-        file.fd,
-      ),
-    );
-    if (
-      !object(info) ||
-      !Array.isArray(info.streams) ||
-      !info.streams.some(
-        (stream) => object(stream) && stream.codec_type === 'audio' && stream.codec_name === 'mp3',
-      ) ||
-      !object(info.format) ||
-      info.format.format_name !== 'mp3' ||
-      !object(info.format.tags) ||
-      typeof info.format.tags.comment !== 'string'
-    )
-      return { valid: false, sourceId: '' };
-    const match = /^([A-Za-z0-9_-]{11})$/.exec(info.format.tags.comment);
+    const audio = await inspector.inspect(file, signal);
+    const match = audio.comment ? /^([A-Za-z0-9_-]{11})$/.exec(audio.comment) : null;
     return { valid: Boolean(match), sourceId: match?.[1] ?? '' };
   };
   const validateFile = async (root: string, key: string, sourceId: string, signal: AbortSignal) => {
