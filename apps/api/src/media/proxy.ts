@@ -6,6 +6,7 @@ import type { MediaTransportKind } from '@musiclatte/contracts';
 import { requiredCredentials } from '../auth/guards.js';
 import { ApiError, type SessionService } from '../auth/session-service.js';
 import { SubsonicError } from '../subsonic/errors.js';
+import { createConcurrencyLimit } from './concurrency.js';
 import {
   forwardMediaRequestHeaders,
   forwardMediaResponseHeaders,
@@ -13,6 +14,16 @@ import {
 } from './headers.js';
 
 const passthroughStatuses = new Set([200, 206, 304, 416]);
+const coverLimits = new WeakMap<SessionService, ReturnType<typeof createConcurrencyLimit>>();
+
+function coverLimit(service: SessionService) {
+  let limit = coverLimits.get(service);
+  if (!limit) {
+    limit = createConcurrencyLimit(6);
+    coverLimits.set(service, limit);
+  }
+  return limit;
+}
 
 async function discard(response: Response): Promise<void> {
   try {
@@ -84,13 +95,16 @@ export async function proxyMedia(
       controller.abort();
     }, service.options.timeoutMs);
     let response: Response;
+    let releaseCover: (() => void) | undefined;
     try {
+      if (kind === 'cover') releaseCover = await coverLimit(service).acquire(controller.signal);
       response = await fetch(upstreamRequest, { redirect: 'manual' });
     } catch {
       throw new SubsonicError(
         timedOut ? 'timeout' : controller.signal.aborted ? 'cancelled' : 'network',
       );
     } finally {
+      releaseCover?.();
       clearTimeout(timer);
     }
 

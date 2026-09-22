@@ -23,12 +23,21 @@ boundary, while logout, replacement, and upstream authentication rejection clear
 Subscriber-aware cancellation preserves a shared in-flight check while another caller remains and
 aborts it when every caller disconnects.
 
+The first production redeploy still reproduced 26 failures among 94 favorite covers. That matched
+the missing artwork count and showed that the remaining overload was the cover fetch itself, not
+identity verification. A third RED proved that 12 HTTP/2 cover requests all fanned out to Gonic at
+once. The final API path now admits at most six concurrent upstream cover-header requests, removes
+aborted waiters, and releases permits on every success or failure. Audio streams use a separate path
+and never wait behind cover art.
+
 ## Verification
 
 - Focused RED 1: received 8 concurrent identity requests instead of 1.
 - Focused RED 2: received 2 sequential-wave identity requests instead of 1.
+- Focused RED 3: observed 12 concurrent upstream cover requests instead of at most 6.
 - Unit GREEN: `media-proxy` covers concurrent sharing, sequential burst reuse, expiry, failure retry,
-  and subscriber cancellation.
+  subscriber cancellation, and bounded cover fan-out. `media-concurrency` covers queued aborts and
+  idempotent permit release.
 - Contract GREEN: `media-transport`; 2 tests passed.
 - `npm run typecheck`, `npm run build`, `npm run format:check`, and `git diff --check` passed.
 

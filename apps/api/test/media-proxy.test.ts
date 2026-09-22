@@ -160,6 +160,31 @@ describe('authenticated media proxy', () => {
     expect(context.mediaRequests).toHaveLength(1);
   });
 
+  /** HTTP/2 cover bursts cannot fan out without bound into the upstream music server. */
+  it('should bound concurrent upstream cover requests', async () => {
+    const context = await makeSUT(5_000);
+    let releaseMedia!: () => void;
+    const mediaGate = new Promise<void>((resolve) => {
+      releaseMedia = resolve;
+    });
+    context.state.mediaResponseGate = () => mediaGate;
+    const pending = Array.from({ length: 12 }, (_, index) =>
+      context.app.inject({
+        url: `/api/v1/media/cover/cover-${index}`,
+        headers: context.headers,
+      }),
+    );
+    await expect.poll(() => context.mediaRequests.length).toBeGreaterThanOrEqual(6);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const concurrentUpstreamRequests = context.mediaRequests.length;
+    releaseMedia();
+    const responses = await Promise.all(pending);
+
+    expect(concurrentUpstreamRequests).toBeLessThanOrEqual(6);
+    expect(responses.map((response) => response.statusCode)).toEqual(Array(12).fill(200));
+    expect(context.mediaRequests).toHaveLength(12);
+  });
+
   /** A single byte range preserves opaque identity, status, body and seek headers. */
   it('should stream an exact byte range without exposing upstream credentials or headers', async () => {
     const context = await makeSUT();

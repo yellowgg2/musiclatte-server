@@ -135,6 +135,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     mediaContentType: '',
     mediaRedirect: '',
     mediaStallHeaders: false,
+    mediaResponseGate: undefined as (() => Promise<void>) | undefined,
     mediaStallAfterFirstChunk: false,
     closedMediaRequests: 0,
   };
@@ -147,7 +148,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     ifModifiedSince?: string;
     ifRange?: string;
   }[] = [];
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     requests.push(url);
     if (state.stall) return;
@@ -279,6 +280,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
         if (!res.writableFinished) state.closedMediaRequests += 1;
       });
       if (state.mediaStallHeaders) return;
+      await state.mediaResponseGate?.();
       if (state.mediaRedirect) {
         res.writeHead(302, { location: state.mediaRedirect });
         res.end('synthetic-secret-media-redirect');
