@@ -16,6 +16,16 @@ import {
 const passthroughStatuses = new Set([200, 206, 304, 416]);
 const coverLimits = new WeakMap<SessionService, ReturnType<typeof createConcurrencyLimit>>();
 
+export function safeMediaFailure(kind: string, stage: string, classification: string) {
+  return JSON.stringify({ event: 'media_proxy_failure', kind, stage, classification });
+}
+
+function failureClassification(error: unknown) {
+  if (error instanceof ApiError) return `api:${error.status}:${error.code}`;
+  if (error instanceof SubsonicError) return `subsonic:${error.kind}:${error.httpStatus ?? 'none'}`;
+  return error instanceof Error ? `error:${error.name}` : 'unknown';
+}
+
 function coverLimit(service: SessionService) {
   let limit = coverLimits.get(service);
   if (!limit) {
@@ -65,14 +75,18 @@ export async function proxyMedia(
   let raw: string | undefined;
   let streaming = false;
   let releaseCover: (() => void) | undefined;
+  let stage = 'identity';
   try {
     const verified = await service.verify(auth.token, auth.scheme, {
       signal: controller.signal,
       reuseIdentity: true,
     });
     raw = verified.session.raw;
+    stage = 'queue';
     if (kind === 'cover') releaseCover = await coverLimit(service).acquire(controller.signal);
+    stage = 'authorize';
     await options?.authorize?.(verified);
+    stage = 'options';
     const streamOptions = await options?.streamOptions?.(verified, controller.signal);
     const range = options?.freshCover ? undefined : request.headers.range;
     if (range !== undefined && typeof range !== 'string')
@@ -98,6 +112,7 @@ export async function proxyMedia(
     }, service.options.timeoutMs);
     let response: Response;
     try {
+      stage = 'fetch';
       response = await fetch(upstreamRequest, { redirect: 'manual' });
     } catch {
       throw new SubsonicError(
@@ -107,6 +122,7 @@ export async function proxyMedia(
       clearTimeout(timer);
     }
 
+    stage = 'validate';
     service.find(auth.token, auth.scheme);
     if (
       !passthroughStatuses.has(response.status) ||
@@ -151,6 +167,8 @@ export async function proxyMedia(
     streaming = true;
     return reply.send(body);
   } catch (error) {
+    if (process.env.NODE_ENV === 'production')
+      process.stderr.write(`${safeMediaFailure(kind, stage, failureClassification(error))}\n`);
     if (error instanceof ApiError) throw error;
     if (error instanceof SubsonicError) {
       if (error.kind === 'invalid_request') throw new ApiError(400, 'invalid_request');
