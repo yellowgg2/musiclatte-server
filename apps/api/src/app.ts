@@ -41,6 +41,20 @@ export function readConfig(env: Record<string, string | undefined>) {
 }
 
 import { registerAccessTokenRoutes } from './routes/access-tokens.js';
+export function safeServerFailure(
+  method: string,
+  route: string | undefined,
+  status: number,
+  error: { code: string },
+) {
+  return JSON.stringify({
+    event: 'api_failure',
+    method,
+    route: route ?? '<unmatched>',
+    status,
+    code: error.code,
+  });
+}
 export function createApp(options?: AuthOptions) {
   const app = Fastify({
     logger: false,
@@ -67,6 +81,10 @@ export function createApp(options?: AuthOptions) {
             ? new ApiError(status, 'invalid_request')
             : new ApiError(500, 'internal_error');
     const activeService = service;
+    if (process.env.NODE_ENV === 'production' && safe.status >= 500)
+      process.stderr.write(
+        `${safeServerFailure(request.method, request.routeOptions.url, safe.status, safe)}\n`,
+      );
     if (
       safe.status === 401 &&
       activeService &&

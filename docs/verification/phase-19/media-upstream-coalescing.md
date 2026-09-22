@@ -38,6 +38,8 @@ and never wait behind cover art.
 - Unit GREEN: `media-proxy` covers concurrent sharing, sequential burst reuse, expiry, failure retry,
   subscriber cancellation, and bounded cover fan-out. `media-concurrency` covers queued aborts and
   idempotent permit release.
+- Production 5xx diagnostics record only the controlled route template, method, status, and public
+  error code; request URLs, identifiers, headers, credentials, and upstream bodies remain excluded.
 - Contract GREEN: `media-transport`; 2 tests passed.
 - `npm run typecheck`, `npm run build`, `npm run format:check`, and `git diff --check` passed.
 
