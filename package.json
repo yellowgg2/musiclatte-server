@@ -24,6 +24,7 @@
     "dev:api": "npm run dev -w @musiclatte/api --",
     "id3:organize": "tsx tools/id3-organize-client.ts",
     "verify:id3-organization-runtime": "tsx tools/verification/id3-organization-runtime-probe.ts",
+    "verify:background-load-status": "tsx tools/verification/background-load-status.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
