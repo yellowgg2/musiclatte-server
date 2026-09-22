@@ -104,9 +104,10 @@ it('formats an identifier-free inventory batch summary', async () => {
     succeeded: 2,
     retryScheduled: 1,
     terminal: 1,
+    durationMs: 321,
   });
   expect(message).toBe(
-    'curation_inventory_batch processed=4 succeeded=2 retry_scheduled=1 terminal=1\n',
+    'curation_inventory_batch processed=4 succeeded=2 retry_scheduled=1 terminal=1 duration_ms=321\n',
   );
   expect(message).not.toMatch(/track|path|title|token|account|opaque/i);
 });
@@ -145,6 +146,12 @@ it('resumes inventory checkpoints, re-verifies stale restores immediately and st
     await second.cycle(new AbortController().signal);
     expect(roots).toBe(1);
     c.storage.db.connection.prepare("UPDATE curation_inventory_runs SET status='stale'").run();
+    await second.cycle(new AbortController().signal);
+    expect(roots).toBe(1);
+    c.setNow(c.clock() + 59_999);
+    await second.cycle(new AbortController().signal);
+    expect(roots).toBe(1);
+    c.setNow(c.clock() + 1);
     await second.cycle(new AbortController().signal);
     expect(roots).toBe(2);
     const abort = new AbortController();

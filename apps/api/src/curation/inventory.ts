@@ -41,7 +41,7 @@ export function createCurationInventory(options: CurationInventoryOptions) {
     itemTimeoutMs: [itemTimeoutMs, 120000],
     batchTimeMs: [options.batchTimeMs, 300000],
     retryIntervalMs: [retryIntervalMs, 86400000],
-    sweepIntervalMs: [options.sweepIntervalMs, 86400000],
+    sweepIntervalMs: [options.sweepIntervalMs, 2592000000],
     maxQueueItems: [options.maxQueueItems, 1000000],
   } as const;
   for (const [value, max] of Object.values(bounded))

@@ -11,12 +11,13 @@
       "snapshotMaxCount": 100
     },
     "inventory": {
-      "batchSize": 10,
+      "batchSize": 2,
       "itemTimeoutMs": 20000,
-      "batchTimeMs": 60000,
+      "batchTimeMs": 30000,
+      "batchCooldownMs": 60000,
       "retryIntervalMs": 600000,
       "maxRetryAttempts": 2,
-      "sweepIntervalMs": 86400000,
+      "sweepIntervalMs": 2592000000,
       "maxQueueItems": 10000
     }
   },

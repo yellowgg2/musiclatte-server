@@ -29,6 +29,7 @@ export interface CurationRuntimePolicy {
     batchSize: number;
     itemTimeoutMs: number;
     batchTimeMs: number;
+    batchCooldownMs: number;
     retryIntervalMs: number;
     maxRetryAttempts: number;
     sweepIntervalMs: number;
@@ -124,34 +125,50 @@ export function readAutomationConfig(env: Record<string, string | undefined>):
       'sweepIntervalMs',
       'maxQueueItems',
     ];
+    const currentInventoryKeys = [
+      'batchSize',
+      'itemTimeoutMs',
+      'batchTimeMs',
+      'batchCooldownMs',
+      'retryIntervalMs',
+      'maxRetryAttempts',
+      'sweepIntervalMs',
+      'maxQueueItems',
+    ];
     const keys =
       inventoryKeyCount === legacyInventoryKeys.length
         ? legacyInventoryKeys
-        : explicitInventoryKeys;
+        : inventoryKeyCount === explicitInventoryKeys.length
+          ? explicitInventoryKeys
+          : currentInventoryKeys;
     const decodedInventory = curationRecord(c.inventory, keys);
     const inventory =
       keys === legacyInventoryKeys
         ? {
             ...decodedInventory,
             itemTimeoutMs: decodedInventory.batchTimeMs,
+            batchCooldownMs: 60_000,
             retryIntervalMs: 1,
             maxRetryAttempts: 0,
           }
-        : decodedInventory;
+        : keys === explicitInventoryKeys
+          ? { ...decodedInventory, batchCooldownMs: 60_000 }
+          : decodedInventory;
     const max = {
       batchSize: 100,
       itemTimeoutMs: 120000,
       batchTimeMs: 300000,
+      batchCooldownMs: 3600000,
       retryIntervalMs: 86400000,
       maxRetryAttempts: 10,
-      sweepIntervalMs: 86400000,
+      sweepIntervalMs: 2592000000,
       maxQueueItems: 1000000,
     };
     for (const [key, value] of Object.entries(inventory))
       if (
         typeof value !== 'number' ||
         !Number.isSafeInteger(value) ||
-        value < (key === 'maxRetryAttempts' ? 0 : 1) ||
+        value < (key === 'maxRetryAttempts' ? 0 : key === 'batchCooldownMs' ? 1000 : 1) ||
         value > max[key as keyof typeof max]
       )
         throw new Error();

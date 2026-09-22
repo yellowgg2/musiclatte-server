@@ -24,8 +24,9 @@ export function curationInventoryBatchLog(summary: {
   succeeded: number;
   retryScheduled: number;
   terminal: number;
+  durationMs: number;
 }): string {
-  return `curation_inventory_batch processed=${summary.processed} succeeded=${summary.succeeded} retry_scheduled=${summary.retryScheduled} terminal=${summary.terminal}\n`;
+  return `curation_inventory_batch processed=${summary.processed} succeeded=${summary.succeeded} retry_scheduled=${summary.retryScheduled} terminal=${summary.terminal} duration_ms=${summary.durationMs}\n`;
 }
 
 export function configuredMediaFence(
@@ -108,12 +109,28 @@ export function createCurationScheduler(options: {
       if (message) process.stderr.write(message);
     },
   });
+  const batchCooldownMs = options.policy.inventory.batchCooldownMs ?? 60_000;
+  let nextInventoryAt = 0;
   return {
     repository,
     inventory,
     async cycle(signal: AbortSignal) {
       if (signal.aborted) return false;
-      return (await inventory.runBatch(signal)).processed > 0;
+      const startedAt = options.clock();
+      if (startedAt < nextInventoryAt) return false;
+      try {
+        const summary = await inventory.runBatch(signal);
+        if (summary.processed > 0)
+          process.stderr.write(
+            curationInventoryBatchLog({
+              ...summary,
+              durationMs: Math.max(0, options.clock() - startedAt),
+            }),
+          );
+        return summary.processed > 0;
+      } finally {
+        nextInventoryAt = options.clock() + batchCooldownMs;
+      }
     },
   };
 }

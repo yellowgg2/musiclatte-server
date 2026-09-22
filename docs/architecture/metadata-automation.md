@@ -111,8 +111,15 @@ POST track curation complete requires a live required-review claim and fresh fil
 The opt-in automation overlay supplies a strictly bounded `required-v1` policy and a private
 shared fence volume to API/P4/P3 under the same UID/GID. Inventory runs as the final bounded
 metadata scheduler turn, forwards cancellation and resumes durable checkpoints. Stale restored
-inventory restarts discovery immediately. Capability availability includes actual worker health
-and inventory readiness. API keeps read-only music and no worker backup/credential mounts.
+inventory restarts discovery at the next eligible inventory batch. Inventory alone has a bounded
+batch cooldown (60 seconds when omitted by compatible four-key or seven-key policies), so recover,
+organization, file and reflection turns continue while curation waits. Durable source events are
+consumed before full discovery work, and normal import/metadata/organization changes therefore wait
+at most one cooldown. A ready generation starts an automatic full safety sweep only after the
+configured interval, now bounded up to 30 days; an explicit stale request bypasses that interval but
+not the batch cooldown. Nonzero batches log only processed/succeeded/retry/terminal counts and
+duration. Capability availability includes actual worker health and inventory readiness. API keeps
+read-only music and no worker backup/credential mounts.
 
 Completed backup artifacts are checkpointed and sealed in DELETE journal mode before verification
 so read-only restoration does not depend on WAL shared-memory sidecars. Only the new snapshot is

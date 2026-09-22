@@ -87,6 +87,7 @@ it('normalizes the legacy inventory policy without enabling retries', () => {
       inventory: {
         ...policy.curation.inventory,
         itemTimeoutMs: policy.curation.inventory.batchTimeMs,
+        batchCooldownMs: 60_000,
         retryIntervalMs: 1,
         maxRetryAttempts: 0,
       },
@@ -106,7 +107,12 @@ it('loads the explicit inventory timeout and retry policy and rejects invalid co
     maxQueueItems: 10_000,
   };
   expect(read({ ...policy, curation: { ...policy.curation, inventory } })).toMatchObject({
-    curation: { inventory },
+    curation: { inventory: { ...inventory, batchCooldownMs: 60_000 } },
+  });
+
+  const current = { ...inventory, batchCooldownMs: 60_000, sweepIntervalMs: 2_592_000_000 };
+  expect(read({ ...policy, curation: { ...policy.curation, inventory: current } })).toMatchObject({
+    curation: { inventory: current },
   });
 
   for (const invalid of [
@@ -116,6 +122,9 @@ it('loads the explicit inventory timeout and retry policy and rejects invalid co
     { ...inventory, maxRetryAttempts: 11 },
     { ...inventory, maxRetryAttempts: -1 },
     { ...inventory, sweepIntervalMs: 59_999 },
+    { ...current, batchCooldownMs: 999 },
+    { ...current, batchCooldownMs: 3_600_001 },
+    { ...current, sweepIntervalMs: 2_592_000_001 },
     { ...inventory, unexpected: 1 },
   ]) {
     expect(() => read({ ...policy, curation: { ...policy.curation, inventory: invalid } })).toThrow(
