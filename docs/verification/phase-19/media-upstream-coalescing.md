@@ -1,4 +1,4 @@
-# Phase 19 follow-up — media upstream identity coalescing
+# Phase 19 follow-up — media upstream diagnosis
 
 ## Production observation
 
@@ -23,25 +23,37 @@ boundary, while logout, replacement, and upstream authentication rejection clear
 Subscriber-aware cancellation preserves a shared in-flight check while another caller remains and
 aborts it when every caller disconnects.
 
-The first production redeploy still reproduced 26 failures among 94 favorite covers. That matched
-the missing artwork count and showed that the remaining overload was the cover fetch itself, not
-identity verification. A third RED proved that 12 HTTP/2 cover requests all fanned out to Gonic at
-once. The final API path serializes upstream cover authorization and the complete response body,
-removes aborted waiters, and releases permits on every end, close, or failure. Holding the permit
-only through response headers still reproduced the 26 failures because image bodies overlapped.
-Audio streams use a separate path and never wait behind cover art.
+The next production redeploy still reproduced exactly 26 failures among 94 favorite covers.
+Serializing cover fetches, including the complete response body, did not change that count and
+falsified the overload hypothesis. The serial limiter was therefore removed rather than retaining a
+normal-path throughput regression.
+
+A private in-container probe then requested the same 94 unique cover IDs directly from Gonic. All
+94 responses used HTTP 200: 56 were JPEG, 12 were PNG, and the remaining 26 were JSON Subsonic
+failure envelopes. Every JSON envelope used error code 0 and a message identifying a cover decode
+failure. The API had correctly rejected JSON as media but had classified every such item-level
+failure as a retryable upstream outage.
+
+The final RED fixes that semantic boundary. A bounded 16 KiB parser recognizes only an HTTP 200
+JSON Subsonic failure with code 0 whose message identifies both cover and decode. That known
+undecodable artwork becomes the existing sanitized `404 not_found` response so clients can retain
+their normal artwork fallback. Unknown JSON, malformed bodies, oversized bodies, and other media
+failures remain sanitized `503 upstream_unavailable` responses. Upstream bodies and messages are
+never returned or logged.
 
 ## Verification
 
 - Focused RED 1: received 8 concurrent identity requests instead of 1.
 - Focused RED 2: received 2 sequential-wave identity requests instead of 1.
-- Focused RED 3: observed 12 concurrent upstream cover requests instead of at most 6.
+- Focused production falsification: cover serialization still returned the same 26 failures.
+- Focused final RED: a known Gonic cover decode envelope returned 503 instead of 404.
 - Unit GREEN: `media-proxy` covers concurrent sharing, sequential burst reuse, expiry, failure retry,
-  subscriber cancellation, and bounded cover fan-out. `media-concurrency` covers queued aborts and
-  idempotent permit release.
+  subscriber cancellation, exact decode-error mapping, unknown-error preservation, and response
+  sanitization.
 - Production 5xx diagnostics record only the controlled route template, method, status, and public
   error code; request URLs, identifiers, headers, credentials, and upstream bodies remain excluded.
 - Contract GREEN: `media-transport`; 2 tests passed.
 - `npm run typecheck`, `npm run build`, `npm run format:check`, and `git diff --check` passed.
 
-No public route, response schema, UI, locale, policy, database schema, or media file behavior changed.
+No public route, response schema, UI, locale, policy, database schema, or media file changed. Only
+the status/code classification of the known item-level Gonic cover decode failure changed.

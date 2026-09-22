@@ -160,56 +160,6 @@ describe('authenticated media proxy', () => {
     expect(context.mediaRequests).toHaveLength(1);
   });
 
-  /** HTTP/2 cover bursts cannot fan out without bound into the upstream music server. */
-  it('should bound concurrent upstream cover requests', async () => {
-    const context = await makeSUT(5_000);
-    let releaseMedia!: () => void;
-    const mediaGate = new Promise<void>((resolve) => {
-      releaseMedia = resolve;
-    });
-    context.state.mediaResponseGate = () => mediaGate;
-    const pending = Array.from({ length: 12 }, (_, index) =>
-      context.app.inject({
-        url: `/api/v1/media/cover/cover-${index}`,
-        headers: context.headers,
-      }),
-    );
-    await expect.poll(() => context.mediaRequests.length).toBeGreaterThanOrEqual(1);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const concurrentUpstreamRequests = context.mediaRequests.length;
-    releaseMedia();
-    const responses = await Promise.all(pending);
-
-    expect(concurrentUpstreamRequests).toBeLessThanOrEqual(1);
-    expect(responses.map((response) => response.statusCode)).toEqual(Array(12).fill(200));
-    expect(context.mediaRequests).toHaveLength(12);
-  });
-
-  /** A cover permit stays occupied until its response body closes, not merely until headers arrive. */
-  it('should hold the cover permit through response body streaming', async () => {
-    const context = await makeSUT(5_000);
-    const address = await context.app.listen({ port: 0, host: '127.0.0.1' });
-    context.state.mediaStallAfterFirstChunk = true;
-    const firstController = new AbortController();
-    const first = await fetch(`${address}/api/v1/media/cover/cover-1`, {
-      headers: context.headers,
-      signal: firstController.signal,
-    });
-    expect((await first.body!.getReader().read()).done).toBe(false);
-    const secondController = new AbortController();
-    const second = fetch(`${address}/api/v1/media/cover/cover-2`, {
-      headers: context.headers,
-      signal: secondController.signal,
-    }).catch(() => undefined);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const concurrentUpstreamRequests = context.mediaRequests.length;
-    firstController.abort();
-    secondController.abort();
-    await second;
-
-    expect(concurrentUpstreamRequests).toBe(1);
-  });
-
   /** A single byte range preserves opaque identity, status, body and seek headers. */
   it('should stream an exact byte range without exposing upstream credentials or headers', async () => {
     const context = await makeSUT();
@@ -349,6 +299,46 @@ describe('authenticated media proxy', () => {
     expect(result.body).not.toContain('synthetic-secret');
     expect(result.headers).not.toHaveProperty('location');
     expect(context.mediaRequests).toHaveLength(1);
+  });
+
+  /** Gonic reports an undecodable embedded cover as a successful JSON Subsonic failure. */
+  it('should map a known undecodable cover response to a sanitized not-found error', async () => {
+    const context = await makeSUT();
+    context.state.mediaJsonError = {
+      code: 0,
+      message: 'synthetic-secret: failed to decode cover art',
+    };
+    const result = await context.app.inject({
+      url: '/api/v1/media/cover/cover-1',
+      headers: context.headers,
+    });
+
+    expect(result.statusCode).toBe(404);
+    expect(result.json()).toEqual({
+      schemaVersion: 1,
+      error: { code: 'not_found', retryable: false },
+    });
+    expect(result.body).not.toContain('synthetic-secret');
+  });
+
+  /** Unknown JSON success bodies remain upstream failures instead of hiding server faults. */
+  it('should preserve an unknown cover JSON error as a sanitized upstream failure', async () => {
+    const context = await makeSUT();
+    context.state.mediaJsonError = {
+      code: 0,
+      message: 'synthetic-secret: unrelated internal failure',
+    };
+    const result = await context.app.inject({
+      url: '/api/v1/media/cover/cover-1',
+      headers: context.headers,
+    });
+
+    expect(result.statusCode).toBe(503);
+    expect(result.json()).toEqual({
+      schemaVersion: 1,
+      error: { code: 'upstream_unavailable', retryable: true },
+    });
+    expect(result.body).not.toContain('synthetic-secret');
   });
 
   /** A media authentication rejection revokes the stale session and clears its cookie. */

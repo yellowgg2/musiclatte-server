@@ -6,7 +6,6 @@ import type { MediaTransportKind } from '@musiclatte/contracts';
 import { requiredCredentials } from '../auth/guards.js';
 import { ApiError, type SessionService } from '../auth/session-service.js';
 import { SubsonicError } from '../subsonic/errors.js';
-import { createConcurrencyLimit } from './concurrency.js';
 import {
   forwardMediaRequestHeaders,
   forwardMediaResponseHeaders,
@@ -14,7 +13,7 @@ import {
 } from './headers.js';
 
 const passthroughStatuses = new Set([200, 206, 304, 416]);
-const coverLimits = new WeakMap<SessionService, ReturnType<typeof createConcurrencyLimit>>();
+const subsonicErrorBodyLimit = 16 * 1024;
 
 export function safeMediaFailure(kind: string, stage: string, classification: string) {
   return JSON.stringify({ event: 'media_proxy_failure', kind, stage, classification });
@@ -26,21 +25,70 @@ function failureClassification(error: unknown) {
   return error instanceof Error ? `error:${error.name}` : 'unknown';
 }
 
-function coverLimit(service: SessionService) {
-  let limit = coverLimits.get(service);
-  if (!limit) {
-    limit = createConcurrencyLimit(1);
-    coverLimits.set(service, limit);
-  }
-  return limit;
-}
-
 async function discard(response: Response): Promise<void> {
   try {
     await response.body?.cancel();
   } catch {
     /* The response is already unusable and will not be exposed. */
   }
+}
+
+function object(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+async function boundedJson(response: Response): Promise<unknown> {
+  const declaredLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > subsonicErrorBodyLimit) {
+    await discard(response);
+    return undefined;
+  }
+  const reader = response.body?.getReader();
+  if (!reader) return undefined;
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      length += result.value.byteLength;
+      if (length > subsonicErrorBodyLimit) {
+        await reader.cancel();
+        return undefined;
+      }
+      chunks.push(result.value);
+    }
+  } catch {
+    return undefined;
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  } catch {
+    return undefined;
+  }
+}
+
+async function isUndecodableCover(response: Response): Promise<boolean> {
+  const envelope = object(object(await boundedJson(response))?.['subsonic-response']);
+  const error = object(envelope?.error);
+  const message = error?.message;
+  return (
+    envelope?.status === 'failed' &&
+    error?.code === 0 &&
+    typeof message === 'string' &&
+    /cover/i.test(message) &&
+    /decode/i.test(message)
+  );
 }
 
 export async function proxyMedia(
@@ -74,7 +122,6 @@ export async function proxyMedia(
 
   let raw: string | undefined;
   let streaming = false;
-  let releaseCover: (() => void) | undefined;
   let stage = 'identity';
   try {
     const verified = await service.verify(auth.token, auth.scheme, {
@@ -82,8 +129,6 @@ export async function proxyMedia(
       reuseIdentity: true,
     });
     raw = verified.session.raw;
-    stage = 'queue';
-    if (kind === 'cover') releaseCover = await coverLimit(service).acquire(controller.signal);
     stage = 'authorize';
     await options?.authorize?.(verified);
     stage = 'options';
@@ -136,6 +181,13 @@ export async function proxyMedia(
       (response.status === 200 || response.status === 206) &&
       !validMediaType(kind, response.headers.get('content-type'))
     ) {
+      if (
+        kind === 'cover' &&
+        response.status === 200 &&
+        /^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '') &&
+        (await isUndecodableCover(response))
+      )
+        throw new ApiError(404, 'not_found');
       await discard(response);
       throw new SubsonicError('invalid_response');
     }
@@ -156,14 +208,9 @@ export async function proxyMedia(
     if (!response.body) throw new SubsonicError('invalid_response');
 
     const body = Readable.from(response.body);
-    const finish = () => {
-      releaseCover?.();
-      releaseCover = undefined;
-      cleanup();
-    };
-    body.once('end', finish);
-    body.once('close', finish);
-    body.once('error', finish);
+    body.once('end', cleanup);
+    body.once('close', cleanup);
+    body.once('error', cleanup);
     streaming = true;
     return reply.send(body);
   } catch (error) {
@@ -177,9 +224,6 @@ export async function proxyMedia(
     }
     return service.rejectUpstream(error, raw);
   } finally {
-    if (!streaming) {
-      releaseCover?.();
-      cleanup();
-    }
+    if (!streaming) cleanup();
   }
 }

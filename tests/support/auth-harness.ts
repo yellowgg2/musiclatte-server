@@ -133,9 +133,9 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     mutationMismatch: false,
     mediaStatus: 0,
     mediaContentType: '',
+    mediaJsonError: undefined as { code: number; message: string } | undefined,
     mediaRedirect: '',
     mediaStallHeaders: false,
-    mediaResponseGate: undefined as (() => Promise<void>) | undefined,
     mediaStallAfterFirstChunk: false,
     closedMediaRequests: 0,
   };
@@ -148,7 +148,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     ifModifiedSince?: string;
     ifRange?: string;
   }[] = [];
-  const server = createServer(async (req, res) => {
+  const server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     requests.push(url);
     if (state.stall) return;
@@ -280,7 +280,6 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
         if (!res.writableFinished) state.closedMediaRequests += 1;
       });
       if (state.mediaStallHeaders) return;
-      await state.mediaResponseGate?.();
       if (state.mediaRedirect) {
         res.writeHead(302, { location: state.mediaRedirect });
         res.end('synthetic-secret-media-redirect');
@@ -293,6 +292,15 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
           location: 'https://synthetic-secret.example.test/login',
         });
         res.end('<html>synthetic-secret-media-error</html>');
+        return;
+      }
+      if (state.mediaJsonError) {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify(
+            subsonicErrorFixture(state.mediaJsonError.code, state.mediaJsonError.message),
+          ),
+        );
         return;
       }
       const body = operation === 'stream' ? syntheticAudioFixture : syntheticCoverFixture;
