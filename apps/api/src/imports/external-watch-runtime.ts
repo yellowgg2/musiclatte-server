@@ -13,7 +13,8 @@ import { createExternalRegistrationService } from './external-registration-servi
 export const externalWatchIntervals = Object.freeze({
   coalesceMs: 250,
   dueMs: 5_000,
-  reconcileMs: 60_000,
+  watcherRefreshMs: 60_000,
+  safetyReconcileMs: 21_600_000,
 });
 
 interface WatchHandle {
@@ -224,7 +225,7 @@ export function createExternalWatchRuntime(options: ExternalWatchRuntimeOptions)
   };
   const refreshWatchers = (active: RuntimeMapping, at: number) => {
     if (at < nextWatcherRefreshAt) return;
-    nextWatcherRefreshAt = at + externalWatchIntervals.reconcileMs;
+    nextWatcherRefreshAt = at + externalWatchIntervals.watcherRefreshMs;
     for (const owner of active.owners) {
       const key = ownerKey(owner.libraryId, owner.accountDirectory);
       if (watchers.has(key)) continue;
@@ -251,7 +252,7 @@ export function createExternalWatchRuntime(options: ExternalWatchRuntimeOptions)
           nextInventory.set(key, Math.min(nextInventory.get(key) ?? due, due));
           nextWatcherRefreshAt = Math.min(
             nextWatcherRefreshAt,
-            now() + externalWatchIntervals.reconcileMs,
+            now() + externalWatchIntervals.watcherRefreshMs,
           );
           emit({ event: 'external_watch_listener', failureCode: 'watch_unavailable' });
         });
@@ -287,13 +288,21 @@ export function createExternalWatchRuntime(options: ExternalWatchRuntimeOptions)
         const key = ownerKey(target.libraryId, target.accountDirectory);
         try {
           const result = inventory.reconcile(target);
+          const blockedRetry =
+            result.status === 'blocked'
+              ? repository.getRoot(target.libraryId, target.accountDirectory)?.nextReconcileAt
+              : undefined;
           nextInventory.set(
             key,
-            result.status === 'progress' ? at : at + externalWatchIntervals.reconcileMs,
+            result.status === 'progress'
+              ? at
+              : result.status === 'blocked'
+                ? (blockedRetry ?? at + externalWatchIntervals.watcherRefreshMs)
+                : at + externalWatchIntervals.safetyReconcileMs,
           );
           emit({ event: 'external_watch_inventory', count: result.processed });
         } catch {
-          nextInventory.set(key, at + externalWatchIntervals.reconcileMs);
+          nextInventory.set(key, at + externalWatchIntervals.watcherRefreshMs);
           emit({ event: 'external_watch_inventory', failureCode: 'inventory_unavailable' });
         }
         return true;

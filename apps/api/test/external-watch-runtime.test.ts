@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createTestContext } from '../../../tests/support/session-storage-harness.js';
@@ -69,6 +69,24 @@ async function makeSUT(options: { owner?: boolean; directory?: boolean } = {}) {
       inventory: {
         reconcile(target: { libraryId: string; accountDirectory: string }) {
           inventory.push(target);
+          if (!existsSync(join(musicRoot, 'user', target.accountDirectory))) {
+            repository.ensureRoot({
+              libraryId: target.libraryId,
+              accountDirectory: target.accountDirectory,
+              identityKey: 'a'.repeat(64),
+            });
+            repository.failRootScan({
+              libraryId: target.libraryId,
+              accountDirectory: target.accountDirectory,
+              failureCode: 'root_unavailable',
+              nextReconcileAt: now + 30_000,
+            });
+            return {
+              status: 'blocked' as const,
+              processed: 0,
+              failureCode: 'root_unavailable',
+            };
+          }
           return { status: 'complete' as const, processed: 0 };
         },
       },
@@ -120,7 +138,7 @@ async function makeSUT(options: { owner?: boolean; directory?: boolean } = {}) {
 }
 
 describe('external watch runtime scheduling', () => {
-  it('should coalesce watch hints, reconcile periodically and close listeners', async () => {
+  it('should coalesce watch hints, refresh watchers and reconcile at the safety boundary', async () => {
     const s = await makeSUT();
     if (!s) return;
     expect(await s.runtime.runOnce()).toBe(true);
@@ -136,6 +154,9 @@ describe('external watch runtime scheduling', () => {
     s.advance(59_999);
     expect(await s.runtime.runOnce()).toBe(false);
     s.advance(1);
+    expect(await s.runtime.runOnce()).toBe(false);
+    expect(s.inventory).toHaveLength(2);
+    s.advance(21_540_000);
     expect(await s.runtime.runOnce()).toBe(true);
     expect(s.inventory).toHaveLength(3);
     await s.runtime.close();
@@ -148,8 +169,12 @@ describe('external watch runtime scheduling', () => {
     expect(await s.runtime.runOnce()).toBe(true);
     expect(s.watchers).toHaveLength(0);
     mkdirSync(join(s.musicRoot, 'user', 'alice'), { recursive: true });
-    s.advance(60_000);
+    s.advance(30_000);
     expect(await s.runtime.runOnce()).toBe(true);
+    expect(s.inventory).toHaveLength(2);
+    expect(s.watchers).toHaveLength(0);
+    s.advance(30_000);
+    expect(await s.runtime.runOnce()).toBe(false);
     expect(s.watchers).toHaveLength(1);
     expect(s.inventory).toHaveLength(2);
   });

@@ -21,7 +21,7 @@ The first traversal is a baseline. Existing MP3 files are deliberately excluded 
 After baseline completion, use a newly named synthetic MP3 that you are authorized to store:
 
 1. Copy it into the enabled user's account directory, not a shared/root folder.
-2. Leave the file unchanged for at least 10 seconds. Watch hints may accelerate discovery, but allow 60 seconds for periodic reconciliation when testing missed-event recovery.
+2. Leave the file unchanged for at least 10 seconds. Watch hints normally start inventory after 250 ms. Watcher attachment is retried every 60 seconds, but that refresh does not run inventory. To test a deliberately missed event on an already active root, allow the six-hour safety reconciliation boundary; a missing or blocked root keeps its shorter durable retry.
 3. Confirm recent history first shows `registering`, then `ready` only after Gonic scan and exact path registration.
 4. Confirm another account cannot see the event and the public response contains no path, provenance, or username.
 5. Delete the synthetic file and confirm the same history becomes `missing`; do not expect history deletion.

@@ -30,7 +30,7 @@ Zero/ambiguous matches, malformed paths, upstream failures, timeouts, file chang
 
 ## Runtime, recovery, and limits
 
-The external scheduler is an optional idle task inside the serial import worker—not a competing unbounded loop. One inventory slice, one admission claim, or one registration batch runs at an import idle boundary, followed by the existing abortable event-loop yield. Settling and registration due checks use a five-second boundary; durable row times, generation leases, and coordinator ownership remain authoritative across restart.
+The external scheduler is an optional idle task inside the serial import worker—not a competing unbounded loop. One inventory slice, one admission claim, or one registration batch runs at an import idle boundary, followed by the existing abortable event-loop yield. Filesystem hints are coalesced for 250 ms per owner; watcher attachment is refreshed every 60 seconds without starting inventory; settling/admission and registration due checks remain on the five-second boundary; and a completed active root receives a no-event safety inventory after six hours. A blocked root keeps its shorter durable retry, while a progress result schedules exactly one more bounded slice at the next idle boundary. These clocks do not request a Gonic scan: only an existing registering observation enters the registration coordinator.
 
 SIGINT/SIGTERM stops new claims, aborts active ffprobe/Gonic requests, closes watchers, and leaves durable state recoverable after lease expiry. Worker heartbeat remains idle during external work and never stores an external pseudo item as the active import item.
 
