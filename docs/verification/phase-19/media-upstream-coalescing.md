@@ -26,9 +26,10 @@ aborts it when every caller disconnects.
 The first production redeploy still reproduced 26 failures among 94 favorite covers. That matched
 the missing artwork count and showed that the remaining overload was the cover fetch itself, not
 identity verification. A third RED proved that 12 HTTP/2 cover requests all fanned out to Gonic at
-once. The final API path serializes upstream cover authorization and fetches, removes
-aborted waiters, and releases permits on every success or failure. Audio streams use a separate path
-and never wait behind cover art.
+once. The final API path serializes upstream cover authorization and the complete response body,
+removes aborted waiters, and releases permits on every end, close, or failure. Holding the permit
+only through response headers still reproduced the 26 failures because image bodies overlapped.
+Audio streams use a separate path and never wait behind cover art.
 
 ## Verification
 

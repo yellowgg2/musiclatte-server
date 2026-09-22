@@ -185,6 +185,31 @@ describe('authenticated media proxy', () => {
     expect(context.mediaRequests).toHaveLength(12);
   });
 
+  /** A cover permit stays occupied until its response body closes, not merely until headers arrive. */
+  it('should hold the cover permit through response body streaming', async () => {
+    const context = await makeSUT(5_000);
+    const address = await context.app.listen({ port: 0, host: '127.0.0.1' });
+    context.state.mediaStallAfterFirstChunk = true;
+    const firstController = new AbortController();
+    const first = await fetch(`${address}/api/v1/media/cover/cover-1`, {
+      headers: context.headers,
+      signal: firstController.signal,
+    });
+    expect((await first.body!.getReader().read()).done).toBe(false);
+    const secondController = new AbortController();
+    const second = fetch(`${address}/api/v1/media/cover/cover-2`, {
+      headers: context.headers,
+      signal: secondController.signal,
+    }).catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const concurrentUpstreamRequests = context.mediaRequests.length;
+    firstController.abort();
+    secondController.abort();
+    await second;
+
+    expect(concurrentUpstreamRequests).toBe(1);
+  });
+
   /** A single byte range preserves opaque identity, status, body and seek headers. */
   it('should stream an exact byte range without exposing upstream credentials or headers', async () => {
     const context = await makeSUT();

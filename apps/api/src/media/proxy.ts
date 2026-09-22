@@ -140,9 +140,14 @@ export async function proxyMedia(
     if (!response.body) throw new SubsonicError('invalid_response');
 
     const body = Readable.from(response.body);
-    body.once('end', cleanup);
-    body.once('close', cleanup);
-    body.once('error', cleanup);
+    const finish = () => {
+      releaseCover?.();
+      releaseCover = undefined;
+      cleanup();
+    };
+    body.once('end', finish);
+    body.once('close', finish);
+    body.once('error', finish);
     streaming = true;
     return reply.send(body);
   } catch (error) {
@@ -154,7 +159,9 @@ export async function proxyMedia(
     }
     return service.rejectUpstream(error, raw);
   } finally {
-    releaseCover?.();
-    if (!streaming) cleanup();
+    if (!streaming) {
+      releaseCover?.();
+      cleanup();
+    }
   }
 }
