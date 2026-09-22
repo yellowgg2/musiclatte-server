@@ -49,6 +49,23 @@ describe('session and permissions API', () => {
     ).not.toContain(native.s);
     expect(ctx.requests.every((url) => !url.searchParams.has('p'))).toBe(true);
   });
+  /** Cookie authentication survives both session reads while another connection owns the writer lock. */
+  it('should restore a valid session through a competing writer', async () => {
+    const ctx = await makeSUT();
+    const login = await ctx.login();
+    const writer = ctx.storage.open();
+    writer.connection.exec('BEGIN IMMEDIATE');
+    try {
+      const restored = await ctx.app.inject({
+        url: '/api/v1/session',
+        headers: { cookie: cookieOf(login) },
+      });
+      expect(restored.statusCode).toBe(200);
+      expect(restored.json()).toEqual(login.json());
+    } finally {
+      writer.connection.exec('ROLLBACK');
+    }
+  });
   /** Cookie reauthentication rotates the token and CSRF identity, revoking the previous token. */
   it('should rotate on login and reject the previous session', async () => {
     const ctx = await makeSUT();

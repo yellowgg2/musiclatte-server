@@ -32,7 +32,7 @@
 
 receipt는 playlist 원장이 아니다. raw operation ID, playlist 이름, song ID/order, credential을 받거나 저장하지 않으며 현재 playlist 내용은 항상 gonic에서 재조회한다. Phase 2에서는 correctness를 위해 자동 삭제하지 않는다. 보관 기간이나 cleanup schedule은 운영 근거가 생기는 후속 owner가 정한다.
 
-WAL + synchronous FULL + foreign_keys ON, writer busy timeout 100ms를 사용한다. timeout은 lock 충돌의 빠른 실패를 위한 구현값이며 SLA가 아니다. `transaction`은 BEGIN IMMEDIATE/COMMIT/ROLLBACK이며 **동기 callback만** 허용한다. callback 내부에 async 작업을 예약하지 않는다. HTTP/network 작업은 transaction 밖에서 수행한다. 다른 connection의 writer 충돌은 `Storage unavailable`로 실패하며 호출자가 작업 의미에 맞게 재시도한다.
+WAL + synchronous FULL + foreign_keys ON, writer busy timeout 100ms를 사용한다. timeout은 lock 충돌의 빠른 실패를 위한 구현값이며 SLA가 아니다. `transaction`은 `BEGIN IMMEDIATE`/COMMIT/ROLLBACK, `readTransaction`은 `BEGIN DEFERRED`/COMMIT/ROLLBACK을 사용한다. 둘 다 **동기 callback만** 허용하고 이미 transaction 안인 read callback은 중첩 `BEGIN` 없이 현재 snapshot을 사용한다. callback 내부에 async 작업을 예약하지 않는다. HTTP/network 작업은 transaction 밖에서 수행한다. 다른 connection의 writer 충돌은 write에서 `Storage unavailable`로 실패하며 호출자가 작업 의미에 맞게 재시도하지만, WAL snapshot read는 competing writer와 함께 진행할 수 있다.
 
 ## Credential / key
 
@@ -56,9 +56,9 @@ const sessions = createSessionRepository({ database, vault, maxAgeMs, clock: Dat
 - `SESSION_MAX_AGE_SECONDS`는 **필수 양수 정수**이며 기본 보존 기간은 없다. 공백/소수/지수/0/음수/unsafe 정수는 실패한다. S03 `createConfiguredApp` listening entry가 이 설정을 필수로 소비한다.
 - `create(proof)`는 upstream 검증 완료 후에만 호출한다. S03은 `currentUser`가 반환한 canonical username을 사용한다. 이 함수 자체가 계정 인증을 수행하지 않는다.
 - 결과 `{token,expiresAt}`의 token은 32바이트 CSPRNG base64url bearer다. DB에는 SHA-256 hash만 저장한다. HTTP cookie 정책과 rotation은 S03 소유다.
-- `find(token)`은 유효하면 server-only `{username,proof,expiresAt,instanceId,policyRevision}`를 반환한다. unknown/expired/revoked/row 변조는 null이다. DB 장애는 고정 `Storage unavailable`로 실패해 운영 장애와 인증 부재를 구분할 수 있다.
+- `find(token)`과 worker용 `findByIdHash`는 session row, singleton instance, credential envelope를 하나의 deferred read snapshot에서 검증한다. 유효하면 server-only `{username,proof,expiresAt,instanceId,policyRevision}`를 반환한다. unknown/expired/revoked/policy mismatch/row 변조는 null이다. SELECT/schema/I/O 장애는 고정 `Storage unavailable`로 실패해 운영 장애와 인증 부재를 구분할 수 있다.
 - 만료 경계는 `now >= expiresAt`. 기존 absolute expiry는 설정 증가로 연장되지 않는다. 생성 이전으로 역행한 시계의 세션은 거부한다. invalid clock/overflow는 무기한 세션을 만들지 않는다.
-- `revoke(token)`은 idempotent하며 encrypted_proof를 NULL 처리한다. 만료/손상 세션을 조회할 때도 credential을 폐기한다. 주기적 만료 청소나 row retention schedule은 아직 없다. 실행하지 않은 idle session의 암호문이 즉시 지워진다고 주장하지 않는다.
+- `revoke(token)`은 idempotent하며 encrypted_proof를 NULL 처리한다. 만료/손상 세션 조회는 먼저 null로 fail closed한 뒤 read transaction 밖에서 snapshot 값이 그대로인 row만 조건부로 폐기한다. competing writer 때문에 이 best-effort cleanup이 실패해도 인증 결과는 바뀌지 않으며 다음 조회에서 다시 시도한다. 주기적 만료 청소나 row retention schedule은 아직 없다. 실행하지 않은 idle session의 암호문이 즉시 지워진다고 주장하지 않는다.
 - NULL 갱신은 논리적 폐기다. 과거 WAL/free page/이전 backup의 물리적 삭제를 보증하지 않는다. 파일/key/backup 접근 제한이 계속 필요하다.
 
 ## Backup / restore

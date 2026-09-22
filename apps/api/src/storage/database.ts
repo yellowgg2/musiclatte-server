@@ -40,6 +40,7 @@ const MIGRATIONS = [
 export interface ManagementDatabase {
   connection: DatabaseSync;
   transaction<T>(work: () => T): T;
+  readTransaction<T>(work: () => T): T;
   close(): void;
 }
 /** Refuse foreign and unsupported schemas before any persistent PRAGMA or migration. */
@@ -246,20 +247,36 @@ export function openDatabase(directory: string): ManagementDatabase {
       }
     } else validateSchema(db);
     db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;');
+    function requireSynchronous<T>(work: () => T): T {
+      if (work.constructor.name === 'AsyncFunction')
+        throw new Error('Synchronous transaction required');
+      const result = work();
+      if (
+        result !== null &&
+        (typeof result === 'object' || typeof result === 'function') &&
+        'then' in result
+      )
+        throw new Error('Synchronous transaction required');
+      return result;
+    }
     return {
       connection: db,
       transaction<T>(work: () => T): T {
-        if (work.constructor.name === 'AsyncFunction')
-          throw new Error('Synchronous transaction required');
         db.exec('BEGIN IMMEDIATE');
         try {
-          const result = work();
-          if (
-            result !== null &&
-            (typeof result === 'object' || typeof result === 'function') &&
-            'then' in result
-          )
-            throw new Error('Synchronous transaction required');
+          const result = requireSynchronous(work);
+          db.exec('COMMIT');
+          return result;
+        } catch (error) {
+          db.exec('ROLLBACK');
+          throw error;
+        }
+      },
+      readTransaction<T>(work: () => T): T {
+        if (db.isTransaction) return requireSynchronous(work);
+        db.exec('BEGIN DEFERRED');
+        try {
+          const result = requireSynchronous(work);
           db.exec('COMMIT');
           return result;
         } catch (error) {

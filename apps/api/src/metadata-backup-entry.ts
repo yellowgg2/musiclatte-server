@@ -37,6 +37,7 @@ try {
       transaction: () => {
         throw new Error('read_only_snapshot');
       },
+      readTransaction: (work) => work(),
       close: () => connection.close(),
     };
     try {

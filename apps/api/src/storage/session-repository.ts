@@ -99,6 +99,40 @@ export function createSessionRepository(options: {
       'UPDATE sessions SET revoked_at=COALESCE(revoked_at,?),encrypted_proof=NULL WHERE id_hash=?',
     ).run(time, id);
   }
+  function discardIfUnchanged(row: Record<string, unknown>, time: number): void {
+    const expected = [
+      row.id_hash,
+      row.instance_id,
+      row.policy_revision,
+      row.username,
+      row.encrypted_proof,
+      row.created_at,
+      row.expires_at,
+      row.revoked_at,
+    ];
+    if (
+      !expected.every(
+        (value) =>
+          value === null ||
+          typeof value === 'string' ||
+          typeof value === 'number' ||
+          typeof value === 'bigint',
+      )
+    )
+      return;
+    db.prepare(
+      `UPDATE sessions
+       SET revoked_at=COALESCE(revoked_at,?), encrypted_proof=NULL
+       WHERE id_hash=?
+         AND instance_id IS ?
+         AND policy_revision IS ?
+         AND username IS ?
+         AND encrypted_proof IS ?
+         AND created_at IS ?
+         AND expires_at IS ?
+         AND revoked_at IS ?`,
+    ).run(time, ...(expected as (null | string | number | bigint)[]));
+  }
   return {
     create(proof: SubsonicTokenProof): { token: string; expiresAt: number } {
       const createdAt = now();
@@ -143,13 +177,21 @@ export function createSessionRepository(options: {
     /** Worker-only lookup of the actor reference; revocation/expiry/vault checks are identical. */
     findByIdHash(id: string): StoredSession | null {
       if (!/^[a-f0-9]{64}$/.test(id)) return null;
+      let invalid: { row: Record<string, unknown>; time: number } | undefined;
+      let session: StoredSession | null;
       try {
-        return atomic(() => {
+        session = database.readTransaction(() => {
           const time = now();
           const raw = db.prepare('SELECT * FROM sessions WHERE id_hash=?').get(id);
           if (!raw) return null;
+          let row: SessionRow;
           try {
-            const row = decodeSessionRow(raw);
+            row = decodeSessionRow(raw);
+          } catch {
+            invalid = { row: raw, time };
+            return null;
+          }
+          try {
             const instance = instances.get();
             if (
               row.revoked_at !== null ||
@@ -159,12 +201,12 @@ export function createSessionRepository(options: {
               row.policy_revision !== instance.policyRevision ||
               !row.encrypted_proof
             ) {
-              discard(id, time);
+              invalid = { row: raw, time };
               return null;
             }
             const proof = vault.open(row.encrypted_proof, sessionContext(row));
             if (proof.username !== row.username) {
-              discard(id, time);
+              invalid = { row: raw, time };
               return null;
             }
             return {
@@ -174,14 +216,25 @@ export function createSessionRepository(options: {
               instanceId: row.instance_id,
               policyRevision: row.policy_revision,
             };
-          } catch {
-            discard(id, time);
+          } catch (error) {
+            if (!(error instanceof Error && error.message === 'Reauthentication required'))
+              throw error;
+            invalid = { row: raw, time };
             return null;
           }
         });
       } catch {
         throw new Error('Storage unavailable');
       }
+      if (invalid) {
+        const snapshot = invalid;
+        try {
+          atomic(() => discardIfUnchanged(snapshot.row, snapshot.time));
+        } catch {
+          // Invalid sessions remain rejected; cleanup retries on the next lookup.
+        }
+      }
+      return session;
     },
     revoke(token: string): void {
       try {

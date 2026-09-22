@@ -25,7 +25,7 @@ describe('session and instance storage', () => {
     c.db.close();
     const reopened = c.open();
     expect(c.createInstanceRepository(reopened, c.vault.keyId).get()).toEqual(instance);
-    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 30 });
+    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 31 });
     const tables = reopened.connection
       .prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
       .all()
@@ -50,6 +50,9 @@ describe('session and instance storage', () => {
       'download_events',
       'engine_requests',
       'engine_state',
+      'external_file_observations',
+      'external_watch_owners',
+      'external_watch_roots',
       'import_attempts',
       'import_items',
       'import_jobs',
@@ -109,7 +112,7 @@ describe('session and instance storage', () => {
     raw.close();
 
     const migrated = c.open(legacy);
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 30 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 31 });
     expect(
       migrated.connection.prepare('SELECT id,policy_revision,key_id FROM instance').get(),
     ).toEqual({ id: 'legacy-instance', policy_revision: 7, key_id: c.vault.keyId });
@@ -185,7 +188,7 @@ describe('session and instance storage', () => {
     raw.close();
 
     const upgraded = c.open(legacy);
-    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 30 });
+    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 31 });
     expect(
       upgraded.connection.prepare('SELECT * FROM curation_inventory_queue').get(),
     ).toMatchObject({
@@ -312,6 +315,72 @@ describe('session and instance storage', () => {
     expect(c.instances.get()).toEqual(old);
     expect(() => c.db.transaction(async () => 1)).toThrow('Synchronous transaction required');
     expect(c.instances.bumpPolicyRevision().policyRevision).toBe(old.policyRevision + 1);
+  });
+  /** Read transactions use snapshots, reject thenables and remain reusable after rollback. */
+  it('should isolate synchronous read transactions without acquiring the writer lock', async () => {
+    const c = await makeSUT();
+    const old = c.instances.get();
+    const reader = c.open();
+    const readerInstances = c.createInstanceRepository(reader, c.vault.keyId);
+    c.db.connection.exec('BEGIN IMMEDIATE');
+    try {
+      expect(reader.readTransaction(() => readerInstances.get())).toEqual(old);
+      expect(() => reader.readTransaction(async () => old)).toThrow(
+        'Synchronous transaction required',
+      );
+      expect(() => reader.readTransaction(() => Promise.resolve(old))).toThrow(
+        'Synchronous transaction required',
+      );
+      expect(reader.readTransaction(() => reader.readTransaction(() => old))).toEqual(old);
+      expect(() =>
+        reader.readTransaction(() => {
+          throw new Error('fixture read rollback');
+        }),
+      ).toThrow('fixture read rollback');
+      expect(reader.readTransaction(() => readerInstances.get())).toEqual(old);
+    } finally {
+      c.db.connection.exec('ROLLBACK');
+      reader.close();
+    }
+  });
+  /** Valid session reads remain available while another connection owns the writer lock. */
+  it('should find a valid session through a competing writer', async () => {
+    const c = await makeSUT();
+    const issued = c.sessions.create(proof);
+    const reader = c.open();
+    const sessions = c.sessionsFor(reader);
+    c.db.connection.exec('BEGIN IMMEDIATE');
+    try {
+      expect(sessions.find(issued.token)).toMatchObject({ username: proof.username });
+      expect(
+        sessions.findByIdHash(createHash('sha256').update(issued.token).digest('hex')),
+      ).toMatchObject({ username: proof.username });
+    } finally {
+      c.db.connection.exec('ROLLBACK');
+      reader.close();
+    }
+  });
+  /** Invalid sessions fail closed when cleanup is locked and are discarded on a later lookup. */
+  it('should defer invalid-session cleanup until the writer lock is available', async () => {
+    const c = await makeSUT();
+    const issued = c.sessions.create(proof);
+    const reader = c.open();
+    const sessions = c.sessionsFor(reader, 1000);
+    c.setNow(2000);
+    c.db.connection.exec('BEGIN IMMEDIATE');
+    try {
+      expect(sessions.find(issued.token)).toBeNull();
+      expect(
+        reader.connection.prepare('SELECT encrypted_proof FROM sessions').get()?.encrypted_proof,
+      ).not.toBeNull();
+    } finally {
+      c.db.connection.exec('ROLLBACK');
+    }
+    expect(sessions.find(issued.token)).toBeNull();
+    expect(
+      reader.connection.prepare('SELECT encrypted_proof FROM sessions').get()?.encrypted_proof,
+    ).toBeNull();
+    reader.close();
   });
   /** Competing writes respect the SQLite writer lock and can retry after rollback. */
   it('should handle writer contention without partial session changes', async () => {
