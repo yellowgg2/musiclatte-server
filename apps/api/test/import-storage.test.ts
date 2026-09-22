@@ -120,7 +120,7 @@ describe('import storage schema', () => {
   /** Fresh storage exposes the external recent-watch ledger beside the import tables. */
   it('should create the complete external recent-watch ledger for fresh storage', async () => {
     const c = await makeSUT();
-    expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 31 });
+    expect(c.db.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 32 });
     expect(
       c.db.connection
         .prepare(
@@ -158,7 +158,7 @@ describe('import storage schema', () => {
     legacy.close();
 
     const migrated = c.open(legacyData);
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 31 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 32 });
     expect(migrated.connection.prepare('SELECT id FROM instance').get()).toEqual({
       id: 'legacy-instance',
     });

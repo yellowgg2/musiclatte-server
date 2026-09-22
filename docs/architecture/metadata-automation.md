@@ -121,6 +121,17 @@ not the batch cooldown. Nonzero batches log only processed/succeeded/retry/termi
 duration. Capability availability includes actual worker health and inventory readiness. API keeps
 read-only music and no worker backup/credential mounts.
 
+The private inventory failure ledger keeps one history row per library, item kind, and opaque ID.
+An item failure increments `failure_count` and reopens that row by clearing `resolved_at`; a later
+successful item attempt resolves it in place. An error-free full generation also resolves historical
+track or directory failures absent from that generation, in the same transaction that tombstones
+absent tracks and marks the run ready. A generation with any queue error cannot prove absence and
+does not bulk-resolve failures. Migration 032 applies the same evidence rule to existing history:
+tombstoned tracks and items absent from a ready current generation become resolved without deleting
+their diagnostic fields, while queued errors and discovering, partial, or error runs stay open.
+Operational current-warning aggregates filter `resolved_at IS NULL`; history queries may include
+both states.
+
 Completed backup artifacts are checkpointed and sealed in DELETE journal mode before verification
 so read-only restoration does not depend on WAL shared-memory sidecars. Only the new snapshot is
 changed. Restoration still preserves web/legacy sessions while invalidating automation credentials,

@@ -295,17 +295,28 @@ export function createCurationInventory(options: CurationInventoryOptions) {
       (run.status === 'partial' && checkpoint.discoveryComplete && errors > 0)
     )
       return false;
+    const reconciledAt = clock();
     database.transaction(() => {
       if (!errors) {
         db.prepare(
           "UPDATE curation_tracks SET tombstoned=1,validation='stale',base_status=CASE base_status WHEN 'completed' THEN 'needs_review' ELSE base_status END WHERE library_id=? AND track_id NOT IN (SELECT opaque_id FROM curation_inventory_queue WHERE library_id=? AND generation=? AND kind='track')",
         ).run(library.id, library.id, generation);
+        db.prepare(
+          `UPDATE curation_inventory_failures AS failure
+           SET resolved_at=?
+           WHERE failure.library_id=? AND failure.resolved_at IS NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM curation_inventory_queue AS queue
+               WHERE queue.library_id=? AND queue.generation=?
+                 AND queue.kind=failure.kind AND queue.opaque_id=failure.opaque_id
+             )`,
+        ).run(reconciledAt, library.id, library.id, generation);
       }
       db.prepare(
         'UPDATE curation_inventory_runs SET status=?,last_reconciled_at=?,last_error_code=CASE WHEN ?=0 THEN NULL ELSE last_error_code END,checkpoint_json=? WHERE library_id=?',
       ).run(
         errors ? 'partial' : 'ready',
-        clock(),
+        reconciledAt,
         errors,
         JSON.stringify({ ...checkpoint, discoveryComplete: true }),
         library.id,

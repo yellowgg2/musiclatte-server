@@ -679,6 +679,161 @@ it('retries directory discovery and resolves its failure ledger entry', async ()
   }
 });
 
+/** Closes historical failures only when a complete generation proves the items are absent. */
+it('resolves queue-absent failures atomically with an error-free full generation', async () => {
+  const { createCurationInventory } = await import('../src/curation/inventory.js');
+  const c = await createTestContext();
+  try {
+    let now = 1000;
+    const repo = createCurationRepository({
+      database: c.db,
+      clock: () => now,
+      cursorKey: new Uint8Array(32),
+      limits: {
+        claimLeaseMs: 1000,
+        maxTargets: 10,
+        snapshotMaxAgeMs: 1000,
+        snapshotMaxItems: 100,
+        snapshotMaxCount: 10,
+      },
+    });
+    const inventory = createCurationInventory({
+      database: c.db,
+      repository: repo,
+      clock: () => now,
+      libraries: [{ id: 'lib', musicFolderId: '0' }],
+      batchSize: 1,
+      batchTimeMs: 1000,
+      sweepIntervalMs: 1000,
+      maxQueueItems: 100,
+      reconcile: async () => {},
+      source: {
+        inventoryIndexes: async () => ({ roots: [] }),
+        registrationDirectory: async () => {
+          throw new Error('unexpected');
+        },
+      },
+    });
+
+    await inventory.runBatch();
+    repo.discover({ libraryId: 'lib', trackId: 'removed-track', format: 'unsupported' });
+    c.db.connection
+      .prepare(
+        `INSERT INTO curation_inventory_failures(
+          library_id,kind,opaque_id,failure_count,last_error_code,last_cause,
+          first_failed_at,last_failed_at,resolved_at
+        ) VALUES(?,?,?,?,?,?,?,?,NULL)`,
+      )
+      .run('lib', 'track', 'removed-track', 2, 'inventory_upstream', 'upstream', 100, 900);
+    c.db.connection
+      .prepare(
+        `INSERT INTO curation_inventory_failures(
+          library_id,kind,opaque_id,failure_count,last_error_code,last_cause,
+          first_failed_at,last_failed_at,resolved_at
+        ) VALUES(?,?,?,?,?,?,?,?,NULL)`,
+      )
+      .run('lib', 'directory', 'removed-directory', 1, 'inventory_upstream', 'upstream', 200, 800);
+    now = 2000;
+
+    await inventory.runBatch();
+
+    expect(
+      c.db.connection
+        .prepare(
+          'SELECT kind,opaque_id,failure_count,resolved_at FROM curation_inventory_failures ORDER BY kind',
+        )
+        .all(),
+    ).toEqual([
+      { kind: 'directory', opaque_id: 'removed-directory', failure_count: 1, resolved_at: 2000 },
+      { kind: 'track', opaque_id: 'removed-track', failure_count: 2, resolved_at: 2000 },
+    ]);
+    expect(
+      c.db.connection
+        .prepare('SELECT status,last_reconciled_at FROM curation_inventory_runs')
+        .get(),
+    ).toEqual({
+      status: 'ready',
+      last_reconciled_at: 2000,
+    });
+    expect(
+      c.db.connection
+        .prepare("SELECT tombstoned FROM curation_tracks WHERE track_id='removed-track'")
+        .get()?.tombstoned,
+    ).toBe(1);
+  } finally {
+    c.cleanup();
+  }
+});
+
+/** The completion proof cannot publish a tombstone without its matching failure resolution. */
+it('rolls back tombstones and absent-failure resolution when generation completion fails', async () => {
+  const { createCurationInventory } = await import('../src/curation/inventory.js');
+  const c = await createTestContext();
+  try {
+    const repo = createCurationRepository({
+      database: c.db,
+      clock: () => 1000,
+      cursorKey: new Uint8Array(32),
+      limits: {
+        claimLeaseMs: 1000,
+        maxTargets: 10,
+        snapshotMaxAgeMs: 1000,
+        snapshotMaxItems: 100,
+        snapshotMaxCount: 10,
+      },
+    });
+    const inventory = createCurationInventory({
+      database: c.db,
+      repository: repo,
+      clock: () => 1000,
+      libraries: [{ id: 'lib', musicFolderId: '0' }],
+      batchSize: 1,
+      batchTimeMs: 1000,
+      sweepIntervalMs: 1000,
+      maxQueueItems: 100,
+      reconcile: async () => {},
+      source: {
+        inventoryIndexes: async () => ({ roots: [] }),
+        registrationDirectory: async () => {
+          throw new Error('unexpected');
+        },
+      },
+    });
+    await inventory.runBatch();
+    repo.discover({ libraryId: 'lib', trackId: 'removed-track', format: 'unsupported' });
+    c.db.connection
+      .prepare(
+        `INSERT INTO curation_inventory_failures(
+          library_id,kind,opaque_id,failure_count,last_error_code,last_cause,
+          first_failed_at,last_failed_at,resolved_at
+        ) VALUES('lib','track','removed-track',1,'inventory_upstream','upstream',500,500,NULL)`,
+      )
+      .run();
+    c.db.connection.exec(`
+      CREATE TRIGGER reject_inventory_completion
+      BEFORE UPDATE OF last_reconciled_at ON curation_inventory_runs
+      BEGIN SELECT RAISE(ABORT,'synthetic completion failure'); END;
+    `);
+
+    await expect(inventory.runBatch()).rejects.toThrow('synthetic completion failure');
+
+    expect(
+      c.db.connection
+        .prepare("SELECT tombstoned FROM curation_tracks WHERE track_id='removed-track'")
+        .get()?.tombstoned,
+    ).toBe(0);
+    expect(
+      c.db.connection
+        .prepare(
+          "SELECT resolved_at FROM curation_inventory_failures WHERE opaque_id='removed-track'",
+        )
+        .get()?.resolved_at,
+    ).toBeNull();
+  } finally {
+    c.cleanup();
+  }
+});
+
 /** Promotes a completed partial generation after its last delayed retry succeeds. */
 it('marks a completed partial generation ready after its delayed retry succeeds', async () => {
   const { createCurationInventory } = await import('../src/curation/inventory.js');

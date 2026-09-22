@@ -14,6 +14,38 @@ async function makeSUT() {
   return ctx;
 }
 describe('management backup and offline restore', () => {
+  /** Failure lifecycle history remains queryable across a sealed management snapshot. */
+  it('should restore resolved and unresolved curation failure history', async () => {
+    const c = await makeSUT();
+    c.db.connection.exec(`
+      INSERT INTO curation_inventory_runs(
+        library_id,generation,status,last_discovery_at,last_reconciled_at,checkpoint_json
+      ) VALUES('lib','generation','ready',900,1000,'{"discoveryComplete":true}');
+      INSERT INTO curation_inventory_failures(
+        library_id,kind,opaque_id,failure_count,last_error_code,last_cause,
+        first_failed_at,last_failed_at,resolved_at
+      ) VALUES
+        ('lib','track','historical-track',3,'unsupported_format','upstream',100,800,1000),
+        ('lib','directory','current-directory',2,'inventory_upstream','upstream',200,900,NULL);
+    `);
+    const snapshot = join(c.root, 'curation-failure-snapshot');
+    await c.createBackup(c.db, c.keyPath, snapshot);
+    const restoredPath = join(c.root, 'curation-failure-restored');
+    await c.restoreBackup(snapshot, restoredPath);
+
+    expect(
+      c
+        .open(restoredPath)
+        .connection.prepare(
+          'SELECT kind,opaque_id,failure_count,resolved_at FROM curation_inventory_failures ORDER BY kind',
+        )
+        .all(),
+    ).toEqual([
+      { kind: 'directory', opaque_id: 'current-directory', failure_count: 2, resolved_at: null },
+      { kind: 'track', opaque_id: 'historical-track', failure_count: 3, resolved_at: 1000 },
+    ]);
+  });
+
   /** Offline restore preserves watch history but releases process-owned observation leases. */
   it('should restore external watch observations with reclaimable leases', async () => {
     const c = await makeSUT();

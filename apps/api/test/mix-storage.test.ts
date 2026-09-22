@@ -114,7 +114,7 @@ it.each([12, 19, 20])(
     raw.close();
     const one = c.open(dir);
     const two = c.open(dir);
-    expect(one.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(29);
+    expect(one.connection.prepare('PRAGMA user_version').get()?.user_version).toBe(32);
     expect(two.connection.prepare('SELECT count(*) AS count FROM saved_mixes').get()?.count).toBe(
       0,
     );

@@ -25,7 +25,7 @@ describe('session and instance storage', () => {
     c.db.close();
     const reopened = c.open();
     expect(c.createInstanceRepository(reopened, c.vault.keyId).get()).toEqual(instance);
-    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 31 });
+    expect(reopened.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 32 });
     const tables = reopened.connection
       .prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
       .all()
@@ -112,7 +112,7 @@ describe('session and instance storage', () => {
     raw.close();
 
     const migrated = c.open(legacy);
-    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 31 });
+    expect(migrated.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 32 });
     expect(
       migrated.connection.prepare('SELECT id,policy_revision,key_id FROM instance').get(),
     ).toEqual({ id: 'legacy-instance', policy_revision: 7, key_id: c.vault.keyId });
@@ -188,7 +188,7 @@ describe('session and instance storage', () => {
     raw.close();
 
     const upgraded = c.open(legacy);
-    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 31 });
+    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 32 });
     expect(
       upgraded.connection.prepare('SELECT * FROM curation_inventory_queue').get(),
     ).toMatchObject({
@@ -202,6 +202,79 @@ describe('session and instance storage', () => {
     expect(
       upgraded.connection.prepare('SELECT count(*) AS n FROM curation_inventory_failures').get()?.n,
     ).toBe(0);
+  });
+  /** The v32 data repair closes only failures already disproved by durable inventory evidence. */
+  it('should migrate historical inventory failure lifecycle without deleting diagnostics', async () => {
+    const c = await makeSUT();
+    c.db.connection.exec(`
+      INSERT INTO curation_inventory_runs(
+        library_id,generation,status,last_discovery_at,last_reconciled_at,checkpoint_json
+      ) VALUES
+        ('ready-lib','ready-generation','ready',600,700,'{"discoveryComplete":true}'),
+        ('partial-lib','partial-generation','partial',800,NULL,'{"discoveryComplete":true}');
+      INSERT INTO curation_tracks(
+        id,library_id,track_id,format,artist_json,base_status,policy_version,validation,tombstoned
+      ) VALUES(
+        'tombstoned-ref','ready-lib','tombstoned-track','unsupported','[]',
+        'unreviewed','policy','stale',1
+      );
+      INSERT INTO curation_inventory_queue(
+        library_id,generation,opaque_id,kind,status,attempt_count,last_error_code,terminal
+      ) VALUES(
+        'ready-lib','ready-generation','queued-track','track','error',2,
+        'inventory_upstream',1
+      );
+      INSERT INTO curation_inventory_failures(
+        library_id,kind,opaque_id,failure_count,last_error_code,last_cause,
+        first_failed_at,last_failed_at,resolved_at
+      ) VALUES
+        ('ready-lib','track','tombstoned-track',3,'inventory_upstream','upstream',100,500,NULL),
+        ('ready-lib','directory','absent-directory',2,'inventory_upstream','upstream',200,550,NULL),
+        ('ready-lib','track','queued-track',4,'inventory_upstream','upstream',300,575,NULL),
+        ('partial-lib','directory','partial-directory',1,'inventory_upstream','upstream',400,800,NULL);
+      PRAGMA user_version=31;
+    `);
+    c.db.close();
+
+    const upgraded = c.open();
+
+    expect(upgraded.connection.prepare('PRAGMA user_version').get()).toEqual({ user_version: 32 });
+    expect(
+      upgraded.connection
+        .prepare(
+          'SELECT library_id,opaque_id,failure_count,last_failed_at,resolved_at FROM curation_inventory_failures ORDER BY library_id,opaque_id',
+        )
+        .all(),
+    ).toEqual([
+      {
+        library_id: 'partial-lib',
+        opaque_id: 'partial-directory',
+        failure_count: 1,
+        last_failed_at: 800,
+        resolved_at: null,
+      },
+      {
+        library_id: 'ready-lib',
+        opaque_id: 'absent-directory',
+        failure_count: 2,
+        last_failed_at: 550,
+        resolved_at: 700,
+      },
+      {
+        library_id: 'ready-lib',
+        opaque_id: 'queued-track',
+        failure_count: 4,
+        last_failed_at: 575,
+        resolved_at: null,
+      },
+      {
+        library_id: 'ready-lib',
+        opaque_id: 'tombstoned-track',
+        failure_count: 3,
+        last_failed_at: 500,
+        resolved_at: 700,
+      },
+    ]);
   });
   /** Persistent sessions contain hashes and encrypted proof, not browser tokens. */
   it('should recover session after restart without storing bearer or plaintext proof', async () => {
