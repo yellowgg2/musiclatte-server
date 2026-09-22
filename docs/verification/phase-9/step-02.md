@@ -41,3 +41,10 @@ Final gates: project formatting, focused tests, typecheck, build, `format:check`
 - Verification: path/config unit 27/27, file-store/state unit 15/15, API/worker unit 28/28, affected
   ID3 client/batch contract 52/52, automation deployment contract 5/5, typecheck, build,
   `format:check`, and `git diff --check` passed on Node 24.20.0.
+- Production: `eac63a7d00391cb44f9c8c9227fcec1552d99b11` was deployed to the API and metadata
+  worker after owner-only policy and named-volume snapshots. Both services were healthy, the public
+  readiness endpoint returned 200, SQLite integrity was `ok`, and foreign-key violations were zero.
+- Same-journal replay: the frozen `tr-945` operation reused the existing `Lauv` directory, succeeded
+  as `tr-5170`, restored both configured accounts' playlist references and the owning favorite, and
+  finished with exact metadata, one front JPEG, a `no_op` successor preview, an available Gonic
+  binding, matching audio identity, an absent source, and a regular target file.
