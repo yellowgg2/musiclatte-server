@@ -287,6 +287,68 @@ describe('login shell', () => {
     expect(screen.getByText('fixture-listener')).toBeTruthy();
     expect(screen.queryByRole('link', { name: /Music|Import|Playlist/ })).toBeNull();
   });
+  /** A restored cookie session recovers its product menu after a transient capability outage. */
+  it('should automatically retry capabilities after restoring an existing session', async () => {
+    vi.useFakeTimers();
+    try {
+      const { createSessionStore } = await moduleAt('auth/session-store.ts');
+      let capabilityReads = 0;
+      const store = createSessionStore({
+        read: async () => session(),
+        login: async () => session(),
+        logout: async () => {},
+        capabilities: async () => {
+          if (++capabilityReads === 1) throw new Error('temporary capability outage');
+          return capabilities;
+        },
+      });
+
+      await store.restore();
+      expect(store.getSnapshot()).toMatchObject({
+        status: 'signed-in',
+        capabilities: null,
+        capabilityUnavailable: true,
+      });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(store.getSnapshot()).toMatchObject({
+        status: 'signed-in',
+        capabilities,
+        capabilityUnavailable: false,
+      });
+      expect(capabilityReads).toBe(2);
+      store.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  /** Persistent capability outages stop after the bounded retries without discarding the session. */
+  it('should retain manual recovery after bounded capability retries are exhausted', async () => {
+    vi.useFakeTimers();
+    try {
+      const { createSessionStore } = await moduleAt('auth/session-store.ts');
+      const capabilitiesRead = vi.fn(async () => {
+        throw new Error('persistent capability outage');
+      });
+      const store = createSessionStore({
+        read: async () => session(),
+        login: async () => session(),
+        logout: async () => {},
+        capabilities: capabilitiesRead,
+      });
+
+      await store.restore();
+      await vi.advanceTimersByTimeAsync(30000);
+      expect(capabilitiesRead).toHaveBeenCalledTimes(4);
+      expect(store.getSnapshot()).toMatchObject({
+        status: 'signed-in',
+        capabilities: null,
+        capabilityUnavailable: true,
+      });
+      store.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   /** Direct unsupported routes show a scoped recovery page, never an unfinished feature. */
   it('should guard direct routes and preserve the SPA mount base', async () => {
     localStorage.setItem('musiclatte.locale', 'en');

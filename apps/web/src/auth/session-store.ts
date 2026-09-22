@@ -9,6 +9,7 @@ export interface SessionState {
   error: ApiErrorCode | null;
   reason: 'expired' | null;
 }
+const capabilityRetryDelays = [1000, 3000, 10000] as const;
 export function createSessionStore(client: SessionClient) {
   let state: SessionState = {
     status: 'loading',
@@ -21,6 +22,7 @@ export function createSessionStore(client: SessionClient) {
   };
   let generation = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let capabilityRetryTimer: ReturnType<typeof setTimeout> | undefined;
   let restoreInFlight: Promise<void> | undefined;
   const listeners = new Set<() => void>();
   function update(patch: Partial<SessionState>) {
@@ -30,6 +32,7 @@ export function createSessionStore(client: SessionClient) {
   function clear(reason: SessionState['reason'] = null) {
     generation++;
     clearTimeout(timer);
+    clearTimeout(capabilityRetryTimer);
     update({
       status: 'signed-out',
       session: null,
@@ -39,6 +42,29 @@ export function createSessionStore(client: SessionClient) {
       error: null,
       reason,
     });
+  }
+  function scheduleCapabilityRetry(version: number, attempt = 0) {
+    const delay = capabilityRetryDelays[attempt];
+    if (delay === undefined) return;
+    clearTimeout(capabilityRetryTimer);
+    capabilityRetryTimer = setTimeout(() => {
+      capabilityRetryTimer = undefined;
+      if (version !== generation || !state.session) return;
+      void client.capabilities().then(
+        (capabilities) => {
+          if (version === generation)
+            update({ capabilities, capabilityUnavailable: false, error: null });
+        },
+        (error) => {
+          if (version !== generation) return;
+          if (errorCode(error) === 'unauthenticated') clear('expired');
+          else {
+            update({ capabilityUnavailable: true });
+            scheduleCapabilityRetry(version, attempt + 1);
+          }
+        },
+      );
+    }, delay);
   }
   function armExpiry(session: CookieSession) {
     clearTimeout(timer);
@@ -70,7 +96,10 @@ export function createSessionStore(client: SessionClient) {
     } catch (error) {
       if (version !== generation) return;
       if (errorCode(error) === 'unauthenticated') clear('expired');
-      else update({ capabilityUnavailable: true });
+      else {
+        update({ capabilityUnavailable: true });
+        scheduleCapabilityRetry(version);
+      }
     }
   }
   function restore({ background = false }: { background?: boolean } = {}) {
@@ -78,6 +107,7 @@ export function createSessionStore(client: SessionClient) {
     if (restoreInFlight) return restoreInFlight;
     const task = (async () => {
       const version = ++generation;
+      clearTimeout(capabilityRetryTimer);
       if (!state.session && !background) update({ status: 'loading', error: null });
       try {
         await accept(await client.read(), version);
@@ -152,6 +182,7 @@ export function createSessionStore(client: SessionClient) {
     dispose() {
       generation++;
       clearTimeout(timer);
+      clearTimeout(capabilityRetryTimer);
       listeners.clear();
     },
   };

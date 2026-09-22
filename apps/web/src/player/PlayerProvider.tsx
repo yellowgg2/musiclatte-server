@@ -542,13 +542,7 @@ export function PlayerProvider({
         'ended',
         () => {
           observeListening('ended');
-          if (
-            activeSource.current.plan?.seekMode === 'offset' &&
-            logicalTime() < logicalDuration() - 1
-          ) {
-            commit({ type: 'media-error', error: 'media_unavailable' });
-            setQualityState((p) => ({ ...p, error: true, canRetryOriginal: true }));
-          } else move('next', true);
+          move('next', true);
         },
       ],
       [

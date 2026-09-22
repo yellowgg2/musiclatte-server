@@ -38,6 +38,8 @@ function Probe() {
         Start
       </button>
       <button onClick={p.next}>Next</button>
+      <button onClick={p.toggleShuffle}>Shuffle</button>
+      <button onClick={p.cycleRepeat}>Repeat</button>
       <button onClick={() => p.seek(90.8)}>Seek</button>
       <button onClick={p.resume}>Resume</button>
       <button onClick={p.retryOriginal}>Original</button>
@@ -253,7 +255,7 @@ it('keeps unsupported economy explicit and handles a401 after a stream error', a
   await waitFor(() => expect(expired).toHaveBeenCalledOnce());
 });
 
-it('publishes absolute MediaSession time and treats premature ended as a failed stream', async () => {
+it('publishes absolute MediaSession time and advances when an offset resource ends', async () => {
   const audio = new AudioFixture();
   const position = vi.fn();
   const handlers = new Map<string, ((arg: { seekTime: number }) => void) | null>();
@@ -265,7 +267,8 @@ it('publishes absolute MediaSession time and treats premature ended as a failed 
       metadata: null,
     },
   });
-  const fetcher: typeof fetch = async () => Response.json(plan());
+  const fetcher: typeof fetch = async (input) =>
+    Response.json(plan(String(input).includes('/two/') ? 'two' : 'one'));
   const view = render(
     <PlayerProvider
       fetcher={fetcher}
@@ -289,8 +292,47 @@ it('publishes absolute MediaSession time and treats premature ended as a failed 
   });
   expect(position).toHaveBeenLastCalledWith({ duration: 180, position: 105, playbackRate: 1 });
   await act(async () => audio.emit('ended'));
-  expect(JSON.parse(screen.getByRole('status').textContent!).status).toBe('error');
-  expect(audio.src).toContain('/one/');
+  await waitFor(() => expect(audio.src).toContain('/two/'));
+  expect(JSON.parse(screen.getByRole('status').textContent!).current).toBe('two');
   view.unmount();
   vi.unstubAllGlobals();
+});
+
+/** Keeps a shuffled repeat-all queue moving when economy duration metadata is inaccurate. */
+it('advances shuffled repeat-all after a near-complete economy stream ends', async () => {
+  const audio = new AudioFixture();
+  const fetcher: typeof fetch = async (input) =>
+    Response.json(plan(String(input).includes('/two/') ? 'two' : 'one'));
+  render(
+    <PlayerProvider
+      fetcher={fetcher}
+      apiOrigin=""
+      audioFactory={() => audio}
+      onUnauthenticated={() => {}}
+      quality={{ enabled: true, value: 'economy', scope: 'one' }}
+    >
+      <Probe />
+    </PlayerProvider>,
+  );
+  fireEvent.click(screen.getByText('Start'));
+  await waitFor(() => expect(audio.src).toContain('/one/'));
+  fireEvent.click(screen.getByText('Shuffle'));
+  fireEvent.click(screen.getByText('Repeat'));
+  fireEvent.click(screen.getByText('Repeat'));
+
+  act(() => {
+    audio.emit('playing');
+    audio.currentTime = 176;
+    audio.emit('timeupdate');
+    audio.emit('ended');
+  });
+
+  await waitFor(() => expect(audio.src).toContain('/two/'));
+  act(() => {
+    audio.emit('playing');
+    audio.currentTime = 176;
+    audio.emit('timeupdate');
+    audio.emit('ended');
+  });
+  await waitFor(() => expect(audio.src).toContain('/one/'));
 });

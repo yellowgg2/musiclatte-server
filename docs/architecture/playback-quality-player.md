@@ -15,7 +15,9 @@ whole seconds below duration, reload the same Audio resource and preserve listen
 Logical time is offset+media.currentTime; plan duration remains the full duration. Rapid seeks
 retain explicit playback intent even while the previous load temporarily pauses the element.
 Native restore applies again after metadata when necessary. Playing or metadata readiness gates
-old source timing events. Premature offset ended becomes a media error instead of advancing queue.
+old source timing events. The media element's `ended` event advances the queue even when the
+verified plan duration differs from the encoded resource duration; media `error` remains the
+failure boundary that preserves the current occurrence for explicit original recovery.
 
 New occurrences start listening accounting; seeks/retries/original recovery retain its interval
 union and event identity. MediaSession receives absolute position and the same seek callbacks.
