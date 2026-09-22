@@ -994,8 +994,8 @@ describe('metadata organization PAT API', () => {
     expect(s.c.state.favoriteSongIdsByUsername.get(password.username)).toEqual([displacedTrackId]);
   });
 
-  /** A frozen predecessor may reach the live successor through a later approved replacement. */
-  it('restores references through a succeeded organization and replacement lineage', async () => {
+  /** A frozen predecessor may reach a successor whose live binding was safely replaced later. */
+  it('restores references through succeeded track and media-link replacement lineage', async () => {
     const s = await setup();
     const intermediateTrackId = 'tr-intermediate';
     const finalTrackId = 'tr-final';
@@ -1015,6 +1015,7 @@ describe('metadata organization PAT API', () => {
     for (const [jobId, operationHash] of [
       ['lineage-first-job', '7'.repeat(64)],
       ['lineage-final-job', '6'.repeat(64)],
+      ['lineage-live-job', '5'.repeat(64)],
     ] as const)
       db.prepare(
         "INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES(?,?,'music',?,?,?,1,'id3-managed-v1','completed-metadata','revision','[]',?)",
@@ -1046,6 +1047,27 @@ describe('metadata organization PAT API', () => {
     db.prepare(
       "UPDATE media_links SET gonic_song_id=NULL,availability='unavailable',revision=revision+1 WHERE id=?",
     ).run(intermediateMediaLinkId);
+    const liveMediaLinkId = 'live-final-media-link';
+    db.prepare(
+      "UPDATE media_links SET relative_file_key='.musiclatte-retired/final.mp3',gonic_song_id=NULL,availability='unavailable',revision=revision+1 WHERE id=?",
+    ).run(finalMediaLinkId);
+    db.prepare(
+      "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at,validated_at) VALUES(?,'music','imports/account/Managed/final.mp3',?,1,'available',?,?)",
+    ).run(liveMediaLinkId, finalTrackId, recentNow, recentNow);
+    db.prepare(
+      "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('lineage-live-item','lineage-live-job',?,'imports/account/Legacy/live.mp3','imports/account/Managed/final.mp3','tr-live-source',?,?,?,'succeeded',?)",
+    ).run(liveMediaLinkId, finalTrackId, 'e'.repeat(64), 'f'.repeat(64), recentNow);
+    db.prepare(
+      "INSERT INTO organization_target_replacements(item_id,displaced_media_link_id,displaced_track_id,operation_id_hash,request_hash,backup_receipt_digest,reference_snapshot_digests_json,created_at) VALUES('lineage-live-item',?,?,?,?,?,?,?)",
+    ).run(
+      finalMediaLinkId,
+      finalTrackId,
+      'a'.repeat(64),
+      'b'.repeat(64),
+      'c'.repeat(64),
+      JSON.stringify(['d'.repeat(64)]),
+      recentNow,
+    );
     s.c.songs.push({
       id: finalTrackId,
       title: 'Original synthetic',
@@ -1074,6 +1096,27 @@ describe('metadata organization PAT API', () => {
       starred: true,
     });
     expect(s.c.state.favoriteSongIdsByUsername.get(password.username)).toEqual([finalTrackId]);
+
+    db.prepare(
+      "UPDATE media_links SET gonic_song_id=NULL,availability='unavailable',revision=revision+1 WHERE id=?",
+    ).run(liveMediaLinkId);
+    db.prepare(
+      "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at,validated_at) VALUES('unrecorded-final-media','music','imports/account/Managed/unrecorded.mp3',?,1,'available',?,?)",
+    ).run(finalTrackId, recentNow, recentNow);
+    s.c.state.favoriteSongIdsByUsername.set(password.username, []);
+    const rejected = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/reference-restores',
+      headers: s.headers,
+      payload: {
+        trackId: s.trackId,
+        newTrackId: finalTrackId,
+        starred: true,
+        playlists: [],
+      },
+    });
+    expect(rejected.statusCode).toBe(409);
+    expect(s.c.state.favoriteSongIdsByUsername.get(password.username)).toEqual([]);
   });
 
   /** A replacement restores both predecessor occurrences when gonic collapses them to one ID. */

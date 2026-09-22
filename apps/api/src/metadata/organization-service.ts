@@ -136,6 +136,38 @@ export function createOrganizationService(service: SessionService) {
       predecessorTrackIds: path.predecessorTrackIds,
     };
   };
+  const matchesSuccessorBinding = (
+    successor: { libraryId: string; mediaLinkId: string; newTrackId: string },
+    resolved: { libraryId: string; mediaLinkId: string },
+  ) => {
+    if (resolved.libraryId !== successor.libraryId) return false;
+    if (resolved.mediaLinkId === successor.mediaLinkId) return true;
+    type Handoff = { libraryId: string; mediaLinkId: string };
+    type Path = { mediaLinkId: string; traversed: string[]; depth: number };
+    const matches: Path[] = [];
+    const stack: Path[] = [{ mediaLinkId: successor.mediaLinkId, traversed: [], depth: 0 }];
+    while (stack.length) {
+      const current = stack.pop()!;
+      if (current.depth >= 16) continue;
+      const rows = db
+        .prepare(
+          "SELECT j.library_id AS libraryId,i.media_link_id AS mediaLinkId FROM organization_target_replacements r JOIN organization_items i ON i.id=r.item_id JOIN organization_jobs j ON j.id=i.job_id WHERE r.displaced_media_link_id=? AND r.displaced_track_id=? AND i.new_track_id=? AND i.stage='succeeded' ORDER BY i.stage_changed_at,i.id",
+        )
+        .all(current.mediaLinkId, successor.newTrackId, successor.newTrackId) as Handoff[];
+      for (const row of rows) {
+        if (row.libraryId !== successor.libraryId || current.traversed.includes(row.mediaLinkId))
+          continue;
+        const next = {
+          mediaLinkId: row.mediaLinkId,
+          traversed: [...current.traversed, current.mediaLinkId],
+          depth: current.depth + 1,
+        };
+        if (row.mediaLinkId === resolved.mediaLinkId) matches.push(next);
+        else stack.push(next);
+      }
+    }
+    return matches.length === 1;
+  };
   const hash = (purpose: string, value: unknown) =>
     createHash('sha256')
       .update(service.sign(`organization-${purpose}`, JSON.stringify(canonical(value))))
@@ -401,11 +433,7 @@ export function createOrganizationService(service: SessionService) {
       if (identityReused && successor.displacedTrackId !== body.trackId)
         throw new ApiError(422, 'invalid_request');
       const resolved = await provider.resolver.resolve(principal, body.newTrackId, 'read');
-      if (
-        resolved.libraryId !== successor.libraryId ||
-        resolved.mediaLinkId !== successor.mediaLinkId
-      )
-        throw new ApiError(409, 'conflict');
+      if (!matchesSuccessorBinding(successor, resolved)) throw new ApiError(409, 'conflict');
       await revalidateMetadataPrincipal(service, principal);
       try {
         const restored = await restoreMetadataReferencesForSuccessor({
