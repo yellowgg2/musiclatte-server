@@ -994,6 +994,88 @@ describe('metadata organization PAT API', () => {
     expect(s.c.state.favoriteSongIdsByUsername.get(password.username)).toEqual([displacedTrackId]);
   });
 
+  /** A frozen predecessor may reach the live successor through a later approved replacement. */
+  it('restores references through a succeeded organization and replacement lineage', async () => {
+    const s = await setup();
+    const intermediateTrackId = 'tr-intermediate';
+    const finalTrackId = 'tr-final';
+    const db = s.c.storage.db.connection;
+    const intermediateMediaLinkId = String(
+      db.prepare("SELECT media_link_id FROM metadata_items WHERE id='completed-item'").get()!
+        .media_link_id,
+    );
+    const finalRoot = join(s.c.musicRoot, 'imports', 'account', 'Managed');
+    mkdirSync(finalRoot, { recursive: true });
+    await createMetadataFixture({ root: finalRoot, ...helper, version: 4 });
+    renameSync(join(finalRoot, 'source.mp3'), join(finalRoot, 'final.mp3'));
+    const finalMediaLinkId = 'final-media-link';
+    db.prepare(
+      "INSERT INTO media_links(id,library_id,relative_file_key,gonic_song_id,revision,availability,created_at,validated_at) VALUES(?,'music','imports/account/Managed/final.mp3',?,1,'available',?,?)",
+    ).run(finalMediaLinkId, finalTrackId, recentNow, recentNow);
+    for (const [jobId, operationHash] of [
+      ['lineage-first-job', '7'.repeat(64)],
+      ['lineage-final-job', '6'.repeat(64)],
+    ] as const)
+      db.prepare(
+        "INSERT INTO organization_jobs(id,identity_key,library_id,operation_id_hash,request_hash,actor_token_id,policy_revision,policy_version,metadata_job_id,metadata_revision,source_evidence_json,created_at) VALUES(?,?,'music',?,?,?,1,'id3-managed-v1','completed-metadata','revision','[]',?)",
+      ).run(jobId, '5'.repeat(64), operationHash, '4'.repeat(64), s.accessTokenId, recentNow);
+    db.prepare(
+      "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('lineage-first-item','lineage-first-job',?,'imports/account/Legacy/source.mp3','imports/account/Managed/intermediate.mp3',?,?,?,?, 'succeeded',?)",
+    ).run(
+      intermediateMediaLinkId,
+      s.trackId,
+      intermediateTrackId,
+      'a'.repeat(64),
+      'b'.repeat(64),
+      recentNow,
+    );
+    db.prepare(
+      "INSERT INTO organization_items(id,job_id,media_link_id,source_key,target_key,old_track_id,new_track_id,file_identity,audio_identity,stage,stage_changed_at) VALUES('lineage-final-item','lineage-final-job',?,'imports/account/Legacy/other.mp3','imports/account/Managed/final.mp3','tr-other',?,?,?,'succeeded',?)",
+    ).run(finalMediaLinkId, finalTrackId, 'c'.repeat(64), 'd'.repeat(64), recentNow);
+    db.prepare(
+      "INSERT INTO organization_target_replacements(item_id,displaced_media_link_id,displaced_track_id,operation_id_hash,request_hash,backup_receipt_digest,reference_snapshot_digests_json,created_at) VALUES('lineage-final-item',?,?,?,?,?,?,?)",
+    ).run(
+      intermediateMediaLinkId,
+      intermediateTrackId,
+      '3'.repeat(64),
+      '2'.repeat(64),
+      '1'.repeat(64),
+      JSON.stringify(['0'.repeat(64)]),
+      recentNow,
+    );
+    db.prepare(
+      "UPDATE media_links SET gonic_song_id=NULL,availability='unavailable',revision=revision+1 WHERE id=?",
+    ).run(intermediateMediaLinkId);
+    s.c.songs.push({
+      id: finalTrackId,
+      title: 'Original synthetic',
+      artist: 'Original artist',
+      album: 'Original album',
+      isDir: false,
+      path: 'imports/account/Managed/final.mp3',
+    });
+    s.c.state.favoriteSongIdsByUsername.set(password.username, []);
+
+    const restored = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/reference-restores',
+      headers: s.headers,
+      payload: {
+        trackId: s.trackId,
+        newTrackId: finalTrackId,
+        starred: true,
+        playlists: [],
+      },
+    });
+    expect(restored.statusCode, restored.body).toBe(200);
+    expect(restored.json()).toMatchObject({
+      trackId: s.trackId,
+      newTrackId: finalTrackId,
+      starred: true,
+    });
+    expect(s.c.state.favoriteSongIdsByUsername.get(password.username)).toEqual([finalTrackId]);
+  });
+
   /** A replacement restores both predecessor occurrences when gonic collapses them to one ID. */
   it('restores overlapping source and displaced playlist references after replacement', async () => {
     const s = await setup();

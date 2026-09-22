@@ -73,6 +73,69 @@ export function createOrganizationService(service: SessionService) {
     vault: automation.vault,
   });
   const db = automation.database.connection;
+  const successorLineage = (oldTrackId: string, newTrackId: string) => {
+    type Edge = {
+      itemId: string;
+      libraryId: string;
+      mediaLinkId: string;
+      oldTrackId: string;
+      newTrackId: string;
+      displacedTrackId: string | null;
+    };
+    type Path = { traversed: string[]; predecessorTrackIds: string[]; edges: Edge[] };
+    const paths: Path[] = [];
+    const stack: Array<{
+      trackId: string;
+      traversed: string[];
+      predecessorTrackIds: string[];
+      edges: Edge[];
+    }> = [{ trackId: oldTrackId, traversed: [], predecessorTrackIds: [], edges: [] }];
+    while (stack.length) {
+      const current = stack.pop()!;
+      if (current.edges.length >= 16) continue;
+      const rows = db
+        .prepare(
+          "SELECT i.id AS itemId,j.library_id AS libraryId,i.media_link_id AS mediaLinkId,i.old_track_id AS oldTrackId,i.new_track_id AS newTrackId,r.displaced_track_id AS displacedTrackId FROM organization_items i JOIN organization_jobs j ON j.id=i.job_id LEFT JOIN organization_target_replacements r ON r.item_id=i.id WHERE (i.old_track_id=? OR r.displaced_track_id=?) AND i.stage='succeeded' ORDER BY i.stage_changed_at,i.id",
+        )
+        .all(current.trackId, current.trackId) as Edge[];
+      for (const edge of rows) {
+        if (
+          (edge.oldTrackId !== current.trackId && edge.displacedTrackId !== current.trackId) ||
+          current.traversed.includes(edge.newTrackId)
+        )
+          continue;
+        const next: Path = {
+          traversed: [...current.traversed, current.trackId],
+          predecessorTrackIds: [
+            ...new Set(
+              [
+                ...current.predecessorTrackIds,
+                current.trackId,
+                edge.oldTrackId,
+                edge.displacedTrackId,
+              ].filter((trackId): trackId is string => trackId !== null),
+            ),
+          ],
+          edges: [...current.edges, edge],
+        };
+        if (edge.newTrackId === newTrackId) paths.push(next);
+        else
+          stack.push({
+            trackId: edge.newTrackId,
+            traversed: next.traversed,
+            predecessorTrackIds: next.predecessorTrackIds,
+            edges: next.edges,
+          });
+      }
+    }
+    if (paths.length !== 1) return null;
+    const path = paths[0]!;
+    if (new Set(path.edges.map(({ libraryId }) => libraryId)).size !== 1) return null;
+    return {
+      ...path.edges.at(-1)!,
+      predecessorTrackIds: path.predecessorTrackIds,
+    };
+  };
   const hash = (purpose: string, value: unknown) =>
     createHash('sha256')
       .update(service.sign(`organization-${purpose}`, JSON.stringify(canonical(value))))
@@ -331,18 +394,7 @@ export function createOrganizationService(service: SessionService) {
       } catch {
         throw new ApiError(422, 'invalid_request');
       }
-      const successor = db
-        .prepare(
-          "SELECT j.library_id AS libraryId,i.media_link_id AS mediaLinkId,i.old_track_id AS oldTrackId,r.displaced_track_id AS displacedTrackId FROM organization_items i JOIN organization_jobs j ON j.id=i.job_id LEFT JOIN organization_target_replacements r ON r.item_id=i.id WHERE (i.old_track_id=? OR r.displaced_track_id=?) AND i.new_track_id=? AND i.stage='succeeded' ORDER BY i.stage_changed_at DESC LIMIT 1",
-        )
-        .get(body.trackId, body.trackId, body.newTrackId) as
-        | {
-            libraryId: string;
-            mediaLinkId: string;
-            oldTrackId: string;
-            displacedTrackId: string | null;
-          }
-        | undefined;
+      const successor = successorLineage(body.trackId, body.newTrackId);
       if (!successor || !principal.allowedLibraries.includes(successor.libraryId))
         throw new ApiError(422, 'invalid_request');
       const identityReused = body.trackId === body.newTrackId;
@@ -361,9 +413,7 @@ export function createOrganizationService(service: SessionService) {
           username: principal.identity.username,
           baseline,
           newTrackId: body.newTrackId,
-          predecessorTrackIds: [successor.oldTrackId, successor.displacedTrackId].filter(
-            (trackId): trackId is string => trackId !== null,
-          ),
+          predecessorTrackIds: successor.predecessorTrackIds,
           allowIdentityReuse: identityReused,
           ...(signal ? { signal } : {}),
         });
