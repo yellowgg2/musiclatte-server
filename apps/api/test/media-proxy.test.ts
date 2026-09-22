@@ -174,13 +174,13 @@ describe('authenticated media proxy', () => {
         headers: context.headers,
       }),
     );
-    await expect.poll(() => context.mediaRequests.length).toBeGreaterThanOrEqual(6);
+    await expect.poll(() => context.mediaRequests.length).toBeGreaterThanOrEqual(1);
     await new Promise((resolve) => setTimeout(resolve, 20));
     const concurrentUpstreamRequests = context.mediaRequests.length;
     releaseMedia();
     const responses = await Promise.all(pending);
 
-    expect(concurrentUpstreamRequests).toBeLessThanOrEqual(6);
+    expect(concurrentUpstreamRequests).toBeLessThanOrEqual(1);
     expect(responses.map((response) => response.statusCode)).toEqual(Array(12).fill(200));
     expect(context.mediaRequests).toHaveLength(12);
   });

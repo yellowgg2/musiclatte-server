@@ -19,7 +19,7 @@ const coverLimits = new WeakMap<SessionService, ReturnType<typeof createConcurre
 function coverLimit(service: SessionService) {
   let limit = coverLimits.get(service);
   if (!limit) {
-    limit = createConcurrencyLimit(6);
+    limit = createConcurrencyLimit(1);
     coverLimits.set(service, limit);
   }
   return limit;
