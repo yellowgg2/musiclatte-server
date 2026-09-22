@@ -179,3 +179,16 @@ it('should exclude private import files and runtime stores', () => {
     ).toBe(0);
   }
 });
+
+/** The local aggregate probe must not become an HTTP route or acquire deployment privileges. */
+it('should keep background diagnostics outside the public and container surfaces', () => {
+  const probe = readFileSync('tools/verification/background-load-status.ts', 'utf8');
+  expect(probe).not.toMatch(/createApp|\.listen\(|docker\.sock|Authorization|Bearer/);
+  expect(probe).toContain('readOnly: true');
+  expect(
+    readdirSync('apps/api/src/routes').filter((name) => /background|diagnostic|status/i.test(name)),
+  ).toEqual([]);
+  const overlay = readFileSync('deploy/compose.automation.yaml', 'utf8');
+  expect(overlay).not.toContain('background-load-status');
+  expect(overlay).not.toContain('docker.sock');
+});

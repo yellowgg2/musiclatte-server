@@ -57,6 +57,32 @@ it('ships a credential-free explicit account organization mapping example', () =
   });
   expect(raw).not.toMatch(/password|credential|accessToken|secret|\/home\/|\/Users\//i);
 });
+it('keeps the Phase 19 pacing example and deployment handoff aligned with runtime defaults', () => {
+  const example = JSON.parse(readFileSync('deploy/automation-config.example.json', 'utf8')) as {
+    curation: { inventory: Record<string, number> };
+  };
+  expect(example.curation.inventory).toEqual({
+    batchSize: 2,
+    itemTimeoutMs: 20_000,
+    batchTimeMs: 30_000,
+    batchCooldownMs: 60_000,
+    retryIntervalMs: 600_000,
+    maxRetryAttempts: 2,
+    sweepIntervalMs: 2_592_000_000,
+    maxQueueItems: 10_000,
+  });
+  const operations = readFileSync('docs/operations/background-load.md', 'utf8');
+  const normalizedOperations = operations.replace(/\s+/g, ' ');
+  for (const contract of [
+    'compose.yaml`, `deploy/compose.imports.yaml`, `deploy/compose.listening.yaml`',
+    '`SESSION_MAX_AGE_SECONDS=2592000`',
+    'existing seven-key policy',
+    'six-hour Gonic scheduled scan',
+    'incomplete staged scan',
+    'git pull --ff-only origin main',
+  ])
+    expect(normalizedOperations).toContain(contract);
+});
 it('runs the source-only HTTP consumer against real routes and MP3 writes', async () => {
   const c = await createCurationMutationContext();
   const now = vi.spyOn(Date, 'now').mockImplementation(c.clock);

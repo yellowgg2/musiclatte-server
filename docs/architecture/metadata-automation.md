@@ -132,6 +132,13 @@ their diagnostic fields, while queued errors and discovering, partial, or error 
 Operational current-warning aggregates filter `resolved_at IS NULL`; history queries may include
 both states.
 
+For Phase 19 deployment, the existing seven-key private inventory object remains valid and defaults
+the missing `batchCooldownMs` to 60,000 ms. Operators may deploy schema-aligned code first, validate
+health, then atomically replace the owner-only policy with the eight-key example (batch 2, 30-second
+budget, 60-second cooldown, 30-day sweep). API, import worker, and metadata worker must not run mixed
+schema versions. Production deployment, private-policy mutation, and acceptance require separate
+authorization and the matching backup/rollback procedure.
+
 Completed backup artifacts are checkpointed and sealed in DELETE journal mode before verification
 so read-only restoration does not depend on WAL shared-memory sidecars. Only the new snapshot is
 changed. Restoration still preserves web/legacy sessions while invalidating automation credentials,

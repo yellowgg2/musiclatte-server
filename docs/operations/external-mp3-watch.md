@@ -32,4 +32,10 @@ Registration failures retry from 30 seconds with exponential backoff up to one h
 
 Set `watchExternalMp3` to `false`, recreate the API, wait for health/projection, and recreate the worker. This stops new observation and closes watchers. Preserve the management database, named volumes, existing DownloadEvents, observations, MediaLinks, and music files. Do not delete observations, reset baseline, remove volumes, or downgrade the database in place.
 
+Before a binary rollback, stop the worker and retain a diagnostic snapshot. A persisted continuation
+from an incomplete staged scan has no matching process-local fingerprint set after restart; old code
+must not resume it or infer absence from it. Restore the matching pre-upgrade management/key snapshot
+for the old binary into fresh recovery volumes, then let the restored worker begin a conservative
+traversal from the root. Do not clear continuation or observation rows with ad-hoc SQL.
+
 Existing external history continues through the unchanged recent contract and may be `ready` or `missing` according to current file/Gonic state. To roll back the whole release, use the normal matched backup/image procedure from the import deployment guide; production changes remain a separately authorized operation.

@@ -37,3 +37,9 @@ SIGINT/SIGTERM stops new claims, aborts active ffprobe/Gonic requests, closes wa
 The recent reader remains account/library scoped. Before registration it returns `registering`; after exact registration and current file/getSong validation it returns `ready`; deletion, Gonic code 70, ID change, or path mismatch returns `missing`. The response never exposes provenance, path, or owner, and history is not deleted when availability changes.
 
 Operational activation and rollback are documented in [External MP3 watch operations](../operations/external-mp3-watch.md). Automated evidence is under `docs/verification/phase-18/`.
+
+Phase 19 separates scheduling clocks: filesystem hints coalesce for 250 ms, settling/admission due
+work remains five seconds, watcher attachment refreshes every 60 seconds without starting inventory,
+and an active root receives a no-event safety traversal after six hours. A successful traversal
+commits only new/changed/absent deltas; unchanged observations receive zero writes. None of these
+clocks requests the separate six-hour Gonic scheduled scan.

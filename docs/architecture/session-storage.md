@@ -34,6 +34,13 @@ receipt는 playlist 원장이 아니다. raw operation ID, playlist 이름, song
 
 WAL + synchronous FULL + foreign_keys ON, writer busy timeout 100ms를 사용한다. timeout은 lock 충돌의 빠른 실패를 위한 구현값이며 SLA가 아니다. `transaction`은 `BEGIN IMMEDIATE`/COMMIT/ROLLBACK, `readTransaction`은 `BEGIN DEFERRED`/COMMIT/ROLLBACK을 사용한다. 둘 다 **동기 callback만** 허용하고 이미 transaction 안인 read callback은 중첩 `BEGIN` 없이 현재 snapshot을 사용한다. callback 내부에 async 작업을 예약하지 않는다. HTTP/network 작업은 transaction 밖에서 수행한다. 다른 connection의 writer 충돌은 write에서 `Storage unavailable`로 실패하며 호출자가 작업 의미에 맞게 재시도하지만, WAL snapshot read는 competing writer와 함께 진행할 수 있다.
 
+Phase 19의 current schema 32에서도 이 경계는 유지된다. 정상 session 조회와 proof 검증은
+deferred snapshot만 사용하므로 import/metadata writer가 `BEGIN IMMEDIATE`를 보유해도 읽을 수
+있다. 만료·손상 session은 먼저 null로 fail closed하고, 조건부 proof 폐기는 snapshot 밖의
+best-effort writer다. cleanup 경합은 인증 성공으로 바뀌거나 raw SQLite 오류를 공개하지
+않는다. API/import/metadata image는 같은 schema를 소비하므로 migration 배포와 rollback은
+version-aligned code 및 matching database snapshot을 함께 사용한다.
+
 ## Credential / key
 
 `createKey(path)`는 첫 설치에만 호출한다. 32바이트 무작위 key를 0600 임시 파일에 fsync한 뒤 no-clobber link로 게시하고 parent도 fsync한다. 기존 key는 덮어쓰지 않는다. 매 시작은 `loadKey(path)`로만 읽는다. 누락, 잘못된 길이, group/other 권한 또는 symlink key는 `Reauthentication required`로 실패한다.
