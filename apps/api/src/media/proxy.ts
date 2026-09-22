@@ -64,12 +64,14 @@ export async function proxyMedia(
 
   let raw: string | undefined;
   let streaming = false;
+  let releaseCover: (() => void) | undefined;
   try {
     const verified = await service.verify(auth.token, auth.scheme, {
       signal: controller.signal,
       reuseIdentity: true,
     });
     raw = verified.session.raw;
+    if (kind === 'cover') releaseCover = await coverLimit(service).acquire(controller.signal);
     await options?.authorize?.(verified);
     const streamOptions = await options?.streamOptions?.(verified, controller.signal);
     const range = options?.freshCover ? undefined : request.headers.range;
@@ -95,16 +97,13 @@ export async function proxyMedia(
       controller.abort();
     }, service.options.timeoutMs);
     let response: Response;
-    let releaseCover: (() => void) | undefined;
     try {
-      if (kind === 'cover') releaseCover = await coverLimit(service).acquire(controller.signal);
       response = await fetch(upstreamRequest, { redirect: 'manual' });
     } catch {
       throw new SubsonicError(
         timedOut ? 'timeout' : controller.signal.aborted ? 'cancelled' : 'network',
       );
     } finally {
-      releaseCover?.();
       clearTimeout(timer);
     }
 
@@ -155,6 +154,7 @@ export async function proxyMedia(
     }
     return service.rejectUpstream(error, raw);
   } finally {
+    releaseCover?.();
     if (!streaming) cleanup();
   }
 }
