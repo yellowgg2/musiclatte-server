@@ -197,6 +197,25 @@ describe('id3-managed-v1 organization path planning', () => {
         },
       }),
     ).toMatchObject({ status: 'error', code: 'destination_conflict' });
+
+    const managed = fixture(
+      'jojo-music/account/ID3-managed/Lauv/Feelings - Single/01 - Feelings.mp3',
+    );
+    expect(
+      planOrganizationPath({
+        ...managed,
+        values: {
+          title: 'Feelings',
+          artist: ['LAUV'],
+          album: 'Feelings - Single',
+          albumArtist: ['LAUV'],
+          trackNumber: '1/1',
+        },
+      }),
+    ).toMatchObject({
+      status: 'no_op',
+      targetKey: 'jojo-music/account/ID3-managed/Lauv/Feelings - Single/01 - Feelings.mp3',
+    });
   });
 
   it('detects NFC-equivalent collisions and symlink parents without mutation', () => {
@@ -223,6 +242,50 @@ describe('id3-managed-v1 organization path planning', () => {
         values: { ...symlinkInput.values, albumArtist: [], album: 'Album', title: 'Title' },
       }),
     ).toMatchObject({ status: 'error', code: 'unsafe_target' });
+  });
+
+  it('reuses one NFC-stable case-only intermediate directory without weakening file collisions', () => {
+    const input = fixture();
+    mkdirSync(join(input.musicRoot, 'jojo-music/account/ID3-managed/Lauv'), {
+      recursive: true,
+    });
+
+    expect(
+      planOrganizationPath({
+        ...input,
+        values: {
+          title: 'Feelings',
+          artist: ['LAUV'],
+          album: 'Feelings - Single',
+          albumArtist: ['LAUV'],
+          trackNumber: '1/1',
+        },
+      }),
+    ).toMatchObject({
+      status: 'ready',
+      targetKey: 'jojo-music/account/ID3-managed/Lauv/Feelings - Single/01 - Feelings.mp3',
+    });
+
+    mkdirSync(join(input.musicRoot, 'jojo-music/account/ID3-managed/Lauv/Feelings - Single'));
+    writeFileSync(
+      join(
+        input.musicRoot,
+        'jojo-music/account/ID3-managed/Lauv/Feelings - Single/01 - FEELINGS.mp3',
+      ),
+      'other',
+    );
+    expect(
+      planOrganizationPath({
+        ...input,
+        values: {
+          title: 'Feelings',
+          artist: ['LAUV'],
+          album: 'Feelings - Single',
+          albumArtist: ['LAUV'],
+          trackNumber: '1/1',
+        },
+      }),
+    ).toMatchObject({ status: 'error', code: 'destination_conflict' });
   });
 
   it('rejects excessive metadata instead of accepting an unbounded request', () => {

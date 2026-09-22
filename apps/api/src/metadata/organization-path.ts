@@ -82,6 +82,17 @@ function equivalent(left: string, right: string): boolean {
   return left.normalize('NFC').toLowerCase() === right.normalize('NFC').toLowerCase();
 }
 
+function caseOnlyEquivalent(left: string, right: string): boolean {
+  const normalizedLeft = left.normalize('NFC');
+  const normalizedRight = right.normalize('NFC');
+  return (
+    left === normalizedLeft &&
+    right === normalizedRight &&
+    normalizedLeft !== normalizedRight &&
+    normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+  );
+}
+
 export function selectExistingPathEntry(
   entries: readonly string[],
   part: string,
@@ -138,6 +149,47 @@ function inspectExistingKey(
   return finalKind === 'source' ? 'safe' : 'collision';
 }
 
+function inspectTargetKey(
+  musicRoot: string,
+  key: string,
+): { state: 'missing' | 'collision' | 'unsafe'; key: string } {
+  let current = musicRoot;
+  const parts = key.split('/');
+  const resolved: string[] = [];
+  for (const [index, part] of parts.entries()) {
+    let entries: string[];
+    try {
+      entries = readdirSync(current);
+    } catch {
+      return { state: 'unsafe', key: [...resolved, ...parts.slice(index)].join('/') };
+    }
+    const matches = entries.filter((entry) => equivalent(entry, part));
+    if (!matches.length)
+      return { state: 'missing', key: [...resolved, ...parts.slice(index)].join('/') };
+    const exact = matches.find((entry) => entry === part);
+    const final = index === parts.length - 1;
+    if (final) {
+      const entry = exact ?? matches[0]!;
+      return { state: 'collision', key: [...resolved, entry].join('/') };
+    }
+    if (matches.length > 1 || (!exact && !caseOnlyEquivalent(matches[0]!, part)))
+      return { state: 'collision', key: [...resolved, part, ...parts.slice(index + 1)].join('/') };
+    const entry = exact ?? matches[0]!;
+    current = join(current, entry);
+    resolved.push(entry);
+    try {
+      const stat = lstatSync(current);
+      if (stat.isSymbolicLink() || !stat.isDirectory())
+        return { state: 'unsafe', key: [...resolved, ...parts.slice(index + 1)].join('/') };
+      if (!realpathSync(current).startsWith(`${musicRoot}${sep}`))
+        return { state: 'unsafe', key: [...resolved, ...parts.slice(index + 1)].join('/') };
+    } catch {
+      return { state: 'unsafe', key: [...resolved, ...parts.slice(index + 1)].join('/') };
+    }
+  }
+  return { state: 'unsafe', key };
+}
+
 function first(values: readonly string[]): string | undefined {
   return values.find((value) => value.trim().length > 0)?.trim();
 }
@@ -163,32 +215,40 @@ export function planOrganizationPath(input: OrganizationPathInput): Organization
 
   const track = input.values.trackNumber?.match(/^([1-9]\d*)(?:\/[1-9]\d*)?$/)?.[1];
   const prefix = track ? `${String(Number(track)).padStart(2, '0')} - ` : '';
-  const targetKey = `${accountRoot}/ID3-managed/${sanitizeMediaName(artistFolder)}/${sanitizeMediaName(album)}/${sanitizeMediaName(`${prefix}${title}`)}.mp3`;
+  const requestedTargetKey = `${accountRoot}/ID3-managed/${sanitizeMediaName(artistFolder)}/${sanitizeMediaName(album)}/${sanitizeMediaName(`${prefix}${title}`)}.mp3`;
   try {
-    validateRelativeKey(targetKey);
+    validateRelativeKey(requestedTargetKey);
   } catch {
     return error(input, 'excessive_length');
   }
   const sourceKind = input.sourceKey.startsWith(`${accountRoot}/ID3-managed/`)
     ? 'managed'
     : 'legacy';
-  if (targetKey === input.sourceKey)
+  if (requestedTargetKey === input.sourceKey)
     return {
       status: 'no_op',
       policyVersion: 'id3-managed-v1',
       sourceKind,
       currentKey: input.sourceKey,
-      targetKey,
+      targetKey: requestedTargetKey,
     };
 
-  const targetState = inspectExistingKey(musicRoot, targetKey, 'target');
-  if (targetState === 'collision') return error(input, 'destination_conflict');
-  if (targetState === 'unsafe') return error(input, 'unsafe_target');
+  const target = inspectTargetKey(musicRoot, requestedTargetKey);
+  if (target.state === 'collision' && target.key === input.sourceKey)
+    return {
+      status: 'no_op',
+      policyVersion: 'id3-managed-v1',
+      sourceKind,
+      currentKey: input.sourceKey,
+      targetKey: target.key,
+    };
+  if (target.state === 'collision') return error(input, 'destination_conflict');
+  if (target.state === 'unsafe') return error(input, 'unsafe_target');
   return {
     status: 'ready',
     policyVersion: 'id3-managed-v1',
     sourceKind,
     currentKey: input.sourceKey,
-    targetKey,
+    targetKey: target.key,
   };
 }

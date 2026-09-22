@@ -36,9 +36,11 @@ destination without creating directories or moving bytes. A target under another
 rejected, including when that other account belongs to the operator.
 
 The result distinguishes `ready`, an exact already-managed `no_op`, and typed errors for missing
-metadata, account/library violations, unsafe source or target components, Unicode/case-equivalent
-collisions, existing destinations, and excessive input. Missing target parents are valid preview
-state; symlink parents and collisions are not.
+metadata, account/library violations, unsafe source or target components, Unicode-normalization or
+ambiguous case-equivalent collisions, existing final destinations, and excessive input. A unique
+NFC-stable case-only match for an intermediate target directory is reused with its existing on-disk
+spelling so the immutable target key cannot create a second case alias. Missing target parents are
+valid preview state; symlink parents and every equivalent final filename remain collisions.
 
 ## Durable operation ledger
 

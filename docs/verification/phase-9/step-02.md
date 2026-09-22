@@ -26,3 +26,18 @@ Final gates: project formatting, focused tests, typecheck, build, `format:check`
 - The API planner and metadata worker reuse the same account-scope guard; a target under the
   operator's different account is rejected before filesystem work.
 - Deployment was intentionally excluded.
+
+## Case-only managed-directory recovery — 2026-09-22
+
+- RED reproduced a production preview conflict where the verified metadata requested an NFC-stable
+  uppercase artist directory while one equivalent mixed-case managed directory already existed.
+- The planner now reuses the unique existing spelling for intermediate directories and records that
+  canonical spelling in the target key. It does not create a second case alias.
+- Equivalent final filenames remain `destination_conflict`; Unicode-normalization variants,
+  ambiguity, symlinks, non-directories, and account/root boundaries remain rejected.
+- Focused unit verification covers ready-path reuse, case-equivalent final-file rejection, and a
+  managed-source `no_op`. Production replay uses the original frozen journal, revision, operation,
+  and reference snapshots; no direct media or database mutation is permitted.
+- Verification: path/config unit 27/27, file-store/state unit 15/15, API/worker unit 28/28, affected
+  ID3 client/batch contract 52/52, automation deployment contract 5/5, typecheck, build,
+  `format:check`, and `git diff --check` passed on Node 24.20.0.
