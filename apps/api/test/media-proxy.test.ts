@@ -34,6 +34,64 @@ describe('authenticated media proxy', () => {
     expect(context.mediaRequests).toHaveLength(0);
   });
 
+  /** Concurrent media loads share one identity check instead of flooding the upstream server. */
+  it('should coalesce concurrent identity checks for one media session', async () => {
+    const context = await makeSUT();
+    let releaseIdentity!: () => void;
+    const identityGate = new Promise<void>((resolve) => {
+      releaseIdentity = resolve;
+    });
+    context.state.identityResponseGate = () => identityGate;
+    const pending = Array.from({ length: 8 }, (_, index) =>
+      context.app.inject({
+        url: `/api/v1/media/cover/cover-${index}`,
+        headers: context.headers,
+      }),
+    );
+    await expect
+      .poll(() => context.requests.filter((request) => request.pathname === '/rest/getUser').length)
+      .toBeGreaterThan(0);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const identityRequestCount = context.requests.filter(
+      (request) => request.pathname === '/rest/getUser',
+    ).length;
+    releaseIdentity();
+    const responses = await Promise.all(pending);
+    expect(identityRequestCount).toBe(1);
+    expect(responses.map((response) => response.statusCode)).toEqual(Array(8).fill(200));
+    expect(context.mediaRequests).toHaveLength(8);
+  });
+
+  /** One disconnected cover request cannot cancel the identity check still used by another request. */
+  it('should preserve a shared identity check while another media subscriber remains', async () => {
+    const context = await makeSUT(5_000);
+    const address = await context.app.listen({ port: 0, host: '127.0.0.1' });
+    let releaseIdentity!: () => void;
+    const identityGate = new Promise<void>((resolve) => {
+      releaseIdentity = resolve;
+    });
+    context.state.identityResponseGate = () => identityGate;
+    const cancelled = new AbortController();
+    const first = fetch(`${address}/api/v1/media/cover/cover-1`, {
+      headers: context.headers,
+      signal: cancelled.signal,
+    }).catch(() => undefined);
+    const second = fetch(`${address}/api/v1/media/cover/cover-2`, {
+      headers: context.headers,
+    });
+    await expect
+      .poll(() => context.requests.filter((request) => request.pathname === '/rest/getUser').length)
+      .toBe(1);
+    cancelled.abort();
+    await first;
+    releaseIdentity();
+    expect((await second).status).toBe(200);
+    expect(context.requests.filter((request) => request.pathname === '/rest/getUser')).toHaveLength(
+      1,
+    );
+    expect(context.mediaRequests).toHaveLength(1);
+  });
+
   /** A single byte range preserves opaque identity, status, body and seek headers. */
   it('should stream an exact byte range without exposing upstream credentials or headers', async () => {
     const context = await makeSUT();

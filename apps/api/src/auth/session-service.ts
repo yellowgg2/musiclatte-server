@@ -122,6 +122,53 @@ export function createSessionService(input: AuthOptions) {
   }
   const client = (proof: SubsonicTokenProof) =>
     createSubsonicClient({ upstream: options.upstream, timeoutMs: options.timeoutMs, proof });
+  type Identity = Awaited<ReturnType<ReturnType<typeof client>['currentUser']>>;
+  type IdentityCheck = {
+    controller: AbortController;
+    promise: Promise<Identity>;
+    settled: boolean;
+    subscribers: number;
+  };
+  const identityChecks = new Map<string, IdentityCheck>();
+  function identityCheck(raw: string, proof: SubsonicTokenProof): IdentityCheck {
+    const existing = identityChecks.get(raw);
+    if (existing) return existing;
+    const controller = new AbortController();
+    let check!: IdentityCheck;
+    const promise = client(proof)
+      .currentUser({ signal: controller.signal })
+      .finally(() => {
+        check.settled = true;
+        if (identityChecks.get(raw) === check) identityChecks.delete(raw);
+      });
+    check = { controller, promise, settled: false, subscribers: 0 };
+    identityChecks.set(raw, check);
+    return check;
+  }
+  async function sharedIdentity(
+    raw: string,
+    proof: SubsonicTokenProof,
+    signal?: AbortSignal,
+  ): Promise<Identity> {
+    signal?.throwIfAborted();
+    const check = identityCheck(raw, proof);
+    check.subscribers += 1;
+    let abort: (() => void) | undefined;
+    try {
+      if (!signal) return await check.promise;
+      return await Promise.race([
+        check.promise,
+        new Promise<never>((_resolve, reject) => {
+          abort = () => reject(signal.reason);
+          signal.addEventListener('abort', abort, { once: true });
+        }),
+      ]);
+    } finally {
+      if (abort) signal?.removeEventListener('abort', abort);
+      check.subscribers -= 1;
+      if (!check.settled && check.subscribers === 0) check.controller.abort();
+    }
+  }
   function rejectUpstream(error: unknown, raw?: string): never {
     const mapped = upstreamError(error);
     if (mapped.status === 401 && raw) {
@@ -138,7 +185,7 @@ export function createSessionService(input: AuthOptions) {
     const session = find(value, scheme);
     const upstream = client(session.proof);
     try {
-      const identity = await upstream.currentUser(requestOptions);
+      const identity = await sharedIdentity(session.raw, session.proof, requestOptions.signal);
       if (identity.username !== session.username) throw new ApiError(401, 'unauthenticated');
       // A logout/policy change during network I/O cannot resurrect a session.
       find(value, scheme);
