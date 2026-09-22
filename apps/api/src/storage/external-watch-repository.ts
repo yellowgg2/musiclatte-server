@@ -508,7 +508,7 @@ export function createExternalWatchRepository(options: {
     failRootScan(input: {
       libraryId: string;
       accountDirectory: string;
-      failureCode: 'root_unavailable' | 'root_replaced' | 'entry_unreadable';
+      failureCode: 'root_unavailable' | 'root_replaced' | 'entry_unreadable' | 'inventory_capacity';
       nextReconcileAt: number;
     }) {
       if (!integer(input.nextReconcileAt)) throw new Error('Invalid external watch retry');
@@ -522,6 +522,188 @@ export function createExternalWatchRepository(options: {
         input.libraryId,
         input.accountDirectory,
       );
+    },
+    commitScanSnapshot(input: {
+      libraryId: string;
+      accountDirectory: string;
+      identityKey: string;
+      rootGeneration: number;
+      rootDevice: number | bigint | string;
+      rootInode: number | bigint | string;
+      baseline: boolean;
+      entries: { relativeFileKey: string; fingerprint: ExternalFileFingerprint }[];
+      nextReconcileAt: number;
+    }) {
+      const rootDevice = losslessInteger(input.rootDevice);
+      const rootInode = losslessInteger(input.rootInode);
+      if (
+        !text(input.libraryId) ||
+        !validAccountDirectory(input.accountDirectory) ||
+        !identityPattern.test(input.identityKey) ||
+        !Number.isSafeInteger(input.rootGeneration) ||
+        input.rootGeneration < 1 ||
+        rootDevice === null ||
+        rootInode === null ||
+        typeof input.baseline !== 'boolean' ||
+        !integer(input.nextReconcileAt) ||
+        input.entries.length > 100_000
+      )
+        throw new Error('Invalid external watch snapshot');
+      const staged = new Map<
+        string,
+        {
+          device: string;
+          inode: string;
+          size: string;
+          mtimeNs: string;
+          ctimeNs: string;
+          linkCount: number;
+        }
+      >();
+      for (const entry of input.entries) {
+        if (!validRelativeKey(entry.relativeFileKey) || !validFingerprint(entry.fingerprint))
+          throw new Error('Invalid external watch snapshot');
+        const fingerprint = {
+          device: losslessInteger(entry.fingerprint.device)!,
+          inode: losslessInteger(entry.fingerprint.inode)!,
+          size: losslessInteger(entry.fingerprint.size)!,
+          mtimeNs: losslessInteger(entry.fingerprint.mtimeNs)!,
+          ctimeNs: losslessInteger(entry.fingerprint.ctimeNs)!,
+          linkCount: entry.fingerprint.linkCount,
+        };
+        if (staged.has(entry.relativeFileKey)) throw new Error('Invalid external watch snapshot');
+        staged.set(entry.relativeFileKey, fingerprint);
+      }
+      const timestamp = now();
+      database.transaction(() => {
+        const rootRow = db
+          .prepare(`${rootSelect} WHERE library_id=? AND account_directory=?`)
+          .get(input.libraryId, input.accountDirectory);
+        const root = rootRow ? decodeRoot(rootRow) : null;
+        if (
+          !root ||
+          root.identityKey !== input.identityKey ||
+          root.generation !== input.rootGeneration ||
+          root.rootDevice !== rootDevice ||
+          root.rootInode !== rootInode ||
+          root.scanStartedAt === null
+        )
+          throw new Error('Invalid external watch root');
+        const existing = new Map(
+          db
+            .prepare(
+              `${observationSelect} WHERE library_id=? AND account_directory=? ORDER BY relative_file_key`,
+            )
+            .all(input.libraryId, input.accountDirectory)
+            .map((row) => {
+              const observation = decodeObservation(row);
+              return [observation.relativeFileKey, observation] as const;
+            }),
+        );
+        for (const [relativeFileKey, fingerprint] of staged) {
+          const observation = existing.get(relativeFileKey);
+          if (!observation) {
+            const state = input.baseline ? 'baseline' : 'settling';
+            db.prepare(
+              `INSERT INTO external_file_observations(
+                library_id,relative_file_key,account_directory,identity_key,state,
+                device,inode,size,mtime_ns,ctime_ns,link_count,
+                first_seen_at,stable_since_at,last_seen_at,next_attempt_at
+              ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            ).run(
+              input.libraryId,
+              relativeFileKey,
+              input.accountDirectory,
+              input.identityKey,
+              state,
+              fingerprint.device,
+              fingerprint.inode,
+              fingerprint.size,
+              fingerprint.mtimeNs,
+              fingerprint.ctimeNs,
+              fingerprint.linkCount,
+              timestamp,
+              state === 'settling' ? timestamp : null,
+              timestamp,
+              timestamp,
+            );
+            continue;
+          }
+          if (
+            observation.accountDirectory !== input.accountDirectory ||
+            observation.identityKey !== input.identityKey
+          )
+            throw new Error('Storage unavailable');
+          if (
+            !['settling', 'absent'].includes(observation.state) ||
+            (observation.state === 'absent' && observation.eventId !== null)
+          )
+            continue;
+          const previous = observation.fingerprint;
+          const changed =
+            observation.state === 'absent' ||
+            !previous ||
+            previous.device !== fingerprint.device ||
+            previous.inode !== fingerprint.inode ||
+            previous.size !== fingerprint.size ||
+            previous.mtimeNs !== fingerprint.mtimeNs ||
+            previous.ctimeNs !== fingerprint.ctimeNs ||
+            previous.linkCount !== fingerprint.linkCount;
+          if (!changed) continue;
+          db.prepare(
+            `UPDATE external_file_observations SET
+              state='settling',device=?,inode=?,size=?,mtime_ns=?,ctime_ns=?,link_count=?,
+              stable_since_at=?,last_seen_at=?,next_attempt_at=?,attempt=0,failure_code=NULL,
+              event_id=NULL,media_link_id=NULL,lease_owner=NULL,lease_expires_at=NULL,
+              generation=generation+1
+             WHERE library_id=? AND relative_file_key=?`,
+          ).run(
+            fingerprint.device,
+            fingerprint.inode,
+            fingerprint.size,
+            fingerprint.mtimeNs,
+            fingerprint.ctimeNs,
+            fingerprint.linkCount,
+            timestamp,
+            timestamp,
+            timestamp,
+            input.libraryId,
+            relativeFileKey,
+          );
+        }
+        for (const observation of existing.values()) {
+          if (observation.state !== 'settling' || staged.has(observation.relativeFileKey)) continue;
+          db.prepare(
+            `UPDATE external_file_observations SET
+              state='absent',device=NULL,inode=NULL,size=NULL,mtime_ns=NULL,ctime_ns=NULL,link_count=NULL,
+              stable_since_at=NULL,next_attempt_at=?,attempt=0,failure_code=NULL,
+              lease_owner=NULL,lease_expires_at=NULL,generation=generation+1
+             WHERE library_id=? AND relative_file_key=? AND state='settling'`,
+          ).run(timestamp, input.libraryId, observation.relativeFileKey);
+        }
+        const completedAt = Math.max(timestamp, root.scanStartedAt);
+        const updated = db
+          .prepare(
+            `UPDATE external_watch_roots SET
+              state='active',continuation_json=NULL,scan_completed_at=?,next_reconcile_at=?,
+              last_error_code=NULL,lease_owner=NULL,lease_expires_at=NULL,updated_at=?
+             WHERE library_id=? AND account_directory=? AND identity_key=? AND generation=?
+               AND root_device=? AND root_inode=?`,
+          )
+          .run(
+            completedAt,
+            input.nextReconcileAt,
+            timestamp,
+            input.libraryId,
+            input.accountDirectory,
+            input.identityKey,
+            input.rootGeneration,
+            rootDevice,
+            rootInode,
+          );
+        if (updated.changes !== 1) throw new Error('Invalid external watch root');
+      });
+      return this.getRoot(input.libraryId, input.accountDirectory)!;
     },
     completeRootScan(input: {
       libraryId: string;

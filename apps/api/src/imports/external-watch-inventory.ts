@@ -14,6 +14,7 @@ import { posix } from 'node:path';
 import type { ManagementDatabase } from '../storage/database.js';
 import {
   createExternalWatchRepository,
+  type ExternalFileFingerprint,
   type ExternalWatchContinuation,
 } from '../storage/external-watch-repository.js';
 import { validateRelativeKey } from './policy.js';
@@ -30,6 +31,7 @@ interface InventoryOptions {
   musicRoot: string;
   clock: () => number;
   maxEntries?: number;
+  maxStagedEntries?: number;
   maxElapsedMs?: number;
   budgetClock?: () => number;
   readDirectory?: (path: string) => Dirent[];
@@ -131,11 +133,15 @@ function directoryEntries(
 
 export function createExternalWatchInventory(options: InventoryOptions) {
   const maxEntries = options.maxEntries ?? 256;
+  const maxStagedEntries = options.maxStagedEntries ?? 100_000;
   const maxElapsedMs = options.maxElapsedMs ?? 50;
   if (
     !Number.isSafeInteger(maxEntries) ||
     maxEntries < 1 ||
     maxEntries > 10_000 ||
+    !Number.isSafeInteger(maxStagedEntries) ||
+    maxStagedEntries < 1 ||
+    maxStagedEntries > 100_000 ||
     !Number.isFinite(maxElapsedMs) ||
     maxElapsedMs <= 0
   )
@@ -148,6 +154,13 @@ export function createExternalWatchInventory(options: InventoryOptions) {
     database: options.database,
     clock: options.clock,
   });
+  const stages = new Map<string, Map<string, ExternalFileFingerprint>>();
+  const stageKey = (target: InventoryTarget, generation: number) =>
+    `${target.libraryId}\0${target.accountDirectory}\0${generation}`;
+  const discardStages = (target: InventoryTarget) => {
+    const prefix = `${target.libraryId}\0${target.accountDirectory}\0`;
+    for (const key of stages.keys()) if (key.startsWith(prefix)) stages.delete(key);
+  };
   const retryAt = () => {
     const value = options.clock() + 30_000;
     if (!Number.isSafeInteger(value) || value < 0) throw new Error('Invalid external watch time');
@@ -155,9 +168,10 @@ export function createExternalWatchInventory(options: InventoryOptions) {
   };
   const block = (
     target: InventoryTarget,
-    failureCode: 'root_unavailable' | 'root_replaced' | 'entry_unreadable',
+    failureCode: 'root_unavailable' | 'root_replaced' | 'entry_unreadable' | 'inventory_capacity',
     processed = 0,
   ) => {
+    discardStages(target);
     repository.failRootScan({
       libraryId: target.libraryId,
       accountDirectory: target.accountDirectory,
@@ -196,7 +210,20 @@ export function createExternalWatchInventory(options: InventoryOptions) {
           rootInode: currentIdentity.inode,
           continuation: { version: 1, directories: [{ key: '', offset: 0 }] },
         });
+        stages.set(stageKey(target, stored.generation), new Map());
+      } else if (!stages.has(stageKey(target, stored.generation))) {
+        stored = repository.startRootScan({
+          libraryId: target.libraryId,
+          accountDirectory: target.accountDirectory,
+          identityKey: target.identityKey,
+          rootDevice: currentIdentity.device,
+          rootInode: currentIdentity.inode,
+          continuation: { version: 1, directories: [{ key: '', offset: 0 }] },
+        });
+        stages.set(stageKey(target, stored.generation), new Map());
       }
+      const currentStageKey = stageKey(target, stored.generation);
+      const stage = stages.get(currentStageKey)!;
       const baseline = stored.scanCompletedAt === null;
       const continuation: ExternalWatchContinuation = {
         version: 1,
@@ -218,17 +245,7 @@ export function createExternalWatchInventory(options: InventoryOptions) {
             accountDirectory: target.accountDirectory,
             continuation,
           });
-          repository.failRootScan({
-            libraryId: target.libraryId,
-            accountDirectory: target.accountDirectory,
-            failureCode: 'entry_unreadable',
-            nextReconcileAt: retryAt(),
-          });
-          return {
-            status: 'blocked' as const,
-            processed,
-            failureCode: 'entry_unreadable' as const,
-          };
+          return block(target, 'entry_unreadable', processed);
         }
         if (!visibleDirectoryMatches(root.path, root.stat))
           return block(target, 'root_replaced', processed);
@@ -259,17 +276,7 @@ export function createExternalWatchInventory(options: InventoryOptions) {
               accountDirectory: target.accountDirectory,
               continuation,
             });
-            repository.failRootScan({
-              libraryId: target.libraryId,
-              accountDirectory: target.accountDirectory,
-              failureCode: 'entry_unreadable',
-              nextReconcileAt: retryAt(),
-            });
-            return {
-              status: 'blocked' as const,
-              processed,
-              failureCode: 'entry_unreadable' as const,
-            };
+            return block(target, 'entry_unreadable', processed);
           }
           if (!stat || stat.isSymbolicLink()) continue;
           if (stat.isDirectory()) {
@@ -277,32 +284,41 @@ export function createExternalWatchInventory(options: InventoryOptions) {
             continue;
           }
           if (!stat.isFile() || posix.extname(entry.name).toLowerCase() !== '.mp3') continue;
-          repository.discover({
-            libraryId: target.libraryId,
-            relativeFileKey: posix.join(target.relativeRoot, target.accountDirectory, childKey),
-            accountDirectory: target.accountDirectory,
-            identityKey: target.identityKey,
-            baseline,
-            seenAt: stored.scanStartedAt!,
-            fingerprint: {
-              device: stat.dev,
-              inode: stat.ino,
-              size: stat.size,
-              mtimeNs: stat.mtimeNs,
-              ctimeNs: stat.ctimeNs,
-              linkCount: Number(stat.nlink),
-            },
+          const relativeFileKey = posix.join(
+            target.relativeRoot,
+            target.accountDirectory,
+            childKey,
+          );
+          if (!stage.has(relativeFileKey) && stage.size >= maxStagedEntries)
+            return block(target, 'inventory_capacity', processed);
+          stage.set(relativeFileKey, {
+            device: stat.dev.toString(),
+            inode: stat.ino.toString(),
+            size: stat.size.toString(),
+            mtimeNs: stat.mtimeNs.toString(),
+            ctimeNs: stat.ctimeNs.toString(),
+            linkCount: Number(stat.nlink),
           });
         }
         continuation.directories.shift();
       }
       if (!visibleDirectoryMatches(root.path, root.stat))
         return block(target, 'root_replaced', processed);
-      repository.completeRootScan({
+      repository.commitScanSnapshot({
         libraryId: target.libraryId,
         accountDirectory: target.accountDirectory,
+        identityKey: target.identityKey,
+        rootGeneration: stored.generation,
+        rootDevice: currentIdentity.device,
+        rootInode: currentIdentity.inode,
+        baseline,
+        entries: [...stage].map(([relativeFileKey, fingerprint]) => ({
+          relativeFileKey,
+          fingerprint,
+        })),
         nextReconcileAt: retryAt(),
       });
+      stages.delete(currentStageKey);
       return { status: 'complete' as const, processed };
     },
   };

@@ -22,6 +22,7 @@ afterEach(() => {
 async function makeSUT(
   options: {
     maxEntries?: number;
+    maxStagedEntries?: number;
     maxElapsedMs?: number;
     budgetClock?: () => number;
     readDirectory?: (path: string) => Dirent[];
@@ -185,6 +186,51 @@ describe('external watch inventory', () => {
     expect(recreated.repository.getRoot('music', 'alice')).toMatchObject({
       state: 'active',
       continuation: null,
+    });
+  });
+
+  /** A completed no-change scan performs only root-level writes, independent of file count. */
+  it('should commit an unchanged full scan without observation writes', async () => {
+    now = 100;
+    const c = await makeSUT();
+    if (!c) return;
+    const account = join(c.musicRoot, 'jojo-music', 'alice');
+    mkdirSync(account, { recursive: true });
+    for (let index = 0; index < 40; index += 1)
+      writeFileSync(join(account, `unchanged-${String(index).padStart(2, '0')}.mp3`), 'fixture');
+    finish(c.inventory);
+    const beforeRows = c.repository.listObservations('music');
+    const beforeChanges = ctx!.db.connection.prepare('SELECT total_changes() AS count').get()
+      ?.count as number;
+
+    now = 200;
+    finish(c.inventory);
+
+    const afterChanges = ctx!.db.connection.prepare('SELECT total_changes() AS count').get()
+      ?.count as number;
+    expect(afterChanges - beforeChanges).toBeLessThanOrEqual(3);
+    expect(c.repository.listObservations('music')).toEqual(beforeRows);
+    expect(c.repository.getRoot('music', 'alice')?.scanCompletedAt).toBe(200);
+  });
+
+  /** Capacity failure discards the staged scan without changing durable observations. */
+  it('should block an oversized staged snapshot without partial observation writes', async () => {
+    now = 100;
+    const c = await makeSUT({ maxStagedEntries: 2 });
+    if (!c) return;
+    const account = join(c.musicRoot, 'jojo-music', 'alice');
+    mkdirSync(account, { recursive: true });
+    for (let index = 0; index < 3; index += 1)
+      writeFileSync(join(account, `capacity-${index}.mp3`), 'fixture');
+
+    expect(c.inventory.reconcile(target)).toMatchObject({
+      status: 'blocked',
+      failureCode: 'inventory_capacity',
+    });
+    expect(c.repository.listObservations('music')).toEqual([]);
+    expect(c.repository.getRoot('music', 'alice')).toMatchObject({
+      state: 'blocked',
+      scanCompletedAt: null,
     });
   });
 
