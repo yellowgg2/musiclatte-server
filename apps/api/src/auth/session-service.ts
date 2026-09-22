@@ -17,6 +17,8 @@ import type { createPlaylistOperationRepository } from '../storage/playlist-oper
 import type { ImportOptions } from '../imports/import-service.js';
 import type { MetadataOptions } from '../metadata/provider.js';
 
+const MEDIA_IDENTITY_REUSE_MS = 5_000;
+
 export interface AuthOptions {
   streamQuality?: boolean;
   artistInfo?: boolean;
@@ -130,6 +132,7 @@ export function createSessionService(input: AuthOptions) {
     subscribers: number;
   };
   const identityChecks = new Map<string, IdentityCheck>();
+  const mediaIdentities = new Map<string, { identity: Identity; expiresAt: number }>();
   function identityCheck(raw: string, proof: SubsonicTokenProof): IdentityCheck {
     const existing = identityChecks.get(raw);
     if (existing) return existing;
@@ -149,20 +152,34 @@ export function createSessionService(input: AuthOptions) {
     raw: string,
     proof: SubsonicTokenProof,
     signal?: AbortSignal,
+    reuse = false,
   ): Promise<Identity> {
     signal?.throwIfAborted();
+    const cached = mediaIdentities.get(raw);
+    if (reuse && cached) {
+      if (cached.expiresAt > Date.now()) return cached.identity;
+      mediaIdentities.delete(raw);
+    }
     const check = identityCheck(raw, proof);
     check.subscribers += 1;
     let abort: (() => void) | undefined;
     try {
-      if (!signal) return await check.promise;
-      return await Promise.race([
-        check.promise,
-        new Promise<never>((_resolve, reject) => {
-          abort = () => reject(signal.reason);
-          signal.addEventListener('abort', abort, { once: true });
-        }),
-      ]);
+      const identity = !signal
+        ? await check.promise
+        : await Promise.race([
+            check.promise,
+            new Promise<never>((_resolve, reject) => {
+              abort = () => reject(signal.reason);
+              signal.addEventListener('abort', abort, { once: true });
+            }),
+          ]);
+      if (reuse) {
+        mediaIdentities.delete(raw);
+        mediaIdentities.set(raw, { identity, expiresAt: Date.now() + MEDIA_IDENTITY_REUSE_MS });
+        if (mediaIdentities.size > 256)
+          mediaIdentities.delete(mediaIdentities.keys().next().value!);
+      }
+      return identity;
     } finally {
       if (abort) signal?.removeEventListener('abort', abort);
       check.subscribers -= 1;
@@ -174,18 +191,24 @@ export function createSessionService(input: AuthOptions) {
     if (mapped.status === 401 && raw) {
       options.sessions.revoke(raw);
       randomSupport.delete(sign('random-support', raw));
+      mediaIdentities.delete(raw);
     }
     throw mapped;
   }
   async function verify(
     value: string,
     scheme: AuthScheme,
-    requestOptions: { signal?: AbortSignal } = {},
+    requestOptions: { signal?: AbortSignal; reuseIdentity?: boolean } = {},
   ) {
     const session = find(value, scheme);
     const upstream = client(session.proof);
     try {
-      const identity = await sharedIdentity(session.raw, session.proof, requestOptions.signal);
+      const identity = await sharedIdentity(
+        session.raw,
+        session.proof,
+        requestOptions.signal,
+        requestOptions.reuseIdentity,
+      );
       if (identity.username !== session.username) throw new ApiError(401, 'unauthenticated');
       // A logout/policy change during network I/O cannot resurrect a session.
       find(value, scheme);
@@ -251,6 +274,7 @@ export function createSessionService(input: AuthOptions) {
         if (old) {
           options.sessions.revoke(old.raw);
           randomSupport.delete(sign('random-support', old.raw));
+          mediaIdentities.delete(old.raw);
         }
       } catch (error) {
         options.sessions.revoke(created.token);
@@ -264,6 +288,7 @@ export function createSessionService(input: AuthOptions) {
       const session = find(value, scheme);
       options.sessions.revoke(session.raw);
       randomSupport.delete(sign('random-support', session.raw));
+      mediaIdentities.delete(session.raw);
     },
   };
 }

@@ -2,7 +2,7 @@ import {
   syntheticAudioFixture,
   syntheticMediaMetadata,
 } from '../../../packages/test-support/src/media-fixtures.js';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cookieOf, createTestContext } from '../../../tests/support/auth-harness.js';
 
 describe('authenticated media proxy', () => {
@@ -17,6 +17,7 @@ describe('authenticated media proxy', () => {
   }
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     for (const context of contexts.splice(0)) await context.cleanup();
   });
 
@@ -60,6 +61,73 @@ describe('authenticated media proxy', () => {
     expect(identityRequestCount).toBe(1);
     expect(responses.map((response) => response.statusCode)).toEqual(Array(8).fill(200));
     expect(context.mediaRequests).toHaveLength(8);
+  });
+
+  /** Browser connection limits split one cover burst into waves; settled waves still reuse identity. */
+  it('should reuse a successful identity check across sequential media waves', async () => {
+    const context = await makeSUT();
+    const first = await context.app.inject({
+      url: '/api/v1/media/cover/cover-1',
+      headers: context.headers,
+    });
+    const second = await context.app.inject({
+      url: '/api/v1/media/cover/cover-2',
+      headers: context.headers,
+    });
+
+    expect([first.statusCode, second.statusCode]).toEqual([200, 200]);
+    expect(context.requests.filter((request) => request.pathname === '/rest/getUser')).toHaveLength(
+      1,
+    );
+    expect(context.mediaRequests).toHaveLength(2);
+  });
+
+  /** Reuse is burst-scoped; later media requests revalidate the upstream account. */
+  it('should expire a reused media identity after the burst window', async () => {
+    const context = await makeSUT();
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    expect(
+      (
+        await context.app.inject({
+          url: '/api/v1/media/cover/cover-1',
+          headers: context.headers,
+        })
+      ).statusCode,
+    ).toBe(200);
+    clock.mockReturnValue(now + 5_001);
+    expect(
+      (
+        await context.app.inject({
+          url: '/api/v1/media/cover/cover-2',
+          headers: context.headers,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(context.requests.filter((request) => request.pathname === '/rest/getUser')).toHaveLength(
+      2,
+    );
+  });
+
+  /** A transient upstream identity failure is retried rather than poisoning the burst cache. */
+  it('should never reuse a failed media identity check', async () => {
+    const context = await makeSUT();
+    context.state.status = 503;
+    const failed = await context.app.inject({
+      url: '/api/v1/media/cover/cover-1',
+      headers: context.headers,
+    });
+    context.state.status = 200;
+    const retried = await context.app.inject({
+      url: '/api/v1/media/cover/cover-2',
+      headers: context.headers,
+    });
+
+    expect(failed.statusCode).toBe(503);
+    expect(retried.statusCode).toBe(200);
+    expect(context.requests.filter((request) => request.pathname === '/rest/getUser')).toHaveLength(
+      2,
+    );
   });
 
   /** One disconnected cover request cannot cancel the identity check still used by another request. */

@@ -10,19 +10,26 @@ identity check before fetching the cover.
 
 ## RED → GREEN
 
-RED proved that eight concurrent cover requests for one session produced eight concurrent upstream
-identity checks. GREEN keeps one in-flight identity check per session and lets concurrent callers
-share it. The result is not cached: after the in-flight check settles, the next request performs a
-fresh identity check. Session state is still re-read after the network boundary. Subscriber-aware
-cancellation preserves the shared check while another caller remains and aborts it when every caller
-disconnects.
+The first RED proved that eight concurrent cover requests for one session produced eight concurrent
+upstream identity checks. The first GREEN kept one in-flight identity check per session, but the
+production browser split a large cover load into sequential connection waves and still reproduced
+26 transient 503 responses after the service was healthy.
+
+The follow-up RED proved that two sequential media waves still produced two upstream identity
+checks. The final GREEN keeps in-flight coalescing and reuses only successful media identity results
+for a five-second burst window. Failures are never cached, expired results revalidate, and non-media
+requests continue to perform fresh checks. Session state is still read before and after the network
+boundary, while logout, replacement, and upstream authentication rejection clear the burst entry.
+Subscriber-aware cancellation preserves a shared in-flight check while another caller remains and
+aborts it when every caller disconnects.
 
 ## Verification
 
-- Focused RED: 1 failed assertion, received 8 identity requests instead of 1.
-- Unit GREEN: `media-proxy`, `auth-api`, and `account-summary-api`; 61 tests passed.
+- Focused RED 1: received 8 concurrent identity requests instead of 1.
+- Focused RED 2: received 2 sequential-wave identity requests instead of 1.
+- Unit GREEN: `media-proxy` covers concurrent sharing, sequential burst reuse, expiry, failure retry,
+  and subscriber cancellation.
 - Contract GREEN: `media-transport`; 2 tests passed.
 - `npm run typecheck`, `npm run build`, `npm run format:check`, and `git diff --check` passed.
 
 No public route, response schema, UI, locale, policy, database schema, or media file behavior changed.
-Production deployment and a new observation window remain separate from this implementation result.

@@ -54,7 +54,10 @@ export async function proxyMedia(
   let raw: string | undefined;
   let streaming = false;
   try {
-    const verified = await service.verify(auth.token, auth.scheme, { signal: controller.signal });
+    const verified = await service.verify(auth.token, auth.scheme, {
+      signal: controller.signal,
+      reuseIdentity: true,
+    });
     raw = verified.session.raw;
     await options?.authorize?.(verified);
     const streamOptions = await options?.streamOptions?.(verified, controller.signal);
