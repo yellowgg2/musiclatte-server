@@ -302,7 +302,7 @@ describe('authenticated media proxy', () => {
   });
 
   /** Gonic reports an undecodable embedded cover as a successful JSON Subsonic failure. */
-  it('should map a known undecodable cover response to a sanitized not-found error', async () => {
+  it('should replace a known undecodable cover response with a cacheable empty image', async () => {
     const context = await makeSUT();
     context.state.mediaJsonError = {
       code: 0,
@@ -313,11 +313,10 @@ describe('authenticated media proxy', () => {
       headers: context.headers,
     });
 
-    expect(result.statusCode).toBe(404);
-    expect(result.json()).toEqual({
-      schemaVersion: 1,
-      error: { code: 'not_found', retryable: false },
-    });
+    expect(result.statusCode).toBe(200);
+    expect(result.headers['content-type']).toMatch(/^image\/svg\+xml/);
+    expect(result.headers['cache-control']).toBe('private, max-age=60');
+    expect(result.body).toContain('<svg');
     expect(result.body).not.toContain('synthetic-secret');
   });
 

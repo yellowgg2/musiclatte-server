@@ -35,18 +35,21 @@ failure. The API had correctly rejected JSON as media but had classified every s
 failure as a retryable upstream outage.
 
 The final RED fixes that semantic boundary. A bounded 16 KiB parser recognizes only an HTTP 200
-JSON Subsonic failure with code 0 whose message identifies both cover and decode. That known
-undecodable artwork becomes the existing sanitized `404 not_found` response so clients can retain
-their normal artwork fallback. Unknown JSON, malformed bodies, oversized bodies, and other media
-failures remain sanitized `503 upstream_unavailable` responses. Upstream bodies and messages are
-never returned or logged.
+JSON Subsonic failure with code 0 whose message identifies both cover and decode. The first fix
+mapped that item-level failure to sanitized `404 not_found`, but repeated album-cover occurrences
+still produced one browser console error per image element. The follow-up returns a static,
+transparent SVG with HTTP 200 and a private 60-second cache instead. The existing artwork music-note
+placeholder remains visible beneath it without a failed image request. Unknown JSON, malformed
+bodies, oversized bodies, and other media failures remain sanitized `503 upstream_unavailable`
+responses. Upstream bodies and messages are never returned or logged.
 
 ## Verification
 
 - Focused RED 1: received 8 concurrent identity requests instead of 1.
 - Focused RED 2: received 2 sequential-wave identity requests instead of 1.
 - Focused production falsification: cover serialization still returned the same 26 failures.
-- Focused final RED: a known Gonic cover decode envelope returned 503 instead of 404.
+- Focused final RED 1: a known Gonic cover decode envelope returned 503 instead of an item fallback.
+- Focused final RED 2: the item fallback returned 404 instead of a cacheable empty image.
 - Unit GREEN: `media-proxy` covers concurrent sharing, sequential burst reuse, expiry, failure retry,
   subscriber cancellation, exact decode-error mapping, unknown-error preservation, and response
   sanitization.
@@ -55,5 +58,5 @@ never returned or logged.
 - Contract GREEN: `media-transport`; 2 tests passed.
 - `npm run typecheck`, `npm run build`, `npm run format:check`, and `git diff --check` passed.
 
-No public route, response schema, UI, locale, policy, database schema, or media file changed. Only
-the status/code classification of the known item-level Gonic cover decode failure changed.
+No public route, UI copy, locale, policy, database schema, or media file changed. Only the media
+representation of the known item-level Gonic cover decode failure changed.

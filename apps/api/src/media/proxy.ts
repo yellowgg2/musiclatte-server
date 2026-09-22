@@ -14,6 +14,9 @@ import {
 
 const passthroughStatuses = new Set([200, 206, 304, 416]);
 const subsonicErrorBodyLimit = 16 * 1024;
+const unavailableCover = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>',
+);
 
 export function safeMediaFailure(kind: string, stage: string, classification: string) {
   return JSON.stringify({ event: 'media_proxy_failure', kind, stage, classification });
@@ -186,8 +189,16 @@ export async function proxyMedia(
         response.status === 200 &&
         /^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '') &&
         (await isUndecodableCover(response))
-      )
-        throw new ApiError(404, 'not_found');
+      ) {
+        return reply
+          .code(200)
+          .header('Content-Type', 'image/svg+xml')
+          .header(
+            'Cache-Control',
+            options?.freshCover ? 'private, no-store' : 'private, max-age=60',
+          )
+          .send(unavailableCover);
+      }
       await discard(response);
       throw new SubsonicError('invalid_response');
     }
