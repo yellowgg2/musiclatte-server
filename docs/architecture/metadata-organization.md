@@ -9,10 +9,14 @@ reference migration are separate later boundaries.
 ## Operator configuration
 
 `AUTOMATION_POLICY_PATH` may include an `organization` section with an explicit mapping from a
-gonic username to one single-segment account directory. There is deliberately no fallback from
-username to directory name. Absolute paths, slash or backslash separators, dot segments, control
-characters, trailing dot/space, duplicate usernames, and Unicode/case-equivalent directory aliases
-are rejected. Start from `deploy/automation-config.example.json` and keep the deployed copy private.
+gonic username to one single-segment canonical account directory. An account may also declare
+`legacyDirectories` (one to eight single-segment names) as source-only aliases. These let a file
+still under an older directory be organized into the account's canonical `ID3-managed` directory;
+they do not change the destination or migrate a whole directory. There is deliberately no fallback
+from username to directory name. Absolute paths, slash or backslash separators, dot segments,
+control characters, trailing dot/space, duplicate usernames, and Unicode/case-equivalent directory
+names across both canonical and legacy mappings are rejected. Start from
+`deploy/automation-config.example.json` and keep the deployed copy private.
 
 The policy version is `id3-managed-v1`. A destination has this server-derived shape:
 
@@ -29,8 +33,9 @@ and 160-byte media-name sanitizer.
 
 The caller supplies identity, library authorization, current source key, and the current metadata
 snapshot—not arbitrary destination segments. The PAT operator must have an explicit account
-mapping, and the source must be below any configured `relativeRoot/accountDirectory`. The planner
-derives the destination account from that source directory, never from the operator's directory.
+mapping, and the source must be below a configured canonical or legacy account directory. The
+planner derives the destination account from that source directory, never from the operator's
+directory. A legacy source always targets the owner's canonical directory.
 It validates the source as a real regular file beneath the canonical music root and inspects the
 destination without creating directories or moving bytes. A target under another account is
 rejected, including when that other account belongs to the operator.

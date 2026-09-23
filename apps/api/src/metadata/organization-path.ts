@@ -52,7 +52,9 @@ export function resolveOrganizationAccountScope(
     return { status: 'error', code: 'source_outside_account' };
   }
   const sourceAccount = input.accounts.find((item) =>
-    input.sourceKey.startsWith(`${input.relativeRoot}/${item.accountDirectory}/`),
+    [item.accountDirectory, ...(item.legacyDirectories ?? [])].some((directory) =>
+      input.sourceKey.startsWith(`${input.relativeRoot}/${directory}/`),
+    ),
   );
   if (!sourceAccount) return { status: 'error', code: 'source_outside_account' };
   const accountRoot = `${input.relativeRoot}/${sourceAccount.accountDirectory}`;

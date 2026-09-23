@@ -38,7 +38,11 @@ export interface CurationRuntimePolicy {
 }
 export interface OrganizationRuntimePolicy {
   policyVersion: 'id3-managed-v1';
-  accounts: readonly { username: string; accountDirectory: string }[];
+  accounts: readonly {
+    username: string;
+    accountDirectory: string;
+    legacyDirectories?: readonly string[];
+  }[];
   selection?: import('../storage/organization-selection-repository.js').OrganizationSelectionSnapshotLimits;
 }
 export const defaultOrganizationSelectionLimits: Readonly<
@@ -188,28 +192,55 @@ export function readAutomationConfig(env: Record<string, string | undefined>):
       if (value.policyVersion !== 'id3-managed-v1' || !Array.isArray(value.accounts))
         throw new Error();
       const accounts = value.accounts.map((item) => {
-        const account = curationRecord(item, ['username', 'accountDirectory']);
+        const hasLegacyDirectories =
+          item !== null && typeof item === 'object' && Object.hasOwn(item, 'legacyDirectories');
+        const account = curationRecord(
+          item,
+          hasLegacyDirectories
+            ? ['username', 'accountDirectory', 'legacyDirectories']
+            : ['username', 'accountDirectory'],
+        );
+        const validDirectory = (directory: unknown): directory is string =>
+          typeof directory === 'string' &&
+          !isAbsolute(directory) &&
+          !directory.includes('/') &&
+          !directory.includes('\\') &&
+          !validateRelativeKey(directory).includes('/');
         if (
           typeof account.username !== 'string' ||
           !account.username ||
           account.username !== account.username.trim() ||
           account.username.length > 256 ||
           /[\u0000-\u001f\u007f]/.test(account.username) ||
-          typeof account.accountDirectory !== 'string' ||
-          isAbsolute(account.accountDirectory) ||
-          account.accountDirectory.includes('/') ||
-          account.accountDirectory.includes('\\') ||
-          validateRelativeKey(account.accountDirectory).includes('/')
+          !validDirectory(account.accountDirectory)
+        )
+          throw new Error();
+        const legacyDirectories = account.legacyDirectories;
+        if (
+          hasLegacyDirectories &&
+          (!Array.isArray(legacyDirectories) ||
+            legacyDirectories.length < 1 ||
+            legacyDirectories.length > 8 ||
+            !legacyDirectories.every(validDirectory))
         )
           throw new Error();
         return Object.freeze({
           username: account.username,
           accountDirectory: account.accountDirectory.normalize('NFC'),
+          ...(hasLegacyDirectories
+            ? {
+                legacyDirectories: Object.freeze(
+                  (legacyDirectories as string[]).map((directory) => directory.normalize('NFC')),
+                ),
+              }
+            : {}),
         });
       });
       const usernames = accounts.map((item) => item.username.normalize('NFC').toLowerCase());
-      const directories = accounts.map((item) =>
-        item.accountDirectory.normalize('NFC').toLowerCase(),
+      const directories = accounts.flatMap((item) =>
+        [item.accountDirectory, ...(item.legacyDirectories ?? [])].map((directory) =>
+          directory.normalize('NFC').toLowerCase(),
+        ),
       );
       if (
         new Set(usernames).size !== usernames.length ||

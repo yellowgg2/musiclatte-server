@@ -30,10 +30,12 @@ afterEach(async () => {
 async function setup({
   sourceAccountDirectory = 'account',
   actorAccountDirectory = 'account',
+  actorLegacyDirectories = [] as string[],
   alreadyManaged = false,
 }: {
   sourceAccountDirectory?: string;
   actorAccountDirectory?: string;
+  actorLegacyDirectories?: string[];
   alreadyManaged?: boolean;
 } = {}) {
   const c = await createRecentContext();
@@ -115,8 +117,13 @@ async function setup({
           snapshotMaxCount: 10,
         },
         accounts: [
-          { username: password.username, accountDirectory: actorAccountDirectory },
-          ...(sourceAccountDirectory === actorAccountDirectory
+          {
+            username: password.username,
+            accountDirectory: actorAccountDirectory,
+            ...(actorLegacyDirectories.length ? { legacyDirectories: actorLegacyDirectories } : {}),
+          },
+          ...(sourceAccountDirectory === actorAccountDirectory ||
+          actorLegacyDirectories.includes(sourceAccountDirectory)
             ? []
             : [{ username: 'source-owner', accountDirectory: sourceAccountDirectory }]),
         ],
@@ -1498,6 +1505,47 @@ describe('metadata organization PAT API', () => {
             kind: 'official_artist',
             fields: ['title'],
           },
+        ],
+      },
+    });
+    expect(submit.statusCode).toBe(202);
+  });
+
+  /** An explicit legacy source alias remains owned by the actor and targets its canonical account. */
+  it('should preview and submit an owned legacy source into the canonical account', async () => {
+    const s = await setup({
+      sourceAccountDirectory: 'old',
+      actorAccountDirectory: 'yellowgg2',
+      actorLegacyDirectories: ['old'],
+    });
+    const payload = {
+      trackId: s.trackId,
+      expectedRevision: s.revision,
+      destinationPolicy: 'id3-managed-v1',
+    };
+    const preview = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization/previews',
+      headers: s.headers,
+      payload,
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json()).toMatchObject({
+      status: 'ready',
+      currentKey: 'imports/old/Legacy/source.mp3',
+      targetKey:
+        'imports/yellowgg2/ID3-managed/Original album artist/Original album/01 - Original synthetic.mp3',
+    });
+    const submit = await s.app.inject({
+      method: 'POST',
+      url: '/api/v1/metadata-organization-jobs',
+      headers: s.headers,
+      payload: {
+        ...payload,
+        operationId: 'owned_legacy_source_operation_0001',
+        metadataJobId: 'completed-metadata',
+        sourceEvidence: [
+          { url: 'https://example.invalid/official', kind: 'official_artist', fields: ['title'] },
         ],
       },
     });

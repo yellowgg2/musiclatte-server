@@ -170,3 +170,39 @@ it('rejects duplicate usernames and normalized account directories', () => {
     );
   }
 });
+
+/** A legacy source directory is explicitly owned by one account while its canonical destination stays unchanged. */
+it('loads a bounded legacy source alias for an existing account', () => {
+  const organization = {
+    ...policy.organization,
+    accounts: [
+      { username: 'example-user', accountDirectory: 'example-account', legacyDirectories: ['old'] },
+      { username: '日本語-user', accountDirectory: 'jp-account' },
+    ],
+  };
+  expect(read({ ...policy, organization })).toMatchObject({ organization });
+});
+
+/** Legacy aliases cannot overlap any canonical or legacy account directory. */
+it('rejects unsafe or ambiguous legacy source aliases', () => {
+  for (const legacyDirectories of [
+    ['../other'],
+    ['nested/other'],
+    ['jp-account'],
+    ['OLD', 'old'],
+    Array.from({ length: 9 }, (_, index) => `old-${index}`),
+  ]) {
+    expect(() =>
+      read({
+        ...policy,
+        organization: {
+          ...policy.organization,
+          accounts: [
+            { username: 'example-user', accountDirectory: 'example-account', legacyDirectories },
+            { username: '日本語-user', accountDirectory: 'jp-account' },
+          ],
+        },
+      }),
+    ).toThrow('Invalid automation configuration');
+  }
+});

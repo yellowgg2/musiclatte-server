@@ -122,6 +122,28 @@ describe('id3-managed-v1 organization path planning', () => {
     ).toEqual({ status: 'error', code: 'source_outside_account' });
   });
 
+  /** Explicit legacy ownership routes a source alias into its canonical managed account. */
+  it('should organize an owned legacy directory into the canonical account directory', () => {
+    const input = fixture('jojo-music/old/Legacy/source.mp3');
+    const accounts = [
+      { username: 'listener', accountDirectory: 'yellowgg2', legacyDirectories: ['old'] },
+    ];
+    expect(planOrganizationPath({ ...input, accounts })).toMatchObject({
+      status: 'ready',
+      currentKey: input.sourceKey,
+      targetKey: 'jojo-music/yellowgg2/ID3-managed/アルバム作家/앨범/10 - 노래 - 東京 - Song.mp3',
+    });
+    expect(
+      resolveOrganizationAccountScope({
+        relativeRoot: 'jojo-music',
+        ownerUsername: 'listener',
+        sourceKey: input.sourceKey,
+        targetKey: 'jojo-music/old/ID3-managed/Artist/Album/Title.mp3',
+        accounts,
+      }),
+    ).toEqual({ status: 'error', code: 'source_outside_account' });
+  });
+
   it('falls back to artist and omits a missing track prefix', () => {
     const input = fixture();
     expect(
