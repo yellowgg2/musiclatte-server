@@ -211,7 +211,10 @@ function decodeItemV2(value: unknown): Id3OrganizationBatchItem {
     (state === 'succeeded' &&
       !hasMetadata &&
       (value.organizationJobId !== null || value.newTrackId === null)) ||
-    (state === 'succeeded' && hasMetadata && value.organizationJobId === null) ||
+    (state === 'succeeded' &&
+      hasMetadata &&
+      value.organizationJobId === null &&
+      (value.newTrackId === null || !metadataCanOrganize(finalMetadata))) ||
     (state === 'organization_accepted' && value.organizationJobId === null) ||
     (optional.jobId !== null &&
       required.jobId !== null &&
@@ -413,6 +416,16 @@ export function decodeId3OrganizationBatchJournal(value: unknown): Id3Organizati
         ? decodeItemV2
         : decodeItemV3,
   );
+  if (
+    source.kind !== 'favorites' &&
+    items.some(
+      (item) =>
+        item.state === 'succeeded' &&
+        item.organizationJobId === null &&
+        (item.metadataSteps.required.jobId !== null || item.metadataSteps.optional.jobId !== null),
+    )
+  )
+    failure('journal_invalid');
   const identities = new Set(
     items.map((item) => (value.schemaVersion === 3 ? item.mediaLinkId : item.trackId)),
   );
@@ -958,6 +971,33 @@ export function completeId3OrganizationBatchSharedItem(
       item.coverUploadId !== null ||
       Object.values(item.metadataSteps).some(({ jobId }) => jobId !== null) ||
       item.organizationJobId !== null
+    )
+      failure('journal_transition');
+    item.state = 'succeeded';
+    item.newTrackId = newTrackId;
+    item.serverStage = 'succeeded';
+  });
+}
+
+export function completeId3OrganizationBatchAcceptedSharedItem(
+  path: string,
+  trackId: string,
+  newTrackId: string,
+) {
+  if (!opaque(newTrackId) || newTrackId === trackId) failure('journal_binding');
+  return updateJournal(path, (journal) => {
+    if (journal.stopped || journal.source.kind !== 'favorites') failure('journal_binding');
+    const item = currentBoundItem(journal, trackId);
+    const finalMetadata =
+      item.metadataSteps.optional.jobId !== null
+        ? item.metadataSteps.optional
+        : item.metadataSteps.required;
+    if (
+      item.state !== 'metadata_accepted' ||
+      item.organizationJobId !== null ||
+      item.newTrackId !== null ||
+      item.serverStage !== null ||
+      !metadataCanOrganize(finalMetadata)
     )
       failure('journal_transition');
     item.state = 'succeeded';

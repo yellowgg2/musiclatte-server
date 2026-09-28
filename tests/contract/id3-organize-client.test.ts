@@ -1133,12 +1133,51 @@ it('rejects a replacement reference snapshot that is not bound to the reused suc
 
 /** Preserves already-restored owned playlists while adopting a shared successor. */
 it.each([
-  { snapshotTrackId: 'old', playlistTrackId: 'old', checkpointed: true, accepted: true },
-  { snapshotTrackId: 'new', playlistTrackId: 'new', checkpointed: false, accepted: true },
-  { snapshotTrackId: 'old', playlistTrackId: 'old', checkpointed: false, accepted: false },
+  {
+    snapshotTrackId: 'old',
+    playlistTrackId: 'old',
+    checkpointed: true,
+    accepted: true,
+    metadataAccepted: false,
+  },
+  {
+    snapshotTrackId: 'new',
+    playlistTrackId: 'new',
+    checkpointed: false,
+    accepted: true,
+    metadataAccepted: false,
+  },
+  {
+    snapshotTrackId: 'old',
+    playlistTrackId: 'old',
+    checkpointed: false,
+    accepted: false,
+    metadataAccepted: false,
+  },
+  {
+    snapshotTrackId: 'old',
+    playlistTrackId: 'old',
+    checkpointed: true,
+    accepted: true,
+    metadataAccepted: true,
+  },
+  {
+    snapshotTrackId: 'old',
+    playlistTrackId: 'old',
+    checkpointed: false,
+    accepted: false,
+    metadataAccepted: true,
+  },
+  {
+    snapshotTrackId: 'new',
+    playlistTrackId: 'new',
+    checkpointed: false,
+    accepted: false,
+    metadataAccepted: true,
+  },
 ])(
-  'validates $snapshotTrackId references when adopting a verified successor for an untouched frozen favorite',
-  async ({ snapshotTrackId, playlistTrackId, checkpointed, accepted }) => {
+  'validates $snapshotTrackId references when reconciling a shared successor (metadata accepted: $metadataAccepted)',
+  async ({ snapshotTrackId, playlistTrackId, checkpointed, accepted, metadataAccepted }) => {
     const directory = mkdtempSync(join(tmpdir(), 'musiclatte-shared-successor-'));
     const token = 'mlpat_' + 'h'.repeat(48);
     const tokenFile = join(directory, 'token');
@@ -1168,6 +1207,15 @@ it.each([
       },
     });
     nextId3OrganizationBatchItem(stateFile);
+    if (metadataAccepted) {
+      checkpointId3OrganizationBatch(stateFile, 'old', {
+        kind: 'metadata',
+        step: 'required',
+        jobId: 'required-job',
+        resultRevision: 'accepted-revision',
+        serverStage: 'succeeded',
+      });
+    }
     createId3ReferenceSnapshot({
       path: referenceFile,
       api: 'https://music.example/api/v1',
@@ -1269,7 +1317,7 @@ it.each([
       stateFile,
       referenceFile,
       fetch: fetcher,
-      command: 'batch-adopt-successor',
+      command: metadataAccepted ? 'batch-reconcile-shared-successor' : 'batch-adopt-successor',
       trackId: 'old',
       newTrackId: 'new',
       manifest: {
@@ -1296,6 +1344,11 @@ it.each([
     }
     const result = await command;
     expect(result).toEqual({ schemaVersion: 1, status: 'succeeded', favoriteRestored: true });
+    expect(readId3OrganizationBatchJournal(stateFile).items[0]).toMatchObject({
+      state: 'succeeded',
+      newTrackId: 'new',
+      organizationJobId: null,
+    });
     expect(restoreBody).toMatchObject({
       trackId: 'old',
       newTrackId: 'new',

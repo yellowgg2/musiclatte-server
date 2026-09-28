@@ -113,6 +113,7 @@ and verify every account before advancing either batch:
 npm run id3:organize -- references-snapshot --api https://service.example/api/v1 --token-file /absolute/private/account-token --track-id TRACK_ID --reference-file /absolute/private/account-track-references.json
 npm run id3:organize -- references-restore --api https://service.example/api/v1 --token-file /absolute/private/account-token --track-id TRACK_ID --new-track-id NEW_TRACK_ID --reference-file /absolute/private/account-track-references.json
 npm run id3:organize -- batch-adopt-successor --api https://service.example/api/v1 --token-file /absolute/private/other-account-token --state-file /absolute/private/other-account-batch.json --track-id TRACK_ID --new-track-id NEW_TRACK_ID --manifest /absolute/private/combined-verified-manifest.json --reference-file /absolute/private/other-account-track-references.json
+npm run id3:organize -- batch-reconcile-shared-successor --api https://service.example/api/v1 --token-file /absolute/private/other-account-token --state-file /absolute/private/other-account-batch.json --track-id TRACK_ID --new-track-id NEW_TRACK_ID --manifest /absolute/private/combined-verified-manifest.json --reference-file /absolute/private/other-account-track-references.json
 ```
 
 `references-snapshot` records only the authenticated account's favorite bit and owned playlists
@@ -125,6 +126,13 @@ unique successor candidate, manifest fields, front JPEG, favorite, and owned pla
 recording success without a second file move. For recovery when the pre-move snapshot does not
 exist, capture a new private `references-snapshot` of the successor and pass that file instead; the
 client accepts only a starred successor snapshot whose playlists all contain that successor.
+If this account already has a succeeded metadata checkpoint for the old track before another
+account moves it, use `batch-reconcile-shared-successor` with the original restored reference
+snapshot. It requires the accepted metadata checkpoint, no organization job, an absent old
+candidate, a unique successor matching the verified manifest and front cover, and a server-verified
+old-to-new reference restore. It preserves the accepted metadata job and records the shared
+successor without submitting a second organization job. A fresh successor-only snapshot is not
+accepted for this recovery.
 
 If an explicitly authorized unorganized sweep deletes a byte-level duplicate after metadata was
 accepted, do not edit the child journal. First prove that the source file is absent after a scan,

@@ -26,6 +26,7 @@ import {
 } from '@musiclatte/contracts';
 import {
   checkpointId3OrganizationBatch,
+  completeId3OrganizationBatchAcceptedSharedItem,
   completeDeletedId3OrganizationDuplicate,
   completeId3OrganizationBatchSharedItem,
   createId3OrganizationBatchJournal,
@@ -113,6 +114,7 @@ export interface Id3OrganizeCommandOptions {
     | 'references-snapshot'
     | 'references-restore'
     | 'batch-adopt-successor'
+    | 'batch-reconcile-shared-successor'
     | 'batch-reconcile-deleted-duplicate';
   title?: string;
   libraryId?: string;
@@ -682,7 +684,10 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     verifyId3OrganizationBatchContext(stateFile, base, token);
     return id3OrganizationBatchStatus(stateFile);
   }
-  if (options.command === 'batch-adopt-successor') {
+  if (
+    options.command === 'batch-adopt-successor' ||
+    options.command === 'batch-reconcile-shared-successor'
+  ) {
     if (!options.manifest) fail('manifest');
     const stateFile = required(options.stateFile, 'state_file');
     const oldTrackId = required(options.trackId, 'target');
@@ -690,7 +695,17 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const journal = verifyId3OrganizationBatchContext(stateFile, base, token);
     if (journal.source.kind !== 'favorites') fail('journal_binding');
     const binding = id3OrganizationBatchBinding(stateFile, oldTrackId);
-    if (
+    const acceptedMetadata = options.command === 'batch-reconcile-shared-successor';
+    if (acceptedMetadata) {
+      id3OrganizationFinalMetadataBinding(binding);
+      if (
+        binding.state !== 'metadata_accepted' ||
+        binding.organizationJobId !== null ||
+        binding.newTrackId !== null ||
+        binding.serverStage !== null
+      )
+        fail('journal_binding');
+    } else if (
       binding.state !== 'researching' ||
       binding.coverUploadId !== null ||
       Object.values(binding.metadataSteps).some(({ jobId }) => jobId !== null) ||
@@ -702,7 +717,11 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
     const candidates = decodeOrganizationCandidates(
       await call('/metadata-organization/candidates?' + query.toString()),
     );
-    if (candidates.candidates.filter((candidate) => candidate.trackId === newTrackId).length !== 1)
+    if (
+      candidates.candidates.filter((candidate) => candidate.trackId === newTrackId).length !== 1 ||
+      (acceptedMetadata &&
+        candidates.candidates.some((candidate) => candidate.trackId === oldTrackId))
+    )
       fail('shared_successor');
     const inspected = decodeMetadataSnapshot(
       await call('/tracks/' + encodeURIComponent(newTrackId) + '/metadata'),
@@ -737,7 +756,11 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       successorReferences.playlists.every(
         ({ songIds, restoredTo }) => songIds.includes(newTrackId) && restoredTo === null,
       );
-    if (!restoredOriginalSnapshot && !currentSuccessorSnapshot) fail('reference_context');
+    if (
+      (acceptedMetadata && !restoredOriginalSnapshot) ||
+      (!acceptedMetadata && !restoredOriginalSnapshot && !currentSuccessorSnapshot)
+    )
+      fail('reference_context');
     const playlists = successorReferences.playlists.map(({ id, name, owner, songIds }) => ({
       id,
       name,
@@ -758,7 +781,9 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       restored.playlistsRestored !== playlists.length
     )
       fail('reference_conflict');
-    completeId3OrganizationBatchSharedItem(stateFile, oldTrackId, newTrackId);
+    if (acceptedMetadata)
+      completeId3OrganizationBatchAcceptedSharedItem(stateFile, oldTrackId, newTrackId);
+    else completeId3OrganizationBatchSharedItem(stateFile, oldTrackId, newTrackId);
     return { schemaVersion: 1 as const, status: 'succeeded' as const, favoriteRestored: true };
   }
   if (options.command === 'batch-reconcile-deleted-duplicate') {
