@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
 import type { OrganizationStatusItem, OrganizationStatusTarget } from '@musiclatte/contracts';
 import type { ManagementDatabase } from './database.js';
@@ -1222,7 +1223,7 @@ export function createOrganizationRepository(options: {
             replacement !== undefined &&
             replacement.displaced_media_link_id === aliasId &&
             replacement.displaced_track_id === alias?.gonic_song_id;
-          const retiredKey = validateRelativeKey(
+          let retiredKey = validateRelativeKey(
             `.musiclatte-retired/${replacementApproved && candidate ? text(candidate.file_identity) : input.targetFileIdentity}.mp3`,
           );
           const aliasOwned = alias
@@ -1270,13 +1271,24 @@ export function createOrganizationRepository(options: {
                     });
                 })()
               : null;
-          const retiredKeyConflict = alias
+          let retiredKeyConflict = alias
             ? db
                 .prepare(
                   'SELECT 1 FROM media_links WHERE library_id=? AND id<>? AND relative_file_key=?',
                 )
                 .get(libraryId, aliasId, retiredKey)
             : null;
+          if (replacementApproved && candidate && alias && retiredKeyConflict) {
+            const retirementIdentity = createHash('sha256')
+              .update(JSON.stringify([text(candidate.file_identity), input.itemId]))
+              .digest('hex');
+            retiredKey = validateRelativeKey(`.musiclatte-retired/${retirementIdentity}.mp3`);
+            retiredKeyConflict = db
+              .prepare(
+                'SELECT 1 FROM media_links WHERE library_id=? AND id<>? AND relative_file_key=?',
+              )
+              .get(libraryId, aliasId, retiredKey);
+          }
           const currentInvalid =
             !alias ||
             alias.relative_file_key !== targetKey ||
