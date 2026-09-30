@@ -57,6 +57,7 @@ function setup(
     playlistReadError?: string;
     baseline?: MetadataReferences;
     approvedReplacement?: boolean;
+    displacedTrackId?: string;
     successorStarred?: boolean;
     successorPlaylists?: MetadataReferences['playlists'];
   } = {},
@@ -80,7 +81,10 @@ function setup(
   const transitions: string[] = [];
   const migration = createReferenceMigration({
     repository: {
-      approvedTargetReplacement: () => options.approvedReplacement ?? false,
+      approvedTargetReplacement: (_itemId, displacedTrackId) =>
+        (options.approvedReplacement ?? false) &&
+        displacedTrackId === (options.displacedTrackId ?? newId),
+      hasApprovedTargetReplacement: () => options.approvedReplacement ?? false,
       readBaseline: () => referenceBaseline,
       transition: (input) => transitions.push(input.stage),
       completeVerifiedReferences: () => transitions.push('verified:succeeded'),
@@ -218,19 +222,23 @@ it('preserves an approved replacement successor favorite', async () => {
   expect(s.transitions).toEqual(['migrating_references', 'verifying', 'verified:succeeded']);
 });
 
-it('preserves playlists that reference only an approved replacement successor', async () => {
-  const successorPlaylist = {
-    id: 'playlist-successor',
-    name: 'Existing successor references',
-    owner: 'owner',
-    songIds: ['A', newId],
-  };
-  const s = setup([], {
-    baseline: { trackId: oldId, starred: false, playlists: [] },
-    approvedReplacement: true,
-    successorPlaylists: [successorPlaylist],
-  });
-  await s.migration.process(claim);
-  expect(s.playlists.get(successorPlaylist.id)!.songIds).toEqual(successorPlaylist.songIds);
-  expect(s.transitions).toEqual(['migrating_references', 'verifying', 'verified:succeeded']);
-});
+it.each([newId, 'displaced-old'])(
+  'preserves approved target playlists with displaced ID %s',
+  async (displacedTrackId) => {
+    const successorPlaylist = {
+      id: 'playlist-successor',
+      name: 'Existing successor references',
+      owner: 'owner',
+      songIds: ['A', newId],
+    };
+    const s = setup([], {
+      baseline: { trackId: oldId, starred: false, playlists: [] },
+      approvedReplacement: true,
+      displacedTrackId,
+      successorPlaylists: [successorPlaylist],
+    });
+    await s.migration.process(claim);
+    expect(s.playlists.get(successorPlaylist.id)!.songIds).toEqual(successorPlaylist.songIds);
+    expect(s.transitions).toEqual(['migrating_references', 'verifying', 'verified:succeeded']);
+  },
+);

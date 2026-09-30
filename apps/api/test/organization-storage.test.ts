@@ -1067,6 +1067,8 @@ describe('organization storage', () => {
       ).toMatchObject({ displacedMediaLinkId: 'media-target-alias' });
       expect(s.repository.approvedTargetReplacement(registration.itemId, 'song-2')).toBe(true);
       expect(s.repository.approvedTargetReplacement(registration.itemId, 'song-3')).toBe(false);
+      expect(s.repository.hasApprovedTargetReplacement(registration.itemId)).toBe(true);
+      expect(s.repository.hasApprovedTargetReplacement('unapproved-item')).toBe(false);
       s.c.db.connection
         .prepare(
           "INSERT INTO metadata_jobs(id,identity_key,library_id,operation_id_hash,request_hash,kind,created_at) VALUES('displaced-metadata-job',?,'library-1',?,?,'edit',900)",

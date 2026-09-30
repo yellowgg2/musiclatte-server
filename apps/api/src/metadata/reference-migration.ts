@@ -24,6 +24,7 @@ const collapseSuccessor = (values: readonly string[], successorId: string) => {
 
 interface ReferenceRepositoryPort {
   approvedTargetReplacement(itemId: string, displacedTrackId: string): boolean;
+  hasApprovedTargetReplacement(itemId: string): boolean;
   readBaseline(claim: OrganizationClaim): MetadataReferences;
   transition(
     input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
@@ -96,10 +97,7 @@ export function createReferenceMigration(options: {
         const { username, client } = await options.authorize(claim);
         const baseline = decodeMetadataReferences(options.repository.readBaseline(claim));
         if (baseline.trackId !== claim.oldTrackId) throw new Error('reference_conflict');
-        const approvedReplacement = options.repository.approvedTargetReplacement(
-          claim.itemId,
-          claim.newTrackId,
-        );
+        const approvedReplacement = options.repository.hasApprovedTargetReplacement(claim.itemId);
         const successorBaseline = approvedReplacement
           ? await captureMetadataReferences(client, claim.newTrackId, signal)
           : { trackId: claim.newTrackId, starred: false, playlists: [] };

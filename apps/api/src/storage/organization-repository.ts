@@ -1044,6 +1044,11 @@ export function createOrganizationRepository(options: {
           .get(itemId, displacedTrackId),
       );
     },
+    hasApprovedTargetReplacement(itemId: string) {
+      return Boolean(
+        db.prepare('SELECT 1 FROM organization_target_replacements WHERE item_id=?').get(itemId),
+      );
+    },
     failReferenceCheckpoint(
       input: Pick<OrganizationClaim, 'itemId' | 'workerId' | 'generation'> & {
         kind: 'playlist' | 'star';
