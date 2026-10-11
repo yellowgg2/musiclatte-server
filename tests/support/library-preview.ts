@@ -48,7 +48,12 @@ const upstream = createServer((request, response) => {
     'getRandomSongs',
   ].includes(operation ?? '');
   if (isMedia) {
-    if (!valid || mode === 'media-error' || mode === 'long-queue-error') {
+    if (
+      !valid ||
+      mode === 'media-error' ||
+      mode === 'long-queue-error' ||
+      (operation === 'getCoverArt' && id === 'fixture-cover-failure')
+    ) {
       response.writeHead(valid ? 503 : 401, { 'content-type': 'text/plain' });
       response.end('Synthetic media unavailable');
       return;
@@ -93,15 +98,27 @@ const upstream = createServer((request, response) => {
   const empty = mode === 'empty' || q === 'empty' || id === 'empty';
   const randomEmpty = mode === 'random-empty';
   const songs =
-    mode === 'long-queue' || mode === 'long-queue-error'
-      ? longQueueSongs
-      : empty
-        ? []
-        : q === 'new'
-          ? [{ ...librarySongs[0]!, title: 'Newest result' }]
-          : q === 'old'
-            ? [{ ...librarySongs[0]!, title: 'Obsolete result' }]
-            : librarySongs;
+    mode === 'queue-artwork'
+      ? longQueueSongs.map((song, index) => {
+          const { coverArt: _cover, ...rest } = song;
+          return {
+            ...rest,
+            ...(index % 3 === 0
+              ? { coverArt: 'cover-1' }
+              : index % 3 === 2
+                ? { coverArt: 'fixture-cover-failure' }
+                : {}),
+          };
+        })
+      : mode === 'long-queue' || mode === 'long-queue-error'
+        ? longQueueSongs
+        : empty
+          ? []
+          : q === 'new'
+            ? [{ ...librarySongs[0]!, title: 'Newest result' }]
+            : q === 'old'
+              ? [{ ...librarySongs[0]!, title: 'Obsolete result' }]
+              : librarySongs;
   const searchSongs =
     mode === 'search-pages'
       ? Array.from({ length: 20 }, (_, index) => ({

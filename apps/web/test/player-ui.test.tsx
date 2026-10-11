@@ -157,6 +157,32 @@ afterEach(() => {
 });
 
 describe('persistent player UI', () => {
+  /** Queue artwork uses the media origin and fallback without changing duplicate occurrence selection. */
+  it('should show queue covers and recover failed images while selecting exact occurrences', async () => {
+    const { audio, user, context } = await makeSUT({
+      folderSongs: [songs[0]!, songs[1]!, songs[0]!],
+    });
+    await user.click(
+      (await screen.findAllByRole('button', { name: 'Play First patient song' }))[0]!,
+    );
+    act(() => audio.emit('playing'));
+    await user.click(screen.getAllByRole('button', { name: 'Show queue' })[0]!);
+    const queue = screen.getByRole('region', { name: 'Queue' });
+    const rows = within(queue).getAllByRole('button');
+    const cover = rows[0]!.querySelector('img');
+    expect(cover?.getAttribute('src')).toBe(
+      'https://api.example.test/api/v1/media/cover/cover%20one',
+    );
+    expect(rows[1]!.querySelector('[data-state="missing"]')).not.toBeNull();
+    fireEvent.error(cover!);
+    expect(rows[0]!.querySelector('[data-state="failure"]')).not.toBeNull();
+    await user.click(rows[2]!);
+    expect(rows[2]!.getAttribute('aria-current')).toBe('true');
+    expect(rows[0]!.getAttribute('aria-current')).toBeNull();
+    expect(context.calls.some((url) => url.pathname.includes('/music/songs/'))).toBe(false);
+    expect(audio.src).toContain('/song%20%2F%20one/stream');
+  });
+
   /** Imports route and locale changes preserve the playing resource and queue without reloading audio. */
   it('should preserve playback while entering imports and changing its locale', async () => {
     const { audio, user } = await makeSUT();

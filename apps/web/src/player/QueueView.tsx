@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { messages, type Locale } from '../i18n';
+import { Artwork } from '../design/components/Artwork';
 import { usePlayer } from './PlayerProvider';
 import styles from './Player.module.css';
 
 export function QueueView({ locale }: { locale: Locale }) {
-  const { state, selectQueueSong } = usePlayer();
+  const { state, selectQueueSong, coverUrl } = usePlayer();
   const copy = messages[locale];
   const currentRow = useRef<HTMLButtonElement>(null);
 
@@ -28,8 +29,11 @@ export function QueueView({ locale }: { locale: Locale }) {
                 aria-current={active ? 'true' : undefined}
                 onClick={() => selectQueueSong(position)}
               >
-                <span>{song.title}</span>
-                <small>{song.artist || copy['music.unknownArtist']}</small>
+                <Artwork alt="" {...(song.coverArt ? { src: coverUrl(song.coverArt) } : {})} />
+                <span className={styles.queueInformation}>
+                  <span>{song.title}</span>
+                  <small>{song.artist || copy['music.unknownArtist']}</small>
+                </span>
               </button>
             </li>
           );

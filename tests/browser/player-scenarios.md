@@ -78,3 +78,7 @@ Router, locale picker, desktop player, and mobile expanded player in one provide
 5. Apply Chrome 200% page zoom, repeat the 320px containment and focus check, then restore 100%
    before cleanup. Review off/one/all screenshots or DOM markers without treating this automatic
    run as final P8-UA-002 approval.
+
+## Phase 20 queue artwork
+
+Use the same parameterized library preview with `PREVIEW_CONTROL` set to `queue-artwork`. The synthetic queue alternates available cover, absent cover, and failed image transport. Through the normal login and music-folder route, play a song and open Queue. Confirm every occurrence has the same-size artwork frame and title/artist text, and keyboard-activate the last queue occurrence. Repeat in the 390px expanded player, retaining its single body scroller and current-occurrence selection. Artwork changes do not fetch song details or reset playback. Capture functional evidence under `artifact/phase-20/step-01/`; final visual and zoom review remains separate.
