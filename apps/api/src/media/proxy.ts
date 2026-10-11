@@ -14,8 +14,16 @@ import {
 
 const passthroughStatuses = new Set([200, 206, 304, 416]);
 const subsonicErrorBodyLimit = 16 * 1024;
+// Paint the Artwork fallback itself: clients hide their placeholder after a successful load.
+// Keep its 48% note geometry and accent in sync with the shared Artwork design.
 const unavailableCover = Buffer.from(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>',
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <g transform="translate(16.64 16.64) scale(.48)" fill="none" stroke="#69508b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M27 43V20l22-4v23M27 25l22-4"/>
+    <ellipse cx="20" cy="44" rx="7" ry="5"/>
+    <ellipse cx="42" cy="40" rx="7" ry="5"/>
+  </g>
+</svg>`,
 );
 
 export function safeMediaFailure(kind: string, stage: string, classification: string) {

@@ -38,8 +38,10 @@ The final RED fixes that semantic boundary. A bounded 16 KiB parser recognizes o
 JSON Subsonic failure with code 0 whose message identifies both cover and decode. The first fix
 mapped that item-level failure to sanitized `404 not_found`, but repeated album-cover occurrences
 still produced one browser console error per image element. The follow-up returns a static,
-transparent SVG with HTTP 200 and a private 60-second cache instead. The existing artwork music-note
-placeholder remains visible beneath it without a failed image request. Unknown JSON, malformed
+transparent SVG with HTTP 200 and a private 60-second cache instead. At that time, the artwork music-note
+placeholder remained visible beneath it without a failed image request. Phase 20 later hid the
+placeholder on successful load; the [fallback regression fix](../phase-20/cover-fallback.md)
+therefore replaces the empty SVG with a self-contained visible note. Unknown JSON, malformed
 bodies, oversized bodies, and other media failures remain sanitized `503 upstream_unavailable`
 responses. Upstream bodies and messages are never returned or logged.
 

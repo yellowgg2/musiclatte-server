@@ -143,6 +143,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     mediaStatus: 0,
     mediaContentType: '',
     mediaJsonError: undefined as { code: number; message: string } | undefined,
+    coverJsonError: undefined as { code: number; message: string } | undefined,
     mediaRedirect: '',
     mediaStallHeaders: false,
     mediaStallAfterFirstChunk: false,
@@ -307,13 +308,11 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
         res.end('<html>synthetic-secret-media-error</html>');
         return;
       }
-      if (state.mediaJsonError) {
+      const mediaJsonError =
+        (operation === 'getCoverArt' ? state.coverJsonError : undefined) ?? state.mediaJsonError;
+      if (mediaJsonError) {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(
-          JSON.stringify(
-            subsonicErrorFixture(state.mediaJsonError.code, state.mediaJsonError.message),
-          ),
-        );
+        res.end(JSON.stringify(subsonicErrorFixture(mediaJsonError.code, mediaJsonError.message)));
         return;
       }
       const body = operation === 'stream' ? syntheticAudioFixture : syntheticCoverFixture;

@@ -69,6 +69,10 @@ const clock = setInterval(() => {
   context.state.mutationErrorAfter = mode === 'selection-partial' ? 2 : -1;
   context.state.playlistCoverArt = mode === 'cover-fallback' ? '' : 'cover-A';
   context.state.mediaStatus = mode === 'cover-error' ? 503 : 0;
+  context.state.coverJsonError =
+    mode === 'cover-undecodable'
+      ? { code: 0, message: 'Synthetic failed to decode cover art' }
+      : undefined;
   const artwork = mode.startsWith('artwork');
   context.state.playlistIds = artwork
     ? Array.from({ length: 24 }, (_, index) => `pl-${index + 1}`)

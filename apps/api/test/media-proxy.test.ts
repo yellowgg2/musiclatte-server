@@ -301,10 +301,10 @@ describe('authenticated media proxy', () => {
     expect(context.mediaRequests).toHaveLength(1);
   });
 
-  /** Gonic reports an undecodable embedded cover as a successful JSON Subsonic failure. */
-  it('should replace a known undecodable cover response with a cacheable empty image', async () => {
+  /** A successful fallback must paint its own note when clients hide their loading placeholder. */
+  it('should replace an undecodable cover with a cacheable visible music-note image', async () => {
     const context = await makeSUT();
-    context.state.mediaJsonError = {
+    context.state.coverJsonError = {
       code: 0,
       message: 'synthetic-secret: failed to decode cover art',
     };
@@ -317,7 +317,16 @@ describe('authenticated media proxy', () => {
     expect(result.headers['content-type']).toMatch(/^image\/svg\+xml/);
     expect(result.headers['cache-control']).toBe('private, max-age=60');
     expect(result.body).toContain('<svg');
+    expect(result.body).toMatch(/<path\s[^>]*d="[^"]+"/);
+    expect(result.body.match(/<ellipse\s/g)).toHaveLength(2);
+    expect(result.body).toMatch(/stroke="#[0-9a-f]{6}"/i);
     expect(result.body).not.toContain('synthetic-secret');
+    const audio = await context.app.inject({
+      url: '/api/v1/media/songs/song-1/stream',
+      headers: context.headers,
+    });
+    expect(audio.statusCode).toBe(200);
+    expect(audio.headers['content-type']).toMatch(/^audio\//);
   });
 
   /** Unknown JSON success bodies remain upstream failures instead of hiding server faults. */
