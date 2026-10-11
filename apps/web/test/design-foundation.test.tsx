@@ -118,14 +118,16 @@ describe('design foundation', () => {
     const view = render(<Artwork src="/cover-a.svg" alt="Night garden" />);
     const frame = screen.getByRole('img', { name: 'Night garden' });
     expect(frame.getAttribute('data-state')).toBe('loading');
+    expect(frame.getAttribute('data-fit')).toBe('cover');
     const image = view.container.querySelector('img')!;
     fireEvent.load(image);
     expect(frame.getAttribute('data-state')).toBe('available');
     fireEvent.error(image);
     expect(frame.getAttribute('data-state')).toBe('failure');
     expect(view.container.querySelector('img')).toBeNull();
-    view.rerender(<Artwork src="/cover-b.svg" alt="Night garden" />);
+    view.rerender(<Artwork src="/cover-b.svg" alt="Night garden" fit="contain" />);
     expect(screen.getByRole('img').getAttribute('data-state')).toBe('loading');
+    expect(screen.getByRole('img').getAttribute('data-fit')).toBe('contain');
     view.rerender(<Artwork alt="Missing cover" />);
     expect(screen.getByRole('img').getAttribute('data-state')).toBe('missing');
     view.rerender(<Artwork alt="" />);

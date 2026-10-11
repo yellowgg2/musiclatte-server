@@ -17,8 +17,7 @@ import { isImportsPath } from '../imports/routes';
 import { navigateMusic } from '../music/navigation';
 import { MusicPage } from '../pages/music/MusicPage';
 import { PlayerProvider, type PlayerAudio } from '../player/PlayerProvider';
-import { DesktopPlayer } from '../player/DesktopPlayer';
-import { MiniPlayer } from '../player/MiniPlayer';
+import { PlayerSurface } from '../player/PlayerSurface';
 import { musicRoute } from '../music/queries';
 import { availableEntries, featureState } from '../capabilities/client-features';
 import { playlistRoute } from '../playlists/routes';
@@ -387,10 +386,17 @@ export function Router({
                     onLogout: () => void store.logout(),
                   }}
                   player={
-                    <>
-                      <DesktopPlayer locale={locale} />
-                      <MiniPlayer locale={locale} />
-                    </>
+                    <PlayerSurface
+                      locale={locale}
+                      fetcher={fetcher}
+                      apiOrigin={apiOrigin}
+                      scope={JSON.stringify([
+                        location,
+                        state.session.username,
+                        state.capabilities?.instanceId,
+                      ])}
+                      onUnauthenticated={store.expire}
+                    />
                   }
                 >
                   <QualityFeedback locale={locale} />

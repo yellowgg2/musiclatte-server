@@ -1,3 +1,4 @@
+import { galleryWideCover, galleryTallCover } from './gallery-fixtures';
 import { MusicRow } from '../music/components/MusicRow';
 import { SongList, SongViewHeading, type SongView } from '../music/components/SongView';
 import { PlaylistOccurrenceActions } from '../playlists/components/PlaylistOccurrenceActions';
@@ -343,6 +344,14 @@ export function Gallery() {
                 </div>
               </div>
               <div className={styles.artGrid}>
+                {[galleryWideCover, galleryTallCover].map((src, index) => (
+                  <figure key={src}>
+                    <Artwork src={src} alt={t['gallery.coverAlt']} fit="contain" />
+                    <figcaption>
+                      {t[index === 0 ? 'gallery.containWide' : 'gallery.containTall']}
+                    </figcaption>
+                  </figure>
+                ))}
                 {(['available', 'loading', 'missing', 'failure'] as const).map((state) => (
                   <figure key={state}>
                     <Artwork

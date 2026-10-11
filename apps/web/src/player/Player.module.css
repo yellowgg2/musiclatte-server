@@ -303,3 +303,12 @@
   flex: 1 1 18rem;
   margin: 0;
 }
+
+.coverButton {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  cursor: pointer;
+}

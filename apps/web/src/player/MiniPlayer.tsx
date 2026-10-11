@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
 import { Artwork } from '../design/components/Artwork';
 import { IconAction } from '../design/components/IconAction';
 import { messages, type Locale } from '../i18n';
@@ -8,28 +8,49 @@ import { playLabel } from './view-helpers';
 import styles from './Player.module.css';
 import { FavoriteAction } from '../favorites/components/FavoriteAction';
 
-export function MiniPlayer({ locale }: { locale: Locale }) {
+export function MiniPlayer({
+  locale,
+  expanded,
+  onExpandedChange,
+  onDetails,
+}: {
+  locale: Locale;
+  expanded: boolean;
+  onExpandedChange: (value: boolean) => void;
+  onDetails: (button: HTMLButtonElement) => void;
+}) {
   const player = usePlayer();
-  const [expanded, setExpanded] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
   const copy = messages[locale];
   const closeExpanded = useCallback(() => {
-    setExpanded(false);
+    onExpandedChange(false);
     requestAnimationFrame(() => opener.current?.focus());
-  }, []);
+  }, [onExpandedChange]);
   if (!player.state.current) return null;
   const current = player.state.current;
   return (
     <>
       <aside className={styles.mini} aria-label={copy['player.nowPlaying']} data-persistent-player>
-        <Artwork alt="" {...(current.coverArt ? { src: player.coverUrl(current.coverArt) } : {})} />
+        <button
+          type="button"
+          className={styles.coverButton}
+          data-track-details-trigger
+          aria-haspopup="dialog"
+          aria-label={`${copy['player.details.open']}: ${current.title}`}
+          onClick={(event) => onDetails(event.currentTarget)}
+        >
+          <Artwork
+            alt=""
+            {...(current.coverArt ? { src: player.coverUrl(current.coverArt) } : {})}
+          />
+        </button>
         <button
           ref={opener}
           type="button"
           className={styles.miniTrack}
           aria-label={`${copy['player.expand']}: ${current.title}`}
           aria-expanded={expanded}
-          onClick={() => setExpanded(true)}
+          onClick={() => onExpandedChange(true)}
         >
           <strong>{current.title}</strong>
           <small>{current.artist || copy['music.unknownArtist']}</small>

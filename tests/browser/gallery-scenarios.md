@@ -21,3 +21,5 @@ Fixture: `apps/web/src/dev/gallery-fixtures.ts`; initial locale ko, favorite fal
 All browser scenarios above are AUTOMATION_CAPABLE and were exercised by Codex. Physical iPhone media is outside S05. The remaining user task is visual direction approval, not replaying these scenarios.
 
 Evidence and actual outcomes: [S05 verification](../../docs/verification/phase-1/step-05/README.md).
+
+Phase 20 adds `#artwork` landscape and portrait `fit="contain"` fixtures. Both retain the complete source; original cover/loading/missing/failure semantics remain. Final visual approval belongs to P20-UA-002.

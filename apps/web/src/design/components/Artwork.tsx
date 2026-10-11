@@ -4,11 +4,12 @@ export interface ArtworkProps {
   src?: string;
   alt: string;
   loading?: boolean;
+  fit?: 'cover' | 'contain';
 }
 export function Artwork(props: ArtworkProps) {
   return <ArtworkImage key={props.src ?? ''} {...props} />;
 }
-function ArtworkImage({ src, alt, loading = false }: ArtworkProps) {
+function ArtworkImage({ src, alt, loading = false, fit = 'cover' }: ArtworkProps) {
   const [state, setState] = useState<'loading' | 'available' | 'failure'>('loading');
   const visibleState = loading ? 'loading' : !src ? 'missing' : state;
   return (
@@ -18,6 +19,7 @@ function ArtworkImage({ src, alt, loading = false }: ArtworkProps) {
       aria-label={alt || undefined}
       aria-hidden={!alt || undefined}
       data-state={visibleState}
+      data-fit={fit}
     >
       <svg viewBox="0 0 64 64" aria-hidden="true" className={styles.placeholder}>
         <path d="M27 43V20l22-4v23M27 25l22-4" />

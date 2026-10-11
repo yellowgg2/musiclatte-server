@@ -796,5 +796,17 @@
   "artistInfo.more": "Show more",
   "artistInfo.less": "Show less",
   "artistInfo.related": "Related artists in your library",
-  "artistInfo.artwork": "{name} artwork"
+  "artistInfo.artwork": "{name} artwork",
+  "gallery.containWide": "Full landscape cover",
+  "gallery.containTall": "Full portrait cover",
+  "player.details.open": "View song details",
+  "player.details.title": "Song details",
+  "player.details.close": "Close song details",
+  "player.details.album": "Album",
+  "player.details.year": "Year",
+  "player.details.genre": "Genre",
+  "player.details.track": "Track",
+  "player.details.duration": "Duration",
+  "player.details.loading": "Loading song details…",
+  "player.details.error": "Could not load additional details."
 }

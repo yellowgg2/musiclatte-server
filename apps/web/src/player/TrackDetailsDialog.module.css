@@ -1,0 +1,102 @@
+.dialog {
+  width: min(52rem, calc(100vw - var(--space-5) * 2));
+  max-height: calc(100dvh - var(--space-5) * 2);
+  padding: 0;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+  box-shadow: 0 1rem 3rem rgb(41 38 51 / 20%);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.dialog::backdrop {
+  background: rgb(25 22 33 / 45%);
+}
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+.header h2 {
+  margin: 0;
+  font-size: var(--text-title);
+}
+.dialog button {
+  min-width: 44px;
+  min-height: 44px;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-selection);
+  color: var(--color-accent);
+}
+.header button {
+  font-size: 1.5rem;
+}
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--space-5);
+  padding: var(--space-5);
+}
+.cover {
+  width: 100%;
+  align-self: start;
+}
+.information {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.information h3 {
+  margin: 0;
+  font-size: var(--text-title);
+}
+.artist {
+  color: var(--color-secondary);
+  margin: var(--space-2) 0 var(--space-5);
+}
+.information dl {
+  margin: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.information dl > div {
+  display: grid;
+  gap: var(--space-1);
+}
+.information dt {
+  color: var(--color-secondary);
+  font-size: var(--text-small);
+}
+.information dd {
+  margin: 0;
+}
+.error {
+  margin-top: var(--space-4);
+}
+@media (max-width: 47.99rem) {
+  .dialog {
+    width: calc(100vw - var(--space-3) * 2);
+    max-height: calc(100dvh - var(--space-3) * 2);
+  }
+  .header {
+    padding: var(--space-2) var(--space-4);
+  }
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-4);
+    gap: var(--space-4);
+  }
+  .cover {
+    max-width: min(100%, 45dvh);
+    justify-self: center;
+  }
+}

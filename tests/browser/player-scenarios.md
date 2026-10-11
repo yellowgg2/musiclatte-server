@@ -82,3 +82,7 @@ Router, locale picker, desktop player, and mobile expanded player in one provide
 ## Phase 20 queue artwork
 
 Use the same parameterized library preview with `PREVIEW_CONTROL` set to `queue-artwork`. The synthetic queue alternates available cover, absent cover, and failed image transport. Through the normal login and music-folder route, play a song and open Queue. Confirm every occurrence has the same-size artwork frame and title/artist text, and keyboard-activate the last queue occurrence. Repeat in the 390px expanded player, retaining its single body scroller and current-occurrence selection. Artwork changes do not fetch song details or reset playback. Capture functional evidence under `artifact/phase-20/step-01/`; final visual and zoom review remains separate.
+
+## Phase 20 current song details
+
+Use the normal library preview; `details-error` fails only the song detail read, and `normal` restores it. Play a song, open its cover, verify known fields + fetched year/genre/track and playback continuity. Escape/close/backdrop return focus. Tab stays within the native modal. Resize desktop → 390px while open; one dialog remains and close focuses the visible mini cover. Mini title still opens the queue player. Missing images keep the music-note frame. Unit tests own delayed A/B responses, stale result suppression and session expiry.

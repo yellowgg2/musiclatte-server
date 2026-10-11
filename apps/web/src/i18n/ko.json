@@ -796,5 +796,17 @@
   "artistInfo.more": "더 보기",
   "artistInfo.less": "접기",
   "artistInfo.related": "내 라이브러리의 관련 아티스트",
-  "artistInfo.artwork": "{name} 아티스트 이미지"
+  "artistInfo.artwork": "{name} 아티스트 이미지",
+  "gallery.containWide": "가로 커버 전체 보기",
+  "gallery.containTall": "세로 커버 전체 보기",
+  "player.details.open": "곡 정보 보기",
+  "player.details.title": "곡 정보",
+  "player.details.close": "곡 정보 닫기",
+  "player.details.album": "앨범",
+  "player.details.year": "연도",
+  "player.details.genre": "장르",
+  "player.details.track": "트랙",
+  "player.details.duration": "길이",
+  "player.details.loading": "곡 정보를 불러오는 중이에요…",
+  "player.details.error": "추가 정보를 불러오지 못했어요."
 }

@@ -1,5 +1,4 @@
 import { CurrentQuality } from './QualityFeedback';
-import { useState } from 'react';
 import { Artwork } from '../design/components/Artwork';
 import { IconAction } from '../design/components/IconAction';
 import { messages, type Locale } from '../i18n';
@@ -10,19 +9,37 @@ import styles from './Player.module.css';
 import { FavoriteAction } from '../favorites/components/FavoriteAction';
 import { RepeatAction } from './RepeatAction';
 
-export function DesktopPlayer({ locale }: { locale: Locale }) {
+export function DesktopPlayer({
+  locale,
+  queueOpen,
+  onToggleQueue,
+  onDetails,
+}: {
+  locale: Locale;
+  queueOpen: boolean;
+  onToggleQueue: () => void;
+  onDetails: (button: HTMLButtonElement) => void;
+}) {
   const player = usePlayer();
-  const [queueOpen, setQueueOpen] = useState(false);
   const { state } = player;
   const copy = messages[locale];
   if (!state.current || !state.queue) return null;
   return (
     <aside className={styles.desktop} aria-label={copy['player.nowPlaying']} data-persistent-player>
       <div className={styles.track}>
-        <Artwork
-          alt=""
-          {...(state.current.coverArt ? { src: player.coverUrl(state.current.coverArt) } : {})}
-        />
+        <button
+          type="button"
+          className={styles.coverButton}
+          data-track-details-trigger
+          aria-haspopup="dialog"
+          aria-label={`${copy['player.details.open']}: ${state.current.title}`}
+          onClick={(event) => onDetails(event.currentTarget)}
+        >
+          <Artwork
+            alt=""
+            {...(state.current.coverArt ? { src: player.coverUrl(state.current.coverArt) } : {})}
+          />
+        </button>
         <span>
           <strong>{state.current.title}</strong>
           <small>{state.current.artist || copy['music.unknownArtist']}</small>
@@ -85,7 +102,7 @@ export function DesktopPlayer({ locale }: { locale: Locale }) {
           label={queueOpen ? copy['player.hideQueue'] : copy['player.showQueue']}
           pressed={queueOpen}
           aria-expanded={queueOpen}
-          onClick={() => setQueueOpen((value) => !value)}
+          onClick={onToggleQueue}
         >
           ≡
         </IconAction>

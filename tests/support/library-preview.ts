@@ -90,7 +90,10 @@ const upstream = createServer((request, response) => {
       : isLibrary && mode === 'error'
         ? 0
         : undefined;
-  if (isLibrary && (mode === 'error' || (isRandom && mode === 'random-error'))) {
+  if (
+    (operation === 'getSong' && mode === 'details-error') ||
+    (isLibrary && (mode === 'error' || (isRandom && mode === 'random-error')))
+  ) {
     response.writeHead(503);
     response.end();
     return;
@@ -163,7 +166,7 @@ const upstream = createServer((request, response) => {
         child: empty ? [] : [{ id: 'empty', title: 'Empty folder', isDir: true }, ...songs],
       },
     },
-    getSong: { song: { ...song, bitRate: 256 } },
+    getSong: { song: { ...song, bitRate: 256, year: 2024, genre: 'Acoustic', track: 3 } },
     search3: {
       searchResult3: {
         song: searchSongs,

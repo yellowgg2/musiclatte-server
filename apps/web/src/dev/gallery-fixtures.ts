@@ -50,3 +50,12 @@ export const galleryOrganizationStates: OrganizationStatusItem[] = [
     changedAt: null,
   },
 ];
+
+export const galleryWideCover = galleryCover.replace(
+  encodeURIComponent('height="240"'),
+  encodeURIComponent('height="120"'),
+);
+export const galleryTallCover = galleryCover.replace(
+  encodeURIComponent('width="240"'),
+  encodeURIComponent('width="120"'),
+);
