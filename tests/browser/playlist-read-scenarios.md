@@ -34,3 +34,9 @@ of screenshots, committed fixtures and logs.
 
 Run the Step's focused and complete regression commands. Reset Chrome zoom, stop only the owned
 API/Vite processes, and remove the owned control file.
+
+## Phase 20 playlist artwork
+
+Start `PORT=3120 WEB_PORT=5190 PREVIEW_CONTROL=/tmp/musiclatte-p20-playlists node --import tsx tests/support/playlist-preview.ts` with the web API proxy pointed to port 3120. `artwork-slow` provides 24 synthetic lists: later-covered, all-missing, failed descriptor, empty, and more available cards. The first detail is delayed 2.5 seconds; names and links appear first. `artwork` removes the delay. Synthetic users `fixture-listener` and `fixture-second` use the existing preview password.
+
+Only viewport cards request descriptors; scrolling reveals and loads the remaining cards. Missing/error/empty keep Artwork's music note and do not halt the queue. Image failure falls back without repeat fetching. Keyboard Enter opens the detail with the same later cover. Playing a playlist and returning to the list preserves playback. KO/EN, 390px and logout/new-account behavior are normal Router flows. `/__preview/stats` reports only synthetic operation counts (never auth queries): account-summary already issues a separate getPlaylists, so measure page-list deltas rather than treating total startup reads as one. Active descriptor admission and stale-generation suppression are verified in playlist-artwork.test.tsx.

@@ -49,6 +49,14 @@ describe('playlist web producer-consumer contract', () => {
       });
     };
     const client = createPlaylistClient({ fetcher, apiOrigin: 'https://api.example.test' });
+    context.state.playlistCoverArt = '';
+    context.state.playlistEntryCoverArt = { 1: 'later / cover' };
+    expect(await client.artwork('pl-1', new AbortController().signal)).toEqual({
+      schemaVersion: 1,
+      playlistId: 'pl-1',
+      coverState: 'available',
+      coverArt: 'later / cover',
+    });
     const listData = await client.read({ kind: 'list' }, new AbortController().signal);
     const detailData = await client.read(
       { kind: 'detail', id: 'pl-1' },

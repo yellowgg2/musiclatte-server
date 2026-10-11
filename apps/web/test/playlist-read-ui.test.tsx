@@ -252,9 +252,12 @@ describe('playlist read UI', () => {
       'page',
     );
     expect(context.calls.filter((call) => call.pathname === '/api/v1/playlists')).toHaveLength(1);
-    expect(context.calls.some((call) => call.pathname.startsWith('/api/v1/playlists/'))).toBe(
-      false,
-    );
+    expect(
+      context.calls.some(
+        (call) =>
+          call.pathname.startsWith('/api/v1/playlists/') && !call.pathname.endsWith('/artwork'),
+      ),
+    ).toBe(false);
 
     await user.click(
       screen.getByRole('link', {

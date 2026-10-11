@@ -90,3 +90,9 @@ empty playlist before starting the same append pipeline. Verification is recorde
 `GET /api/v1/playlists/:id/artwork` uses the same authenticated session read boundary and rejects query parameters. It makes one `getPlaylist` call, verifies the exact requested ID, and returns only `{schemaVersion: 1, playlistId, coverState}` with `coverArt` present only for `available`. Responses are `private, no-store`; failures use the existing safe read mapping.
 
 The descriptor and playlist detail share the first non-directory entry with a nonblank cover ID in playlist order. Missing covers on earlier songs do not hide a later cover. No image bytes are probed, no song-by-song reads or scans occur, and no server artwork cache is created. List summaries still use a single `getPlaylists` read with their existing fallback wire shape; ordered entries and mutation revision inputs are unchanged.
+
+### Web representative cover loading
+
+The list route remains a single `getPlaylists` projection. `PlaylistsPage` renders names/counts immediately, then requests the optional artwork descriptor only for intersecting cards, with one active request per page. Without IntersectionObserver it processes the same queue serially. There are no per-song detail or cover-probe reads.
+
+The page owns a cache keyed by playlist ID/revision and content generation. Foreground/list refresh and metadata content updates invalidate it; status-only metadata polls do not. Route unmount, client or account scope changes abort in-flight work and discard results. Missing or failed descriptors are cached for that generation, and 401 uses normal session expiry. Artwork URLs reuse authenticated cover generation handling. Existing clients can omit this optional endpoint.

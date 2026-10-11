@@ -3,6 +3,7 @@ import {
   type ApiErrorCode,
   type MusicEntry,
   type PlaylistDeleteResponse,
+  type PlaylistArtworkResponse,
   type PlaylistDetail,
   type PlaylistMutationOutcome,
   type PlaylistMutationResponse,
@@ -202,6 +203,27 @@ export function createPlaylistClient({
   }
 
   return {
+    async artwork(id: string, signal: AbortSignal): Promise<PlaylistArtworkResponse> {
+      const value = await request(`/api/v1/playlists/${encodeURIComponent(id)}/artwork`, signal);
+      if (!record(value) || value.schemaVersion !== 1 || value.playlistId !== id)
+        throw new ApiError('internal_error');
+      const keys = Object.keys(value).sort().join(',');
+      if (value.coverState === 'fallback' && keys === 'coverState,playlistId,schemaVersion')
+        return { schemaVersion: 1, playlistId: id, coverState: 'fallback' };
+      if (
+        value.coverState === 'available' &&
+        keys === 'coverArt,coverState,playlistId,schemaVersion' &&
+        typeof value.coverArt === 'string' &&
+        value.coverArt.trim()
+      )
+        return {
+          schemaVersion: 1,
+          playlistId: id,
+          coverState: 'available',
+          coverArt: value.coverArt,
+        };
+      throw new ApiError('internal_error');
+    },
     async read(route: PlaylistRoute, signal: AbortSignal): Promise<PlaylistData> {
       const path =
         route.kind === 'list'

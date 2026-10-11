@@ -190,7 +190,7 @@ describe('playlist occurrence editing', () => {
     expect(within(confirmation).getByText(/position 3/)).toBeTruthy();
     await user.click(within(confirmation).getByRole('button', { name: 'Remove song' }));
 
-    const songList = screen.getByRole('heading', { name: /Songs/ }).nextElementSibling!;
+    const songList = screen.getByRole('list', { name: 'Songs' });
     await waitFor(() =>
       expect(within(songList as HTMLElement).getAllByText('First song')).toHaveLength(1),
     );

@@ -15,7 +15,10 @@ import {
   subsonicFixture,
   subsonicErrorFixture,
 } from '../../packages/test-support/src/subsonic-fixtures.js';
-import { collectionFixture } from '../../packages/test-support/src/collection-fixtures.js';
+import {
+  collectionFixture,
+  type CollectionFixtureOptions,
+} from '../../packages/test-support/src/collection-fixtures.js';
 
 export const origin = 'https://music.example.test';
 export const password = {
@@ -120,6 +123,10 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     playlistExists: true,
     playlistId: 'pl-1',
     playlistIds: ['pl-1'],
+    playlistFixtures: {} as Record<
+      string,
+      CollectionFixtureOptions & { delayMs?: number; error?: number }
+    >,
     playlistPublic: false,
     playlistName: 'Synthetic List',
     playlistChanged: '2026-09-05T02:03:04Z',
@@ -160,6 +167,10 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
       return;
     }
     const operation = url.pathname.slice('/rest/'.length);
+    const playlistFixture =
+      operation === 'getPlaylist'
+        ? state.playlistFixtures[url.searchParams.get('id') ?? '']
+        : undefined;
     const isMedia = operation === 'stream' || operation === 'getCoverArt';
     const isRandom = operation === 'getRandomSongs';
     if (operation === 'getSong' && state.songStall) return;
@@ -381,8 +392,8 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
                 ? state.favoriteReadError
                 : isFavoriteWrite && state.favoriteWriteError
                   ? state.favoriteWriteError
-                  : isCollectionRead && state.collectionError
-                    ? state.collectionError
+                  : isCollectionRead && (playlistFixture?.error || state.collectionError)
+                    ? playlistFixture?.error || state.collectionError
                     : isCollectionWrite && currentMutationError
                       ? currentMutationError
                       : isLibrary &&
@@ -429,6 +440,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
               coverArt: state.playlistCoverArt,
               entryCoverArt: state.playlistEntryCoverArt,
               directoryPositions: state.playlistDirectoryPositions,
+              ...playlistFixture,
             })
           : state.registration
             ? registrationFixture(operation, url, state.registration)
@@ -505,7 +517,7 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
         ? state.favoriteDelayMs
         : isCollectionWrite
           ? state.mutationDelayMs
-          : state.collectionDelayMs;
+          : (playlistFixture?.delayMs ?? state.collectionDelayMs);
     if (operation === 'getSong' && state.songResponseGate) {
       void state.songResponseGate().then(() => res.end(payload));
       return;

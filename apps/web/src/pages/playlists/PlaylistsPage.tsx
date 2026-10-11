@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { mediaRoutes } from '@musiclatte/contracts';
+import { usePlaylistArtwork } from '../../playlists/use-playlist-artwork';
+import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
 import type { ApiErrorCode, PlaylistDetail, PlaylistSummary } from '@musiclatte/contracts';
 import { ApiError } from '../../auth/client';
 import { LanguagePicker } from '../../app/LanguagePicker';
@@ -51,28 +54,56 @@ export function PlaylistsPage({
   canWrite: boolean;
   csrfToken: string;
 }) {
-  const client = useMemo(() => createPlaylistClient({ fetcher, apiOrigin }), [fetcher, apiOrigin]);
+  const client = useMemo(
+    () => createPlaylistClient({ fetcher, apiOrigin }),
+    [fetcher, apiOrigin, csrfToken],
+  );
   const invalidateAccountSummary = useInvalidateAccountSummary();
   const [attempt, retry] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [state, setState] = useState<{
+    client?: ReturnType<typeof createPlaylistClient>;
     playlists?: PlaylistSummary[];
     error?: ApiErrorCode;
     loading: boolean;
   }>({ loading: true });
   const copy = messages[locale];
+  const playlists = state.client === client ? state.playlists : undefined;
+  const metadata = useMetadataSync();
+  const artwork = usePlaylistArtwork({
+    playlists: playlists ?? [],
+    client,
+    generation: JSON.stringify([attempt, metadata.state.version]),
+    onUnauthenticated,
+  });
+  const coverUrl = (id: string) =>
+    metadata.client ? metadata.coverUrl(id) : `${apiOrigin}${mediaRoutes.cover(id)}`;
+  useEffect(() => {
+    const foreground = () => {
+      if (document.visibilityState === 'visible') retry((value) => value + 1);
+    };
+    window.addEventListener('focus', foreground);
+    document.addEventListener('visibilitychange', foreground);
+    return () => {
+      window.removeEventListener('focus', foreground);
+      document.removeEventListener('visibilitychange', foreground);
+    };
+  }, []);
 
   useEffect(() => {
     let current = true;
     const controller = new AbortController();
     setState((previous) => ({
-      ...(previous.playlists ? { playlists: previous.playlists } : {}),
+      ...(previous.client === client && previous.playlists
+        ? { playlists: previous.playlists }
+        : {}),
+      client,
       loading: true,
     }));
     void client.read({ kind: 'list' }, controller.signal).then(
       (data) => {
         if (current && data.kind === 'list')
-          setState({ playlists: data.playlists, loading: false });
+          setState({ client, playlists: data.playlists, loading: false });
       },
       (error) => {
         if (!current) return;
@@ -107,9 +138,9 @@ export function PlaylistsPage({
       <div className={styles.summary}>
         <p className={styles.description}>{copy['playlists.description']}</p>
         <div className={styles.headingActions}>
-          {state.playlists && (
+          {playlists && (
             <p className={styles.count}>
-              {countLabel(state.playlists.length, locale, 'playlists.count')}
+              {countLabel(playlists.length, locale, 'playlists.count')}
             </p>
           )}
           {canWrite && (
@@ -119,7 +150,7 @@ export function PlaylistsPage({
           )}
         </div>
       </div>
-      {state.loading && !state.playlists && (
+      {state.loading && !playlists && (
         <StatusSurface
           state="loading"
           title={copy['playlists.loading']}
@@ -138,7 +169,7 @@ export function PlaylistsPage({
           }
         />
       )}
-      {!state.loading && !state.error && state.playlists?.length === 0 && (
+      {!state.loading && !state.error && playlists?.length === 0 && (
         <StatusSurface
           state="empty"
           title={copy['playlists.empty']}
@@ -150,13 +181,17 @@ export function PlaylistsPage({
           }
         />
       )}
-      {!state.error && state.playlists && state.playlists.length > 0 && (
-        <ul className={styles.list} aria-label={copy['playlists.title']}>
-          {state.playlists.map((playlist) => (
+      {!state.error && playlists && playlists.length > 0 && (
+        <ul ref={artwork.root} className={styles.list} aria-label={copy['playlists.title']}>
+          {playlists.map((playlist) => (
             <PlaylistCard
               key={playlist.id}
               playlist={playlist}
               base={base}
+              coverLoading={artwork.get(playlist).loading}
+              {...(artwork.get(playlist).coverArt
+                ? { coverSrc: coverUrl(artwork.get(playlist).coverArt!) }
+                : {})}
               songCount={countLabel(playlist.songCount, locale, 'playlists.songCount')}
             />
           ))}
@@ -176,6 +211,7 @@ export function PlaylistsPage({
               const result = await client.create(name, { csrfToken, operationId, signal });
               const created = summaryOf(result.playlist);
               setState((previous) => ({
+                client,
                 playlists: [
                   ...(previous.playlists?.filter((playlist) => playlist.id !== created.id) ?? []),
                   created,
