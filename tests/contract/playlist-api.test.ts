@@ -8,6 +8,29 @@ describe('playlist read producer contract', () => {
     for (const ctx of contexts.splice(0)) await ctx.cleanup();
   });
 
+  /** Artwork is a private exact-ID descriptor, independent of the unchanged list wire shape. */
+  it('should publish a query-free minimal artwork descriptor for opaque IDs', async () => {
+    const ctx = await createTestContext();
+    contexts.push(ctx);
+    const headers = { cookie: cookieOf(await ctx.login()) };
+    const id = '목록 / + % &?id=other';
+    ctx.state.playlistId = id;
+    const url = '/api/v1/playlists/' + encodeURIComponent(id) + '/artwork';
+    const response = await ctx.app.inject({ url, headers });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(response.json()).toEqual({
+      schemaVersion: 1,
+      playlistId: id,
+      coverState: 'available',
+      coverArt: 'cover-A',
+    });
+    expect(ctx.requests.at(-1)?.searchParams.getAll('id')).toEqual([id]);
+    const before = ctx.requests.length;
+    expect((await ctx.app.inject({ url: url + '?size=500', headers })).statusCode).toBe(400);
+    expect(ctx.requests).toHaveLength(before);
+  });
+
   /** Summary and detail expose only the strict versioned BFF projection. */
   it('should publish strict summary and occurrence wire shapes', async () => {
     const ctx = await createTestContext();

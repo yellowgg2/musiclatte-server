@@ -33,6 +33,10 @@ export type FavoriteSongResponse =
 
 export type PlaylistCoverState = 'fallback' | 'available';
 
+export type PlaylistArtworkResponse =
+  | { schemaVersion: 1; playlistId: string; coverState: 'available'; coverArt: string }
+  | { schemaVersion: 1; playlistId: string; coverState: 'fallback' };
+
 export interface PlaylistSummary extends SubsonicPlaylistSummary {
   editable: boolean;
   coverState: 'fallback';
@@ -225,6 +229,21 @@ export const favoriteResponseSchemas = {
 };
 
 export const playlistResponseSchemas = {
+  artwork: {
+    oneOf: [
+      object(['schemaVersion', 'playlistId', 'coverState', 'coverArt'], {
+        schemaVersion: { const: 1 },
+        playlistId: id,
+        coverState: { const: 'available' },
+        coverArt: id,
+      }),
+      object(['schemaVersion', 'playlistId', 'coverState'], {
+        schemaVersion: { const: 1 },
+        playlistId: id,
+        coverState: { const: 'fallback' },
+      }),
+    ],
+  },
   list: object(['schemaVersion', 'playlists'], {
     schemaVersion: { const: 1 },
     playlists: { type: 'array', items: object(summaryRequired, summaryProperties) },

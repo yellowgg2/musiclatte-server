@@ -51,14 +51,18 @@ export function playlistSummary(
   };
 }
 
+/** Find the first covered song in playlist order without probing image bytes. */
+export function firstPlaylistCover(playlist: SubsonicPlaylist): string | undefined {
+  return playlist.entry.find((song) => !song.isDir && song.coverArt?.trim())?.coverArt;
+}
+
 /** Project the exact ordered mutation snapshot while preserving duplicate song occurrences. */
 export function playlistDetail(
   service: SessionService,
   identity: PlaylistIdentity,
   playlist: SubsonicPlaylist,
 ): PlaylistDetail {
-  const firstPlayable = playlist.entry.find((song) => !song.isDir);
-  const coverArt = firstPlayable?.coverArt;
+  const coverArt = firstPlaylistCover(playlist);
   return {
     ...playlistSummary(service, identity, playlist),
     coverState: coverArt ? 'available' : 'fallback',

@@ -125,6 +125,8 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
     playlistChanged: '2026-09-05T02:03:04Z',
     playlistEntryIds: ['tr-A', 'tr-B', 'tr-A'],
     playlistCoverArt: 'cover-A',
+    playlistEntryCoverArt: {} as Record<number, string>,
+    playlistDirectoryPositions: [] as number[],
     mutationError: 0,
     mutationErrorAfter: -1,
     mutationWriteCount: 0,
@@ -425,6 +427,8 @@ export async function createTestContext(overrides: Partial<AuthOptions> = {}) {
                 ? (state.favoriteSongIdsByUsername.get(url.searchParams.get('u') ?? '') ?? [])
                 : state.playlistEntryIds,
               coverArt: state.playlistCoverArt,
+              entryCoverArt: state.playlistEntryCoverArt,
+              directoryPositions: state.playlistDirectoryPositions,
             })
           : state.registration
             ? registrationFixture(operation, url, state.registration)

@@ -10,6 +10,8 @@ export interface CollectionFixtureOptions {
   changed?: string;
   entryIds?: string[];
   coverArt?: string;
+  entryCoverArt?: Record<number, string>;
+  directoryPositions?: number[];
 }
 
 /** Synthetic gonic v0.22.0 playlist and song-star payloads with no user data. */
@@ -23,9 +25,11 @@ export function collectionFixture(
   const songs = entryIds.map((id, position) => ({
     id,
     title: `Synthetic ${id.slice(-1)}`,
-    isDir: false,
+    isDir: options.directoryPositions?.includes(position) ?? false,
     starred: '2026-09-05T02:03:04Z',
-    ...(position === 0 && options.coverArt ? { coverArt: options.coverArt } : {}),
+    ...((options.entryCoverArt?.[position] ?? (position === 0 ? options.coverArt : undefined))
+      ? { coverArt: options.entryCoverArt?.[position] ?? options.coverArt }
+      : {}),
   }));
   const playlist = {
     id: options.id ?? 'pl-1',

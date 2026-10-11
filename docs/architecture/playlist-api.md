@@ -6,13 +6,13 @@ The playlist BFF is an authenticated projection and mutation boundary over the c
 
 Every route requires the existing cookie or bearer session, rejects every query parameter and unknown body field, returns `schemaVersion: 1`, and preserves opaque playlist and song IDs as strings.
 
-| Route                          | Input                                     | Success                                                                                                           |
-| ------------------------------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/playlists`        | no query                                  | source-ordered summaries with `editable`, informational `revision`, and fallback cover state                      |
-| `GET /api/v1/playlists/:id`    | no query                                  | ordered `{position, song}` occurrences, exact detail `revision`, `editable`, and first-playable-entry cover state |
-| `POST /api/v1/playlists`       | `{operationId, name}`                     | `201` with an empty reconciled playlist snapshot and `outcome: applied`                                           |
-| `PATCH /api/v1/playlists/:id`  | `{operationId, expectedRevision, action}` | `200` with the reconciled current snapshot and applied/replayed outcome                                           |
-| `DELETE /api/v1/playlists/:id` | `{operationId, expectedRevision}`         | `200` with a stable deleted result; applied replay never writes again                                             |
+| Route                          | Input                                     | Success                                                                                                                   |
+| ------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/playlists`        | no query                                  | source-ordered summaries with `editable`, informational `revision`, and fallback cover state                              |
+| `GET /api/v1/playlists/:id`    | no query                                  | ordered `{position, song}` occurrences, exact detail `revision`, `editable`, and first-covered-playable-entry cover state |
+| `POST /api/v1/playlists`       | `{operationId, name}`                     | `201` with an empty reconciled playlist snapshot and `outcome: applied`                                                   |
+| `PATCH /api/v1/playlists/:id`  | `{operationId, expectedRevision, action}` | `200` with the reconciled current snapshot and applied/replayed outcome                                                   |
+| `DELETE /api/v1/playlists/:id` | `{operationId, expectedRevision}`         | `200` with a stable deleted result; applied replay never writes again                                                     |
 
 `operationId` is a 22–128 character base64url random identifier. Names are trimmed at both ends, must contain 1–255 Unicode code points, and otherwise preserve their text. `expectedRevision` is the opaque 43-character detail HMAC. The PATCH action is an exact discriminated union:
 
@@ -84,3 +84,9 @@ The playlist picker uses summaries only for presentation, then rereads chosen de
 server's current `editable` and revision contract immediately before append. Create-new confirms an
 empty playlist before starting the same append pipeline. Verification is recorded in
 [Step 08](../verification/phase-2/step-08/README.md).
+
+## Phase 20 artwork descriptor
+
+`GET /api/v1/playlists/:id/artwork` uses the same authenticated session read boundary and rejects query parameters. It makes one `getPlaylist` call, verifies the exact requested ID, and returns only `{schemaVersion: 1, playlistId, coverState}` with `coverArt` present only for `available`. Responses are `private, no-store`; failures use the existing safe read mapping.
+
+The descriptor and playlist detail share the first non-directory entry with a nonblank cover ID in playlist order. Missing covers on earlier songs do not hide a later cover. No image bytes are probed, no song-by-song reads or scans occur, and no server artwork cache is created. List summaries still use a single `getPlaylists` read with their existing fallback wire shape; ordered entries and mutation revision inputs are unchanged.

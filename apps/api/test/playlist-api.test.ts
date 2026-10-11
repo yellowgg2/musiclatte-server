@@ -20,6 +20,77 @@ describe('authenticated playlist read API', () => {
     for (const ctx of contexts.splice(0)) await ctx.cleanup();
   });
 
+  /** Artwork finds the first covered playable occurrence without changing the mutation snapshot. */
+  it('should discover a later cover and preserve detail revision and occurrence order', async () => {
+    const ctx = await makeSUT();
+    const read = async () =>
+      (await ctx.app.inject({ url: '/api/v1/playlists/pl-1', headers: ctx.headers })).json()
+        .playlist;
+    const before = await read();
+    ctx.state.playlistCoverArt = '';
+    ctx.state.playlistEntryCoverArt = { 1: 'cover-B', 2: 'cover-C' };
+    const after = await read();
+    expect(after.coverArt).toBe('cover-B');
+    expect(after.revision).toBe(before.revision);
+    expect(after.entries.map((entry: { song: { id: string } }) => entry.song.id)).toEqual([
+      'tr-A',
+      'tr-B',
+      'tr-A',
+    ]);
+    const count = ctx.requests.length;
+    const response = await ctx.app.inject({
+      url: '/api/v1/playlists/pl-1/artwork',
+      headers: ctx.headers,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      schemaVersion: 1,
+      playlistId: 'pl-1',
+      coverState: 'available',
+      coverArt: 'cover-B',
+    });
+    expect(
+      ctx.requests
+        .slice(count)
+        .filter((url) => url.pathname !== '/rest/getUser')
+        .map((url) => url.pathname),
+    ).toEqual(['/rest/getPlaylist']);
+  });
+
+  /** Empty, missing and directory-only covers stay fallback without probing image bytes. */
+  it.each(['empty', 'missing', 'directory', 'whitespace'])(
+    'should use fallback for %s artwork',
+    async (mode) => {
+      const ctx = await makeSUT();
+      ctx.state.playlistCoverArt =
+        mode === 'directory' ? 'folder-cover' : mode === 'whitespace' ? '   ' : '';
+      if (mode === 'empty') ctx.state.playlistEntryIds = [];
+      if (mode === 'directory') ctx.state.playlistDirectoryPositions = [0];
+      const response = await ctx.app.inject({
+        url: '/api/v1/playlists/pl-1/artwork',
+        headers: ctx.headers,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        schemaVersion: 1,
+        playlistId: 'pl-1',
+        coverState: 'fallback',
+      });
+    },
+  );
+
+  /** Descriptor reads authenticate, reject query input and fail closed on a mismatched upstream playlist. */
+  it('should enforce the exact authenticated artwork binding', async () => {
+    const ctx = await makeSUT();
+    const url = '/api/v1/playlists/pl-1/artwork';
+    expect((await ctx.app.inject(url)).statusCode).toBe(401);
+    expect(
+      (await ctx.app.inject({ url: url + '?id=other', headers: ctx.headers })).statusCode,
+    ).toBe(400);
+    ctx.state.playlistId = 'other';
+    expect((await ctx.app.inject({ url, headers: ctx.headers })).statusCode).toBe(503);
+  });
+
   /** List reads require a session, reject every query and never fan out to playlist detail. */
   it('should return ordered summaries without detail fan-out', async () => {
     const ctx = await makeSUT();
@@ -117,15 +188,22 @@ describe('authenticated playlist read API', () => {
 
   /** Standard collection failures and malformed success payloads use the shared secret-free error mapping. */
   it.each([
-    [40, 401, 'unauthenticated'],
-    [50, 403, 'forbidden'],
-    [70, 404, 'not_found'],
-    [0, 503, 'upstream_unavailable'],
-  ])('should map collection failure %s safely', async (code, status, expected) => {
+    [40, 401, 'unauthenticated', ''],
+    [40, 401, 'unauthenticated', '/artwork'],
+    [50, 403, 'forbidden', ''],
+    [50, 403, 'forbidden', '/artwork'],
+    [70, 404, 'not_found', ''],
+    [70, 404, 'not_found', '/artwork'],
+    [0, 503, 'upstream_unavailable', ''],
+    [0, 503, 'upstream_unavailable', '/artwork'],
+  ])('should map collection failure %s safely', async (code, status, expected, suffix) => {
     const ctx = await makeSUT();
     ctx.state.collectionError = Number(code);
     if (code === 0) ctx.state.malformedCollections = true;
-    const response = await ctx.app.inject({ url: '/api/v1/playlists/pl-1', headers: ctx.headers });
+    const response = await ctx.app.inject({
+      url: '/api/v1/playlists/pl-1' + suffix,
+      headers: ctx.headers,
+    });
     expect(response.statusCode).toBe(status);
     expect(response.json()).toEqual({
       schemaVersion: 1,
@@ -135,50 +213,59 @@ describe('authenticated playlist read API', () => {
   });
 
   /** Session revocation during a delayed collection read prevents a late success response. */
-  it('should recheck the session after upstream detail returns', async () => {
-    const ctx = await makeSUT();
-    let releaseCollectionResponse = () => {};
-    ctx.state.collectionResponseGate = new Promise<void>((resolve) => {
-      releaseCollectionResponse = resolve;
-    });
-    const pending = ctx.app.inject({ url: '/api/v1/playlists/pl-1', headers: ctx.headers });
-    await expect
-      .poll(() => ctx.requests.some((url) => url.pathname === '/rest/getPlaylist'))
-      .toBe(true);
-    const logout = await ctx.app.inject({
-      method: 'DELETE',
-      url: '/api/v1/session',
-      headers: {
-        ...browserHeaders,
-        ...ctx.headers,
-        'x-csrf-token': ctx.csrfToken,
-      },
-      payload: {},
-    });
-    expect(logout.statusCode).toBe(204);
-    releaseCollectionResponse();
-    expect((await pending).statusCode).toBe(401);
-  });
+  it.each(['', '/artwork'])(
+    'should recheck the session after upstream detail returns: %s',
+    async (suffix) => {
+      const ctx = await makeSUT();
+      let releaseCollectionResponse = () => {};
+      ctx.state.collectionResponseGate = new Promise<void>((resolve) => {
+        releaseCollectionResponse = resolve;
+      });
+      const pending = ctx.app.inject({
+        url: '/api/v1/playlists/pl-1' + suffix,
+        headers: ctx.headers,
+      });
+      await expect
+        .poll(() => ctx.requests.some((url) => url.pathname === '/rest/getPlaylist'))
+        .toBe(true);
+      const logout = await ctx.app.inject({
+        method: 'DELETE',
+        url: '/api/v1/session',
+        headers: {
+          ...browserHeaders,
+          ...ctx.headers,
+          'x-csrf-token': ctx.csrfToken,
+        },
+        payload: {},
+      });
+      expect(logout.statusCode).toBe(204);
+      releaseCollectionResponse();
+      expect((await pending).statusCode).toBe(401);
+    },
+  );
 
   /** Closing a real client request aborts the pending playlist read without revoking the session. */
-  it('should propagate disconnect cancellation for collection reads', async () => {
-    const ctx = await makeSUT(5000);
-    const address = await ctx.app.listen({ port: 0, host: '127.0.0.1' });
-    ctx.state.collectionStall = true;
-    const controller = new AbortController();
-    const pending = fetch(address + '/api/v1/playlists/pl-1', {
-      headers: ctx.headers,
-      signal: controller.signal,
-    }).catch(() => undefined);
-    await expect
-      .poll(() => ctx.requests.some((url) => url.pathname === '/rest/getPlaylist'))
-      .toBe(true);
-    controller.abort();
-    await pending;
-    await expect.poll(() => ctx.state.closedCollectionRequests).toBe(1);
-    ctx.state.collectionStall = false;
-    expect(
-      (await ctx.app.inject({ url: '/api/v1/session', headers: ctx.headers })).statusCode,
-    ).toBe(200);
-  });
+  it.each(['', '/artwork'])(
+    'should propagate disconnect cancellation for collection reads: %s',
+    async (suffix) => {
+      const ctx = await makeSUT(5000);
+      const address = await ctx.app.listen({ port: 0, host: '127.0.0.1' });
+      ctx.state.collectionStall = true;
+      const controller = new AbortController();
+      const pending = fetch(address + '/api/v1/playlists/pl-1' + suffix, {
+        headers: ctx.headers,
+        signal: controller.signal,
+      }).catch(() => undefined);
+      await expect
+        .poll(() => ctx.requests.some((url) => url.pathname === '/rest/getPlaylist'))
+        .toBe(true);
+      controller.abort();
+      await pending;
+      await expect.poll(() => ctx.state.closedCollectionRequests).toBe(1);
+      ctx.state.collectionStall = false;
+      expect(
+        (await ctx.app.inject({ url: '/api/v1/session', headers: ctx.headers })).statusCode,
+      ).toBe(200);
+    },
+  );
 });
