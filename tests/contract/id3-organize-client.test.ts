@@ -29,6 +29,54 @@ const privateFile = (name: string, value: string) => {
   return path;
 };
 
+it.each(['matching', 'wrong-job', 'wrong-track'])(
+  'validates a standalone metadata status binding: %s',
+  async (binding) => {
+    const tokenFile = privateFile('token', 'mlpat_' + 's'.repeat(48));
+    const job = {
+      id: binding === 'wrong-job' ? 'other-job' : 'selected-job',
+      libraryId: 'music',
+      createdAt: 1,
+      status: 'succeeded',
+      kind: 'edit',
+      parentJobId: null,
+      items: [
+        {
+          itemId: 'selected-item',
+          originalTrackId: binding === 'wrong-track' ? 'other-track' : 'selected-track',
+          currentTrackId: binding === 'wrong-track' ? 'other-track' : 'selected-track',
+          stage: 'succeeded',
+          fileSavedAt: 1,
+          reflectedAt: 2,
+          previousRevision: 'revision-1',
+          resultRevision: 'revision-2',
+          changedFields: ['title'],
+          errorCode: null,
+          recoveryActions: [],
+          restoreAvailable: false,
+        },
+      ],
+    };
+    const fetcher = vi.fn(async (_input: string | URL | Request) =>
+      Response.json({ schemaVersion: 1, job }),
+    );
+    const result = runId3OrganizeCommand({
+      api: 'https://music.example/api/v1',
+      tokenFile,
+      fetch: fetcher,
+      command: 'metadata-status',
+      trackId: 'selected-track',
+      jobId: 'selected-job',
+    });
+    if (binding === 'matching') await expect(result).resolves.toEqual({ schemaVersion: 1, job });
+    else await expect(result).rejects.toThrow('client_failed:response');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(String(fetcher.mock.calls[0]?.[0])).toBe(
+      'https://music.example/api/v1/metadata-jobs/selected-job',
+    );
+  },
+);
+
 it('accepts only a private non-symlink token file and never returns the token', () => {
   const token = 'mlpat_' + 'a'.repeat(48);
   const path = privateFile('token', token + '\n');

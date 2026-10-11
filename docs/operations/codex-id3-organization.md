@@ -57,6 +57,7 @@ npm run id3:organize -- metadata-preview --api https://service.example/api/v1 --
 npm run id3:organize -- cover-upload --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --library-id LIBRARY_ID
 npm run id3:organize -- metadata-submit --api https://service.example/api/v1 --token-file /absolute/private/token --manifest /absolute/private/manifest.json --track-id TRACK_ID --revision REVISION --cover-upload-id UPLOAD_ID --operation-id STABLE_OPERATION_ID
 npm run id3:organize -- metadata-status --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID
+npm run id3:organize -- metadata-status --api https://service.example/api/v1 --token-file /absolute/private/token --track-id TRACK_ID --job-id METADATA_JOB_ID
 npm run id3:organize -- metadata-recheck --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID
 npm run id3:organize -- metadata-retry --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID
 npm run id3:organize -- organization-preview --api https://service.example/api/v1 --token-file /absolute/private/token --track-id TRACK_ID --revision RESULT_REVISION
@@ -71,6 +72,11 @@ them, split the change into sequential manifests. Keep the last successful metad
 result revision for organization submission. Reuse the same operation ID after a lost response.
 If that replay is already `succeeded`, the client checkpoints the terminal response once and does
 not attempt a second identical journal transition.
+
+For a standalone one-song amendment, retain the accepted metadata job ID in the private recovery
+record and use `metadata-status --track-id ... --job-id ...` without a collection state file. The
+client validates the returned job ID and exact target item. Collection status remains bound to the
+existing journal checkpoint, even when a caller also supplies a job ID.
 
 When the fresh organization preview returns exact `no_op`, use
 `organization-adopt-no-op` instead of `organization-submit`. The distinct endpoint repeats the
@@ -95,6 +101,28 @@ or organization preview reports a collision. A `ready` preview uses `organizatio
 server-reported `recovery_required` checkpoint. Polling and automatic recovery are bounded.
 
 ## Collection batch lifecycle
+
+### Explicit reconsideration after completion
+
+After a new user request to reconsider an exact skipped collection item, use
+`batch-reopen-skipped`. This is a journal-only operation: it performs a fresh authenticated
+metadata read, requires the supplied revision and an editable exact track binding, then archives
+the complete original journal in a new private backup before atomically reopening that one item.
+It does not submit metadata or organize media. Research and ordinary preview/submit/verification
+are still required after `batch-next`.
+
+```sh
+npm run id3:organize -- batch-reopen-skipped --api https://service.example/api/v1 --token-file /absolute/private/token --state-file /absolute/private/batch.json --track-id TRACK_ID --revision FRESH_REVISION --operation-id STABLE_RECONSIDERATION_ID --backup-file /absolute/private/batch-before-reconsideration.json
+```
+
+Only a finished favorites/playlist journal and an unmutated `skipped` item are eligible. Completed
+items, accepted jobs/uploads, stopped journals, and unorganized-sweep child journals are rejected.
+Preserve held items by never selecting them. Other frozen items and the selection revision are
+unchanged; the reconsidered item receives new deterministic operation IDs. Replaying the same
+reconsideration ID preserves subsequent accepted checkpoints and performs no metadata write.
+Use the same backup and ID to recover after a crash between backup fsync and journal replacement.
+The backup must be an owner-only regular file in the journal directory; unsafe paths or a different
+existing backup fail closed. Reconsider only one item at a time and finish it before reopening another.
 
 Freeze exactly one current-account collection before researching any item:
 

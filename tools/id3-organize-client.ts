@@ -39,6 +39,7 @@ import {
   id3OrganizationBatchStatus,
   nextId3OrganizationBatchItem,
   recordId3OrganizationBatchFailure,
+  reopenId3OrganizationSkippedItem,
   skipId3OrganizationBatchDestinationConflict,
   skipId3OrganizationBatchItem,
   verifyId3OrganizationBatchContext,
@@ -104,6 +105,7 @@ export interface Id3OrganizeCommandOptions {
     | 'batch-start'
     | 'batch-next'
     | 'batch-skip'
+    | 'batch-reopen-skipped'
     | 'batch-skip-destination-conflict'
     | 'batch-status'
     | 'scan-start'
@@ -129,6 +131,7 @@ export interface Id3OrganizeCommandOptions {
   sourceEvidence?: OrganizationSourceEvidence[];
   coverUploadId?: string;
   stateFile?: string;
+  backupFile?: string;
   source?: 'favorites' | 'playlist';
   playlistId?: string;
   skipReason?: string;
@@ -634,6 +637,31 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
       stateFile,
       required(options.trackId, 'target'),
       required(options.skipReason, 'skip_reason'),
+    );
+    return id3OrganizationBatchStatus(stateFile);
+  }
+  if (options.command === 'batch-reopen-skipped') {
+    const stateFile = required(options.stateFile, 'state_file');
+    const trackId = required(options.trackId, 'target');
+    const journal = verifyId3OrganizationBatchContext(stateFile, base, token);
+    const item = journal.items.find((entry) => entry.trackId === trackId);
+    if (!item) fail('journal_binding');
+    if (item.state === 'skipped') {
+      const current = decodeMetadataSnapshot(
+        await call('/tracks/' + encodeURIComponent(trackId) + '/metadata'),
+      );
+      if (
+        current.trackId !== trackId ||
+        !current.editable ||
+        current.fileRevision !== required(options.revision, 'revision')
+      )
+        fail('journal_binding');
+    }
+    reopenId3OrganizationSkippedItem(
+      stateFile,
+      trackId,
+      required(options.operationId, 'operation_id'),
+      required(options.backupFile, 'backup_file'),
     );
     return id3OrganizationBatchStatus(stateFile);
   }
@@ -1176,7 +1204,17 @@ export async function runId3OrganizeCommand(options: Id3OrganizeCommandOptions):
   }
   if (options.command === 'metadata-status') {
     const binding = batchBinding();
-    if (!binding || binding.state !== 'metadata_accepted') fail('journal_binding');
+    if (!binding) {
+      const jobId = required(options.jobId, 'metadata_job');
+      const trackId = required(options.trackId, 'target');
+      const job = decodeMetadataJobDetail(
+        await call('/metadata-jobs/' + encodeURIComponent(jobId)),
+      ).job;
+      if (job.id !== jobId) fail('response');
+      metadataJobItem(job, trackId);
+      return { schemaVersion: 1 as const, job };
+    }
+    if (binding.state !== 'metadata_accepted') fail('journal_binding');
     const status = id3OrganizationMetadataStatusBinding(binding);
     const response = await call('/metadata-jobs/' + encodeURIComponent(status.target.jobId!));
     const job = decodeMetadataJobDetail(response).job;
@@ -1543,6 +1581,7 @@ function parseArgs(argv: string[]) {
     ['operation-id', 'operationId'],
     ['cover-upload-id', 'coverUploadId'],
     ['state-file', 'stateFile'],
+    ['backup-file', 'backupFile'],
     ['playlist-id', 'playlistId'],
     ['skip-reason', 'skipReason'],
     ['reference-file', 'referenceFile'],

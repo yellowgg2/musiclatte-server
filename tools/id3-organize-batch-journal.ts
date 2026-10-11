@@ -932,6 +932,89 @@ export function skipId3OrganizationBatchItem(
   });
 }
 
+/** Explicit reconsideration of an unmutated collection skip; never replay accepted work. */
+export function reopenId3OrganizationSkippedItem(
+  path: string,
+  trackId: string,
+  retryId: string,
+  backupPath: string,
+  crashAt?: CrashPoint,
+) {
+  if (!opaque(retryId)) failure('operation_id');
+  if (
+    dirname(backupPath) !== dirname(path) ||
+    [path, path + '.tmp', path + '.lock'].includes(backupPath)
+  )
+    failure('journal_private');
+  validateParent(backupPath);
+  const release = acquireId3OrganizationBatchLock(path);
+  try {
+    const journal = readId3OrganizationBatchJournal(path);
+    const item = journal.items.find((entry) => entry.trackId === trackId);
+    if (!item) failure('journal_binding');
+    const operation = (step: string) => fingerprint(['reconsider', retryId, trackId, step]);
+    // A lost response can be replayed even after batch-next or an accepted write.
+    if (
+      item.operations.organization === operation('organization') &&
+      item.metadataSteps.required.operationId === operation('required') &&
+      item.metadataSteps.optional.operationId === operation('optional')
+    ) {
+      const backup = readId3OrganizationBatchJournal(backupPath);
+      const previous = backup.items.find((entry) => entry.trackId === trackId);
+      if (
+        backup.apiFingerprint !== journal.apiFingerprint ||
+        backup.credentialFingerprint !== journal.credentialFingerprint ||
+        backup.selectionRevision !== journal.selectionRevision ||
+        previous?.state !== 'skipped' ||
+        previous.organizationJobId !== null ||
+        Object.values(previous.metadataSteps).some((step) => step.jobId !== null)
+      )
+        failure('journal_binding');
+      return journal;
+    }
+    if (
+      journal.schemaVersion !== 2 ||
+      journal.source.kind === 'unorganized' ||
+      journal.stopped ||
+      journal.items.some((entry) => !['succeeded', 'skipped'].includes(entry.state)) ||
+      item.state !== 'skipped' ||
+      item.coverUploadId !== null ||
+      item.organizationJobId !== null ||
+      item.newTrackId !== null ||
+      item.serverStage !== null ||
+      Object.values(item.metadataSteps).some(
+        (step) => step.jobId !== null || step.resultRevision !== null || step.serverStage !== null,
+      )
+    )
+      failure('journal_transition');
+    const before = readFileSync(path);
+    try {
+      const fd = openSync(backupPath, 'wx', 0o600);
+      try {
+        writeFileSync(fd, before);
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
+      syncDirectory(backupPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') failure('journal_private');
+    }
+    validatePrivateState(backupPath);
+    if (!readFileSync(backupPath).equals(before)) failure('journal_binding');
+    item.state = 'pending';
+    item.errorCode = null;
+    item.operations = { cover: operation('cover'), organization: operation('organization') };
+    item.metadataSteps.required.operationId = operation('required');
+    item.metadataSteps.optional.operationId = operation('optional');
+    decodeId3OrganizationBatchJournal(journal);
+    atomicWrite(path, journal, crashAt);
+    return journal;
+  } finally {
+    release();
+  }
+}
+
 export function skipId3OrganizationBatchDestinationConflict(path: string, trackId: string) {
   return updateJournal(path, (journal) => {
     if (journal.stopped || journal.schemaVersion !== 3 || journal.source.kind !== 'unorganized')
