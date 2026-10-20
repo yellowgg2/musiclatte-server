@@ -95,11 +95,12 @@ function observeAgain(c: Awaited<ReturnType<typeof makeSUT>> & {}) {
 }
 
 describe('external watch admission', () => {
-  it('should require a second observation and ten seconds before one atomic external event', async () => {
+  /** The opened file supplies the second observation without another inventory write. */
+  it('should require ten seconds and a matching opened file before one atomic external event', async () => {
     now = 100;
     const c = await makeSUT();
     if (!c) return;
-    now = 10_100;
+    now = 5_100;
     expect(await c.service.runOnce()).toBe('deferred');
     expect(
       ctx!.db.connection.prepare('SELECT count(*) AS count FROM download_events').get(),
@@ -107,8 +108,7 @@ describe('external watch admission', () => {
       count: 0,
     });
 
-    observeAgain(c);
-    now = 15_100;
+    now = 10_100;
     expect(await c.service.runOnce()).toBe('admitted');
     expect(
       ctx!.db.connection
@@ -120,7 +120,7 @@ describe('external watch admission', () => {
       provenance: 'external',
       identity_key: 'a'.repeat(64),
       library_id: 'music',
-      download_completed_at: 15_100,
+      download_completed_at: 10_100,
       registered_at: null,
     });
     expect(c.repository.getObservation('music', c.key)).toMatchObject({
@@ -135,6 +135,25 @@ describe('external watch admission', () => {
     ).toEqual({
       count: 1,
     });
+  });
+
+  /** A later filesystem sample must still match the fingerprint captured at discovery. */
+  it('should refuse admission when the file changed without another inventory scan', async () => {
+    now = 0;
+    const c = await makeSUT();
+    if (!c) return;
+    now = 10_000;
+    writeFileSync(c.file, JSON.stringify({ valid: true, sourceId: 'changed-file' }));
+
+    expect(await c.service.runOnce()).toBe('changed');
+    expect(c.repository.getObservation('music', c.key)).toMatchObject({
+      state: 'settling',
+      failureCode: 'file_changed',
+      leaseOwner: null,
+    });
+    expect(
+      ctx!.db.connection.prepare('SELECT count(*) AS count FROM download_events').get(),
+    ).toEqual({ count: 0 });
   });
 
   it('should back off invalid media and reset validation after its fingerprint changes', async () => {

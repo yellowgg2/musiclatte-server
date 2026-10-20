@@ -1,6 +1,7 @@
 import {
   mkdirSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -9,7 +10,9 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { createImportProcessFixture } from '../../../tests/support/import-process-fixture.js';
 import { createTestContext } from '../../../tests/support/session-storage-harness.js';
+import { createExternalWatchService } from '../src/imports/external-watch-service.js';
 import { createExternalWatchRepository } from '../src/storage/external-watch-repository.js';
 
 let ctx: Awaited<ReturnType<typeof createTestContext>> | undefined;
@@ -78,6 +81,55 @@ function finish(inventory: {
 }
 
 describe('external watch inventory', () => {
+  /** An unchanged delta scan must not strand an existing settling candidate after restart. */
+  it('should admit a long-waiting new MP3 without rewriting unchanged inventory rows', async () => {
+    now = 0;
+    const c = await makeSUT();
+    if (!c) return;
+    const account = join(c.musicRoot, 'jojo-music', 'alice');
+    mkdirSync(account, { recursive: true });
+    writeFileSync(join(account, 'historical.mp3'), JSON.stringify({ valid: true, sourceId: '' }));
+    finish(c.inventory);
+
+    now = 100;
+    const key = 'jojo-music/alice/new.mp3';
+    writeFileSync(join(c.musicRoot, key), JSON.stringify({ valid: true, sourceId: '' }));
+    finish(c.inventory);
+    const discovered = c.repository.getObservation('music', key);
+    expect(discovered).toMatchObject({ state: 'settling', stableSinceAt: 100, lastSeenAt: 100 });
+
+    now += 24 * 60 * 60 * 1000;
+    finish(c.inventory);
+    expect(c.repository.getObservation('music', key)).toEqual(discovered);
+    const fixture = createImportProcessFixture(ctx!.root);
+    const service = createExternalWatchService({
+      database: ctx!.db,
+      musicRoot: realpathSync(c.musicRoot),
+      ffprobe: fixture.ffprobe,
+      timeoutMs: 2_000,
+      clock: () => now,
+      workerId: 'restarted-worker',
+      instanceId: 'instance-1',
+      policyRevision: 1,
+      expectedOwners: [{ libraryId: 'music', accountDirectory: 'alice', username: 'alice' }],
+    });
+
+    expect(await service.runOnce()).toBe('admitted');
+    expect(c.repository.getObservation('music', key)).toMatchObject({ state: 'registering' });
+    expect(await service.runOnce()).toBe('idle');
+    writeFileSync(join(c.musicRoot, key), 'replacement at the same path');
+    finish(c.inventory);
+    expect(await service.runOnce()).toBe('idle');
+    expect(
+      ctx!.db.connection
+        .prepare('SELECT provenance,download_completed_at FROM download_events')
+        .all(),
+    ).toEqual([{ provenance: 'external', download_completed_at: now }]);
+    expect(c.repository.getObservation('music', 'jojo-music/alice/historical.mp3')?.state).toBe(
+      'baseline',
+    );
+  });
+
   it('should preserve 64-bit root identities beyond the JavaScript safe integer range', async () => {
     const module = await import('../src/imports/external-watch-inventory.js').catch(() => ({}));
     const identify = (module as Record<string, unknown>).externalWatchRootIdentity;

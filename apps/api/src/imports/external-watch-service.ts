@@ -87,11 +87,9 @@ export function createExternalWatchService(options: {
       })[0];
       if (!observation) return 'idle' as const;
       const stableSince = observation.stableSinceAt;
-      if (
-        stableSince === null ||
-        observation.lastSeenAt <= stableSince ||
-        options.clock() - stableSince < settleMs
-      ) {
+      // The opened file below supplies the second fingerprint observation;
+      // unchanged inventory snapshots deliberately leave lastSeenAt untouched.
+      if (stableSince === null || options.clock() - stableSince < settleMs) {
         finish(observation, null, 5_000);
         return 'deferred' as const;
       }

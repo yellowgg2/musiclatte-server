@@ -18,6 +18,11 @@ A persisted continuation without its matching process-local snapshot means the p
 
 A new path must have the same device, inode, size, nanosecond mtime/ctime, and link count in two different observations at least 10 seconds apart. The validator opens without following symlinks, requires one nonempty bounded regular link, probes a generic MP3 audio stream through the opened descriptor, and compares opened/after/visible identity. A changed file returns to settling; a static invalid file receives bounded retry instead of a hot loop.
 
+The discovery snapshot supplies the first fingerprint and the validator's opened-file stat supplies
+the second after the settling interval. Admission must not require `last_seen_at` to advance:
+unchanged delta inventories deliberately leave observation rows untouched. This also lets existing
+settling candidates resume after a worker restart without a database reset or another full scan.
+
 The `(library, relative path)` observation is path-once. Later edits, atomic replacements, deletion/recreation, metadata saves, and organization moves do not manufacture another external download. Existing import intents/events, metadata work, and organization source/target evidence close the candidate as internal.
 
 ## Event admission and Gonic registration

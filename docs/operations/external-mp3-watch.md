@@ -28,6 +28,14 @@ After baseline completion, use a newly named synthetic MP3 that you are authoriz
 
 Registration failures retry from 30 seconds with exponential backoff up to one hour. Repeated copying or replacing at the same relative path does not create another event.
 
+If newly discovered files remain `settling`, distinguish admission from Gonic registration before
+requesting another scan. The validator reopens each due candidate after ten seconds and compares its
+current fingerprint with discovery; unchanged inventory does not advance its `last_seen_at`. A
+previous version incorrectly required that timestamp to advance, leaving candidates indefinitely
+deferred after the delta-inventory optimization. The corrected worker resumes existing candidates
+through the normal admission and exact-path registration flow. Preserve their observations and
+events; do not reset baselines or edit timestamps with ad-hoc SQL.
+
 ## Rollback
 
 Set `watchExternalMp3` to `false`, recreate the API, wait for health/projection, and recreate the worker. This stops new observation and closes watchers. Preserve the management database, named volumes, existing DownloadEvents, observations, MediaLinks, and music files. Do not delete observations, reset baseline, remove volumes, or downgrade the database in place.
