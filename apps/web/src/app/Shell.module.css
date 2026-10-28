@@ -32,8 +32,17 @@
 .preferences {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--space-4);
+  min-width: 0;
+  max-width: 100%;
+}
+.preferences .language {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.preferences select {
+  min-width: 0;
 }
 .topBar {
   display: flex;
@@ -299,4 +308,19 @@
   gap: var(--space-2);
   min-height: 2.75rem;
   padding: var(--space-2);
+}
+@media (max-width: 30rem) {
+  .preferences .preferenceLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .preferences .language {
+    gap: 0;
+  }
 }

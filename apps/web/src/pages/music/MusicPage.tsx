@@ -8,7 +8,6 @@ import { Action } from '../../design/components/Action';
 import { TextField } from '../../design/components/TextField';
 import { StatusSurface } from '../../design/components/StatusSurface';
 import { SectionNav } from '../../design/components/SectionNav';
-import { LanguagePicker } from '../../app/LanguagePicker';
 import { messages, formatCount, type Locale } from '../../i18n';
 import { errorCode } from '../../auth/client';
 import { createMusicClient, type LibraryData, type MusicClient } from '../../music/client';
@@ -67,7 +66,6 @@ export function MusicPage({
   location,
   base,
   locale,
-  onLocale,
   fetcher,
   apiOrigin,
   onUnauthenticated,
@@ -82,7 +80,6 @@ export function MusicPage({
   location: string;
   base: string;
   locale: Locale;
-  onLocale: (locale: Locale) => void;
   fetcher: typeof fetch;
   apiOrigin: string;
   onUnauthenticated: () => void;
@@ -379,7 +376,6 @@ export function MusicPage({
         </header>
         <div className={styles.utilities}>
           {metadataUI.canHistory && <a href={`${base}metadata-jobs`}>{copy['metadata.history']}</a>}
-          <LanguagePicker locale={locale} onChange={onLocale} />
         </div>
       </div>
       {route.kind !== 'folders' && (

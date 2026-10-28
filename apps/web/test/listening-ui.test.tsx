@@ -213,7 +213,6 @@ it('should render unique history songs with their latest time and visible queue 
         apiOrigin=""
         onUnauthenticated={() => {}}
         canStream
-        onLocale={() => {}}
         sections={{ listening: true, mixes: true, curation: true, recent: true, favorites: true }}
       />
     </PlayerProvider>,

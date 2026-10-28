@@ -47,10 +47,6 @@
   letter-spacing: 0;
   color: var(--color-secondary);
 }
-.languages {
-  display: flex;
-  gap: var(--space-1);
-}
 .main {
   max-width: 1168px;
   padding: 0 var(--space-5);

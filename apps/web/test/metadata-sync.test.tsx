@@ -638,7 +638,6 @@ describe('metadata player integration', () => {
               location="/music/folders/folder"
               base="/"
               locale="en"
-              onLocale={() => {}}
               fetcher={fetcher}
               apiOrigin=""
               onUnauthenticated={expired}

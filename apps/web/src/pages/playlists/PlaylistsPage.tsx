@@ -4,7 +4,6 @@ import { usePlaylistArtwork } from '../../playlists/use-playlist-artwork';
 import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
 import type { ApiErrorCode, PlaylistDetail, PlaylistSummary } from '@musiclatte/contracts';
 import { ApiError } from '../../auth/client';
-import { LanguagePicker } from '../../app/LanguagePicker';
 import { Action } from '../../design/components/Action';
 import { StatusSurface } from '../../design/components/StatusSurface';
 import { formatCount, messages, type Locale } from '../../i18n';
@@ -38,7 +37,6 @@ function summaryOf(playlist: PlaylistDetail): PlaylistSummary {
 export function PlaylistsPage({
   base,
   locale,
-  onLocale,
   fetcher,
   apiOrigin,
   onUnauthenticated,
@@ -47,7 +45,6 @@ export function PlaylistsPage({
 }: {
   base: string;
   locale: Locale;
-  onLocale: (locale: Locale) => void;
   fetcher: typeof fetch;
   apiOrigin: string;
   onUnauthenticated: () => void;
@@ -133,7 +130,6 @@ export function PlaylistsPage({
             {copy['playlists.title']}
           </h1>
         </header>
-        <LanguagePicker locale={locale} onChange={onLocale} />
       </div>
       <div className={styles.summary}>
         <p className={styles.description}>{copy['playlists.description']}</p>

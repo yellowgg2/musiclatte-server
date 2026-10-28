@@ -1,5 +1,5 @@
 import { galleryWideCover, galleryTallCover } from './gallery-fixtures';
-import { ThemePicker } from '../app/ThemePicker';
+import { PreferencesBar } from '../app/PreferencesBar';
 import { MusicRow } from '../music/components/MusicRow';
 import { SongList, SongViewHeading, type SongView } from '../music/components/SongView';
 import { PlaylistOccurrenceActions } from '../playlists/components/PlaylistOccurrenceActions';
@@ -119,25 +119,7 @@ export function Gallery() {
               </span>
               musiclatte<span className={styles.brandDetail}>/ {t['gallery.gallery']}</span>
             </a>
-            <ThemePicker locale={locale} />
-            <div className={styles.languages} role="group" aria-label={t['gallery.language']}>
-              <Action
-                variant={locale === 'ko' ? 'primary' : 'quiet'}
-                aria-pressed={locale === 'ko'}
-                onClick={() => setLocale('ko')}
-                lang="ko"
-              >
-                한국어
-              </Action>
-              <Action
-                variant={locale === 'en' ? 'primary' : 'quiet'}
-                aria-pressed={locale === 'en'}
-                onClick={() => setLocale('en')}
-                lang="en"
-              >
-                English
-              </Action>
-            </div>
+            <PreferencesBar locale={locale} onLocale={setLocale} />
           </header>
           <main id="top" className={styles.main}>
             <div className={styles.intro}>

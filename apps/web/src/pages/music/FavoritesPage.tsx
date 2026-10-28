@@ -17,14 +17,12 @@ import { useSelection } from '../../selection/SelectionProvider';
 import { useMetadataSelectionRebase } from '../../metadata/selection';
 import { SelectionBar } from '../../selection/components/SelectionBar';
 import { selectionScopeKey } from '../../selection/model';
-import { LanguagePicker } from '../../app/LanguagePicker';
 import styles from './FavoritesPage.module.css';
 import { MusicSectionNav, type MusicSectionAvailability } from './MusicSectionNav';
 
 export function FavoritesPage({
   base,
   locale,
-  onLocale,
   fetcher,
   apiOrigin,
   onUnauthenticated,
@@ -35,7 +33,6 @@ export function FavoritesPage({
 }: {
   base: string;
   locale: Locale;
-  onLocale: (locale: Locale) => void;
   fetcher: typeof fetch;
   apiOrigin: string;
   onUnauthenticated: () => void;
@@ -91,7 +88,6 @@ export function FavoritesPage({
           </h1>
           <p>{copy['favorites.description']}</p>
         </header>
-        <LanguagePicker locale={locale} onChange={onLocale} />
       </div>
       <MusicSectionNav base={base} locale={locale} current="favorites" available={sections} />
       <section className={styles.headingActions} aria-label={copy['favorites.actions']}>

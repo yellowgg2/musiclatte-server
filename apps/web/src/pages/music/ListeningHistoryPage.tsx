@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Action } from '../../design/components/Action';
 import { StatusSurface } from '../../design/components/StatusSurface';
-import { LanguagePicker } from '../../app/LanguagePicker';
 import { FavoriteAction } from '../../favorites/components/FavoriteAction';
 import { MetadataAction } from '../../metadata/components/MetadataAction';
 import { MusicRow } from '../../music/components/MusicRow';
@@ -31,7 +30,6 @@ export function ListeningHistoryPage({
   fetcher,
   apiOrigin,
   onUnauthenticated,
-  onLocale,
   canStream,
   sections,
 }: {
@@ -41,7 +39,6 @@ export function ListeningHistoryPage({
   fetcher: typeof fetch;
   apiOrigin: string;
   onUnauthenticated(): void;
-  onLocale?: (locale: Locale) => void;
   canStream: boolean;
   sections: MusicSectionAvailability;
 }) {
@@ -159,7 +156,6 @@ export function ListeningHistoryPage({
           </h1>
           <p>{copy['listening.scope']}</p>
         </header>
-        {onLocale && <LanguagePicker locale={locale} onChange={onLocale} />}
       </div>
       <MusicSectionNav base={base} locale={locale} current={kind} available={sections} />
       <div className={styles.controlBar}>

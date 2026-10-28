@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ImportItem, ImportJob } from '@musiclatte/contracts';
 import { Action } from '../../design/components/Action';
 import { StatusSurface } from '../../design/components/StatusSurface';
-import { LanguagePicker } from '../../app/LanguagePicker';
 import { messages, type Locale } from '../../i18n';
 import { createImportClient } from '../../imports/client';
 import { activeImport, createImportStore } from '../../imports/state';
@@ -155,14 +154,12 @@ function ImportJobItem({
 }
 export function ImportPage({
   locale,
-  onLocale,
   fetcher,
   apiOrigin,
   csrfToken,
   onUnauthenticated,
 }: {
   locale: Locale;
-  onLocale: (locale: Locale) => void;
   fetcher: typeof fetch;
   apiOrigin: string;
   csrfToken: string;
@@ -219,7 +216,6 @@ export function ImportPage({
           </h1>
           <p>{copy['imports.intro']}</p>
         </div>
-        <LanguagePicker locale={locale} onChange={onLocale} />
       </header>
       <form
         className={styles.form}

@@ -1,4 +1,3 @@
-import { LanguagePicker } from '../../app/LanguagePicker';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { decodeMixInput, type MusicEntry, type SavedMix } from '@musiclatte/contracts';
 import { createMixClient } from '../../mixes/client';
@@ -25,7 +24,6 @@ export function MixesPage({
   csrfToken,
   onUnauthenticated,
   canStream,
-  onLocale,
   sections,
 }: {
   id?: string;
@@ -36,7 +34,6 @@ export function MixesPage({
   csrfToken: string;
   onUnauthenticated(): void;
   canStream: boolean;
-  onLocale?: (locale: Locale) => void;
   sections: MusicSectionAvailability;
 }) {
   const [songView, setSongView] = useSongView();
@@ -217,7 +214,6 @@ export function MixesPage({
           </h1>
           <p>{copy['mix.help']}</p>
         </header>
-        {onLocale && <LanguagePicker locale={locale} onChange={onLocale} />}
       </div>
       {id && (
         <SectionNav

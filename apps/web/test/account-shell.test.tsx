@@ -174,6 +174,7 @@ describe('global account shell', () => {
     };
     const { AppShell } = (await moduleAt('app/AppShell.tsx')) as {
       AppShell: ComponentType<{
+        onLocale: () => void;
         locale: 'en';
         base: string;
         capabilities: typeof capabilities;
@@ -198,6 +199,7 @@ describe('global account shell', () => {
         onUnauthenticated={vi.fn()}
       >
         <AppShell
+          onLocale={vi.fn()}
           locale="en"
           base="/"
           capabilities={capabilities}
@@ -263,6 +265,7 @@ describe('global account shell', () => {
         onUnauthenticated={vi.fn()}
       >
         <AppShell
+          onLocale={vi.fn()}
           locale="en"
           base="/"
           capabilities={{
@@ -316,6 +319,7 @@ describe('global account shell', () => {
           onUnauthenticated={vi.fn()}
         >
           <AppShell
+            onLocale={vi.fn()}
             locale="en"
             base="/"
             capabilities={capabilities}

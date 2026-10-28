@@ -66,7 +66,6 @@ function makeSUT() {
   const props = {
     base: '/nested/',
     locale: 'en' as const,
-    onLocale: vi.fn(),
     fetcher,
     apiOrigin: 'https://api.example.test',
     onUnauthenticated: vi.fn(),

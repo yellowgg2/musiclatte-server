@@ -3,10 +3,11 @@ import type { CapabilitiesResponse } from '@musiclatte/contracts';
 import { availableEntries } from '../capabilities/client-features';
 import { messages, type Locale } from '../i18n';
 import { AccountDock, type AccountDockProps } from './AccountDock';
-import { ThemePicker } from './ThemePicker';
+import { PreferencesBar } from './PreferencesBar';
 import styles from './Shell.module.css';
 export function AppShell({
   locale,
+  onLocale,
   base,
   capabilities,
   children,
@@ -14,6 +15,7 @@ export function AppShell({
   account,
 }: {
   locale: Locale;
+  onLocale: (locale: Locale) => void;
   base: string;
   capabilities: CapabilitiesResponse | null;
   children: ReactNode;
@@ -143,7 +145,7 @@ export function AppShell({
       </div>
       <main id="main" tabIndex={-1} className={styles.content}>
         <div className={styles.topBar}>
-          <ThemePicker locale={locale} />
+          <PreferencesBar locale={locale} onLocale={onLocale} />
         </div>
         {children}
       </main>

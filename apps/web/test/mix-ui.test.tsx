@@ -114,7 +114,6 @@ it('should expose mix navigation and a clear action hierarchy', async () => {
         csrfToken="fixture"
         onUnauthenticated={() => {}}
         canStream
-        onLocale={() => {}}
         sections={sections}
       />
     </PlayerProvider>,

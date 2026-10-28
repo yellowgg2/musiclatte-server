@@ -2,7 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentType } from 'react';
 
@@ -81,6 +81,39 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe('login shell', () => {
+  /** One persistent preference group owns both controls before route content across navigation. */
+  it('should keep language and theme together once above every authenticated page', async () => {
+    localStorage.setItem('musiclatte.locale', 'en');
+    const context = createTestContext();
+    context.signIn();
+    const { user } = await makeSUT(context);
+    await screen.findByRole('heading', { name: 'All music' });
+
+    function preferences() {
+      const group = screen.getByRole('group', { name: 'Display preferences' });
+      expect(within(group).getAllByRole('combobox')).toHaveLength(2);
+      expect(screen.getAllByRole('combobox', { name: 'Language' })).toHaveLength(1);
+      expect(screen.getAllByRole('combobox', { name: 'Theme' })).toHaveLength(1);
+      expect(screen.getByRole('main').firstElementChild?.contains(group)).toBe(true);
+      return group;
+    }
+
+    const group = preferences();
+    await user.selectOptions(within(group).getByRole('combobox', { name: 'Theme' }), 'dark');
+    await user.click(screen.getByRole('link', { name: 'Settings' }));
+    await screen.findByRole('heading', { name: 'Settings' });
+    expect(preferences()).toBe(group);
+    expect(
+      (within(group).getByRole('combobox', { name: 'Theme' }) as HTMLSelectElement).value,
+    ).toBe('dark');
+    await user.selectOptions(within(group).getByRole('combobox', { name: 'Language' }), 'ko');
+    const korean = screen.getByRole('group', { name: '표시 설정' });
+    expect(within(korean).getAllByRole('combobox')).toHaveLength(2);
+    expect(screen.getAllByRole('combobox', { name: '언어' })).toHaveLength(1);
+    expect(screen.getAllByRole('combobox', { name: '테마' })).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: '설정' })).toBeTruthy();
+  });
+
   /** Theme stays available at the top through login, navigation, locale changes and remounts. */
   it('should persist the selected theme across the login and authenticated shell', async () => {
     localStorage.setItem('musiclatte.locale', 'en');

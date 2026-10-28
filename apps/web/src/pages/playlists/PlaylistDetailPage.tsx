@@ -2,7 +2,6 @@ import { MetadataAction } from '../../metadata/components/MetadataAction';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ApiErrorCode, PlaylistDetail } from '@musiclatte/contracts';
 import { ApiError } from '../../auth/client';
-import { LanguagePicker } from '../../app/LanguagePicker';
 import { Action } from '../../design/components/Action';
 import { Artwork } from '../../design/components/Artwork';
 import { StatusSurface } from '../../design/components/StatusSurface';
@@ -40,7 +39,6 @@ export function PlaylistDetailPage({
   id,
   base,
   locale,
-  onLocale,
   fetcher,
   apiOrigin,
   onUnauthenticated,
@@ -52,7 +50,6 @@ export function PlaylistDetailPage({
   id: string;
   base: string;
   locale: Locale;
-  onLocale: (locale: Locale) => void;
   fetcher: typeof fetch;
   apiOrigin: string;
   onUnauthenticated: () => void;
@@ -251,7 +248,6 @@ export function PlaylistDetailPage({
         <a className={styles.breadcrumb} href={playlistHref(base)}>
           ← {copy['playlists.back']}
         </a>
-        <LanguagePicker locale={locale} onChange={onLocale} />
       </div>
       {loading && !playlist && (
         <StatusSurface

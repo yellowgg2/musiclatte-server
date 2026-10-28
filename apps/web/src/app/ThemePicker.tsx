@@ -7,7 +7,7 @@ export function ThemePicker({ locale }: { locale: Locale }) {
   const copy = messages[locale];
   return (
     <label className={styles.language}>
-      {copy['settings.theme']}
+      <span className={styles.preferenceLabel}>{copy['settings.theme']}</span>
       <select
         value={theme}
         onChange={(event) => onTheme(event.target.value === 'dark' ? 'dark' : 'light')}

@@ -5,7 +5,6 @@ import type {
   RecentDownloadFilter,
   RecentDownloadResponse,
 } from '@musiclatte/contracts';
-import { LanguagePicker } from '../../app/LanguagePicker';
 import { errorCode } from '../../auth/client';
 import { Action } from '../../design/components/Action';
 import { Artwork } from '../../design/components/Artwork';
@@ -35,7 +34,6 @@ type RequestKind = 'initial' | 'refresh' | 'period' | 'more' | 'metadata';
 export function RecentDownloadsPage({
   base,
   locale,
-  onLocale,
   fetcher,
   apiOrigin,
   onUnauthenticated,
@@ -48,7 +46,6 @@ export function RecentDownloadsPage({
 }: {
   base: string;
   locale: Locale;
-  onLocale: (locale: Locale) => void;
   fetcher: typeof fetch;
   apiOrigin: string;
   onUnauthenticated: () => void;
@@ -269,7 +266,6 @@ export function RecentDownloadsPage({
           </h1>
           <p>{copy['recent.description']}</p>
         </header>
-        <LanguagePicker locale={locale} onChange={onLocale} />
       </div>
       <MusicSectionNav base={base} locale={locale} current="recent" available={sections} />
       <section className={styles.controlPanel} aria-label={copy['recent.controls']}>

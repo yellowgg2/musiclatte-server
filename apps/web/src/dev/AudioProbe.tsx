@@ -1,5 +1,5 @@
 import { mediaRoutes } from '@musiclatte/contracts';
-import { LanguagePicker } from '../app/LanguagePicker';
+import { PreferencesBar } from '../app/PreferencesBar';
 import { messages } from '../i18n';
 import { useLocale } from '../i18n/locale';
 
@@ -18,7 +18,7 @@ export function AudioProbe() {
   const coverId = parameter('coverId', 'probe-cover');
   return (
     <main data-probe={MUSICLATTE_AUDIO_PROBE}>
-      <LanguagePicker locale={locale} onChange={onLocale} />
+      <PreferencesBar locale={locale} onLocale={onLocale} />
       <h1>{copy['probe.title']}</h1>
       <p>{copy['probe.instructions']}</p>
       <audio

@@ -46,3 +46,29 @@ No Rulebook lookup or capture: this was a direct UI addition with a local select
 adjustment, without an unresolved tooling/runtime failure. The previous unnamed combobox query now
 identifies Language explicitly. Branch setup was not applicable to this ad-hoc request. No unrelated
 API, worker, media, iOS, or bot implementation changed.
+
+## Follow-up: one shared preferences row
+
+Direct feedback requested language and theme together above the page title. `PreferencesBar` now
+composes the existing two pickers in AppShell, login, session recovery, Gallery, and the audio probe.
+Ten authenticated page components no longer own language pickers or locale-change callbacks; the
+settings page's redundant language card was removed. The Router remains the locale state owner.
+
+The group stays on one row. Below 30rem, visible labels are clipped while remaining accessible names;
+both native controls retain their 44px minimum height. The standalone pickers keep their original
+label treatment outside this group. A regression test first failed because the common group was
+absent, then passed while checking unique controls, persistence through navigation and KO/EN changes.
+
+- `npm run test:unit -- apps/web/test tests/unit/workspace.test.ts`: 315 passed across 38 files.
+- `npm run test:contract -- tests/contract/login-shell.test.ts tests/contract/library-ui.test.ts tests/contract/production-exclusion.test.ts`:
+  14 passed across 3 files.
+- `npm run typecheck` and `npm run build`: passed using Node 24.20.0/npm 11.19.0.
+- Chrome/CUA, existing synthetic loopback Router/API fixture: desktop EN/dark settings and KO/light
+  playlists have one pair at y=32px; 320px KO/light and EN/dark settings have both 44px controls at
+  y=95.5px. No horizontal overflow. Language/theme changes and reload/navigation keep working.
+- Gallery uses the same production PreferencesBar with exactly one group and aligned native selects.
+  Shared-new: PreferencesBar; reuse: LanguagePicker/ThemePicker. Original baseline approval history
+  is preserved and broader THEME-UA-001–003 acceptance remains pending.
+- Screenshots: ignored `artifact/preferences-bar-20261028/`. No real library/account metadata is used.
+- No Rulebook lookup/capture was needed for this direct layout consolidation. Branch setup remained
+  not applicable to the ad-hoc request. Existing contract and production exclusion checks passed.

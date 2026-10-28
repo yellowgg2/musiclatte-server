@@ -16,7 +16,6 @@ import { useMetadataSync } from '../../metadata/MetadataSyncProvider';
 import { usePlayer } from '../../player/PlayerProvider';
 import { Action } from '../../design/components/Action';
 import { StatusSurface } from '../../design/components/StatusSurface';
-import { LanguagePicker } from '../../app/LanguagePicker';
 import { messages, type Locale } from '../../i18n';
 import { errorCode } from '../../auth/client';
 import styles from './CurationPage.module.css';
@@ -24,7 +23,6 @@ import { MusicSectionNav, type MusicSectionAvailability } from './MusicSectionNa
 export function CurationPage({
   base,
   locale,
-  onLocale,
   fetcher,
   apiOrigin,
   canStream,
@@ -33,7 +31,6 @@ export function CurationPage({
 }: {
   base: string;
   locale: Locale;
-  onLocale: (locale: Locale) => void;
   fetcher: typeof fetch;
   apiOrigin: string;
   canStream: boolean;
@@ -142,7 +139,6 @@ export function CurationPage({
           </h1>
           <p>{copy['curation.description']}</p>
         </header>
-        <LanguagePicker locale={locale} onChange={onLocale} />
       </div>
       <MusicSectionNav base={base} locale={locale} current="curation" available={sections} />
       <section className={styles.filterPanel} aria-label={copy['curation.filters']}>

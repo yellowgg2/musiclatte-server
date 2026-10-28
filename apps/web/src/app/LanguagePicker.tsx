@@ -9,7 +9,7 @@ export function LanguagePicker({
 }) {
   return (
     <label className={styles.language}>
-      {messages[locale]['settings.language']}
+      <span className={styles.preferenceLabel}>{messages[locale]['settings.language']}</span>
       <select value={locale} onChange={(event) => onChange(event.target.value as Locale)}>
         <option value="ko" lang="ko">
           한국어

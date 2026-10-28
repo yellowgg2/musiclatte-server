@@ -6,6 +6,7 @@
   "gallery.gallery": "컴포넌트 갤러리",
   "gallery.baseline": "v0 · 테마 업데이트 · 검토 중",
   "settings.theme": "테마",
+  "settings.displayPreferences": "표시 설정",
   "settings.themeLight": "라이트",
   "settings.themeDark": "다크",
   "gallery.language": "언어",

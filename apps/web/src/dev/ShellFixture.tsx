@@ -2,7 +2,6 @@ import { AppShell } from '../app/AppShell';
 import { StatusSurface } from '../design/components/StatusSurface';
 import { messages } from '../i18n';
 import { useLocale } from '../i18n/locale';
-import { LanguagePicker } from '../app/LanguagePicker';
 import styles from '../app/Shell.module.css';
 import { AccountSummaryProvider } from '../account/AccountSummaryProvider';
 import { useState } from 'react';
@@ -46,6 +45,7 @@ export function ShellFixture() {
       <AppShell
         base={import.meta.env.BASE_URL}
         locale={locale}
+        onLocale={onLocale}
         capabilities={capabilities}
         account={{
           username,
@@ -60,7 +60,6 @@ export function ShellFixture() {
       >
         <div className={styles.settings}>
           <h1>Music shell fixture</h1>
-          <LanguagePicker locale={locale} onChange={onLocale} />
           <StatusSurface
             state="empty"
             title={messages[locale]['status.unavailable']}
