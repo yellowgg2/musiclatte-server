@@ -76,10 +76,68 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  delete document.documentElement.dataset.theme;
   window.history.replaceState(null, '', '/');
   vi.restoreAllMocks();
 });
 describe('login shell', () => {
+  /** Theme stays available at the top through login, navigation, locale changes and remounts. */
+  it('should persist the selected theme across the login and authenticated shell', async () => {
+    localStorage.setItem('musiclatte.locale', 'en');
+    const { user, view } = await makeSUT();
+    await screen.findByLabelText('Username');
+    const picker = screen.getByRole('combobox', { name: 'Theme' });
+    expect(picker.closest('header')).not.toBeNull();
+    expect((picker as HTMLSelectElement).value).toBe('light');
+    await user.selectOptions(picker, 'dark');
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(localStorage.getItem('musiclatte.theme')).toBe('dark');
+    await user.type(screen.getByLabelText('Username'), 'fixture-listener');
+    await user.type(screen.getByLabelText('Password'), 'synthetic-password');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByRole('heading', { name: 'All music' });
+    const authenticatedPicker = screen.getByRole('combobox', { name: 'Theme' });
+    const main = screen.getByRole('main');
+    expect(main.firstElementChild?.contains(authenticatedPicker)).toBe(true);
+    expect((authenticatedPicker as HTMLSelectElement).value).toBe('dark');
+    await user.click(screen.getByRole('link', { name: 'Settings' }));
+    await screen.findByRole('heading', { name: 'Settings' });
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'ko');
+    expect((screen.getByRole('combobox', { name: '테마' }) as HTMLSelectElement).value).toBe(
+      'dark',
+    );
+    view.unmount();
+    const next = await makeSUT();
+    await screen.findByLabelText('사용자 이름');
+    expect((screen.getByRole('combobox', { name: '테마' }) as HTMLSelectElement).value).toBe(
+      'dark',
+    );
+    await next.user.selectOptions(screen.getByRole('combobox', { name: '테마' }), 'light');
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  /** Corrupt preferences and unavailable browser storage cannot block theme selection or login. */
+  it('should recover invalid theme preferences and remain usable when storage is unavailable', async () => {
+    localStorage.setItem('musiclatte.locale', 'en');
+    localStorage.setItem('musiclatte.theme', 'invalid');
+    const { user } = await makeSUT();
+    await screen.findByLabelText('Username');
+    const picker = screen.getByRole('combobox', { name: 'Theme' });
+    expect((picker as HTMLSelectElement).value).toBe('light');
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Unavailable', 'SecurityError');
+    });
+    await user.selectOptions(picker, 'dark');
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'musiclatte.theme', newValue: 'light' }),
+      );
+    });
+    expect((picker as HTMLSelectElement).value).toBe('light');
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
   /** AppShell is the only owner of authenticated route outer gutters. */
   it('should own the desktop and narrow content gutters in the shell', () => {
     const css = readFileSync(resolve('apps/web/src/app/Shell.module.css'), 'utf8');

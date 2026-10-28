@@ -18,6 +18,21 @@ select {
 button {
   -webkit-tap-highlight-color: transparent;
 }
+/* The extra specificity keeps page-local background/padding shorthands from hiding the chevron. */
+select:not([multiple]):not([size]) {
+  appearance: none;
+  padding-inline-end: 2.5rem;
+  background-image: var(--select-chevron);
+  background-position: right var(--space-3) center;
+  background-size: 1rem 1rem;
+  background-repeat: no-repeat;
+}
+@media (forced-colors: active) {
+  select:not([multiple]):not([size]) {
+    appearance: auto;
+    background-image: none;
+  }
+}
 :focus-visible {
   outline: 3px solid var(--color-focus);
   outline-offset: 3px;

@@ -272,7 +272,7 @@ describe('engine settings', () => {
     await c.user.click(within(panel()).getByRole('button', { name: 'Try again' }));
     await ready();
     const count = c.audioFactory.mock.calls.length;
-    await c.user.selectOptions(screen.getByRole('combobox'), 'ko');
+    await c.user.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'ko');
     expect(screen.getByRole('region', { name: '다운로드 엔진' })).toBeTruthy();
     expect(c.audioFactory).toHaveBeenCalledTimes(count);
     expect(screen.queryByText('private error')).toBeNull();

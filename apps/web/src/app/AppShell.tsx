@@ -3,6 +3,7 @@ import type { CapabilitiesResponse } from '@musiclatte/contracts';
 import { availableEntries } from '../capabilities/client-features';
 import { messages, type Locale } from '../i18n';
 import { AccountDock, type AccountDockProps } from './AccountDock';
+import { ThemePicker } from './ThemePicker';
 import styles from './Shell.module.css';
 export function AppShell({
   locale,
@@ -141,6 +142,9 @@ export function AppShell({
         )}
       </div>
       <main id="main" tabIndex={-1} className={styles.content}>
+        <div className={styles.topBar}>
+          <ThemePicker locale={locale} />
+        </div>
         {children}
       </main>
       {player}

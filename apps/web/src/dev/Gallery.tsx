@@ -1,4 +1,5 @@
 import { galleryWideCover, galleryTallCover } from './gallery-fixtures';
+import { ThemePicker } from '../app/ThemePicker';
 import { MusicRow } from '../music/components/MusicRow';
 import { SongList, SongViewHeading, type SongView } from '../music/components/SongView';
 import { PlaylistOccurrenceActions } from '../playlists/components/PlaylistOccurrenceActions';
@@ -118,6 +119,7 @@ export function Gallery() {
               </span>
               musiclatte<span className={styles.brandDetail}>/ {t['gallery.gallery']}</span>
             </a>
+            <ThemePicker locale={locale} />
             <div className={styles.languages} role="group" aria-label={t['gallery.language']}>
               <Action
                 variant={locale === 'ko' ? 'primary' : 'quiet'}

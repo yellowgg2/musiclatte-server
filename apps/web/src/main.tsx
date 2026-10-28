@@ -1,6 +1,8 @@
 import { Router } from './app/Router';
 import { readWebConfig } from './config';
 import { createRoot } from 'react-dom/client';
+import { initializeTheme } from './design/theme';
+initializeTheme();
 const element = document.getElementById('root');
 if (!element) throw new Error('Missing application root');
 const root = createRoot(element);

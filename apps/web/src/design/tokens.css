@@ -19,6 +19,7 @@
   --color-warning-surface: #fff4dc;
   --color-info: #435e80;
   --color-info-surface: #eef5ff;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23292633' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
   --font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   --text-small: 0.8125rem;
@@ -37,6 +38,29 @@
   --radius-surface: 1.25rem;
   --control-size: 2.75rem;
   --motion-response: 140ms;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-background: #19171e;
+  --color-surface: #24212b;
+  --color-text: #f0ecf5;
+  --color-secondary: #b9b1c5;
+  --color-accent: #c3a6ed;
+  --color-accent-hover: #d5bdf5;
+  --color-on-accent: #241732;
+  --color-focus: #d5bdf5;
+  --color-selection: #3c304d;
+  --color-border: #51475f;
+  --color-control-border: #91839f;
+  --color-disabled: #36313e;
+  --color-error: #ff9eaf;
+  --color-error-surface: #421f2a;
+  --color-success: #92d2ae;
+  --color-warning: #efc47f;
+  --color-warning-surface: #3d301c;
+  --color-info: #a9c9f3;
+  --color-info-surface: #223249;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23f0ecf5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
 }
 @media (prefers-reduced-motion: reduce) {
   :root {

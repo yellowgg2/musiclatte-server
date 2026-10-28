@@ -29,6 +29,17 @@
 .loginPage {
   min-height: 100dvh;
 }
+.preferences {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.topBar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-5);
+}
 .loginHeader {
   display: flex;
   align-items: center;

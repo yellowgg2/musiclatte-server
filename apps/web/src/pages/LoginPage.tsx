@@ -5,6 +5,7 @@ import { TextField } from '../design/components/TextField';
 import { StatusSurface } from '../design/components/StatusSurface';
 import { messages, type Locale } from '../i18n';
 import { LanguagePicker } from '../app/LanguagePicker';
+import { ThemePicker } from '../app/ThemePicker';
 import styles from '../app/Shell.module.css';
 export function LoginPage({
   state,
@@ -54,7 +55,10 @@ export function LoginPage({
           />
           Musiclatte
         </span>
-        <LanguagePicker locale={locale} onChange={onLocale} />
+        <div className={styles.preferences}>
+          <LanguagePicker locale={locale} onChange={onLocale} />
+          <ThemePicker locale={locale} />
+        </div>
       </header>
       <main id="main" className={styles.loginMain}>
         <div className={styles.loginCard}>

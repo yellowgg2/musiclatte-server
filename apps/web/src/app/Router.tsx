@@ -33,6 +33,7 @@ import { LoginPage } from '../pages/LoginPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { AppShell } from './AppShell';
 import { LanguagePicker } from './LanguagePicker';
+import { ThemePicker } from './ThemePicker';
 import { StatusSurface } from '../design/components/StatusSurface';
 import { Action } from '../design/components/Action';
 import { SelectionProvider } from '../selection/SelectionProvider';
@@ -269,6 +270,7 @@ export function Router({
     return (
       <main className={styles.boot}>
         <LanguagePicker locale={locale} onChange={onLocale} />
+        <ThemePicker locale={locale} />
         <StatusSurface
           state={state.status === 'loading' ? 'loading' : 'error'}
           title={
