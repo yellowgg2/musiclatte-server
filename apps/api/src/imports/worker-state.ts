@@ -34,7 +34,11 @@ export function createWorkerLedger(
     return row;
   };
   const intent = (id: string): PublishIntent | null => {
-    const row = db.prepare('SELECT * FROM import_publish_intents WHERE item_id=?').get(id);
+    const row = db
+      .prepare(
+        'SELECT relative_file_key,staging_key,event_id,media_link_id,disposition FROM import_publish_intents WHERE item_id=?',
+      )
+      .get(id);
     if (!row) return null;
     for (const key of ['relative_file_key', 'staging_key', 'event_id', 'media_link_id'])
       if (typeof row[key] !== 'string' || !row[key]) throw new Error('worker_storage_invalid');
@@ -168,8 +172,12 @@ export function createWorkerLedger(
         ).run(now(), now(), id);
       });
     },
-    recordIdentity(id: string, identity: { dev: number; ino: number }) {
-      if (!Number.isSafeInteger(identity.dev) || !Number.isSafeInteger(identity.ino))
+    recordIdentity(id: string, identity: { dev: bigint; ino: bigint }) {
+      if (
+        ![identity.dev, identity.ino].every(
+          (value) => typeof value === 'bigint' && value >= 0n && value <= 9223372036854775807n,
+        )
+      )
         throw new Error('worker_storage_invalid');
       database.transaction(() => {
         assertOwned(id);
@@ -178,11 +186,13 @@ export function createWorkerLedger(
         ).run(identity.dev, identity.ino, id);
       });
     },
-    ownsPublishedFile(id: string, identity: { dev: number; ino: number }) {
+    ownsPublishedFile(id: string, identity: { dev: bigint; ino: bigint }) {
       const row = db
-        .prepare('SELECT pending_device,pending_inode FROM import_publish_intents WHERE item_id=?')
-        .get(id);
-      return row?.pending_device === identity.dev && row.pending_inode === identity.ino;
+        .prepare(
+          'SELECT 1 AS matched FROM import_publish_intents WHERE item_id=? AND pending_device=? AND pending_inode=?',
+        )
+        .get(id, identity.dev, identity.ino);
+      return row?.matched === 1;
     },
     complete(id: string, duplicate: boolean) {
       return database.transaction(() => {

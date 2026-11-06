@@ -55,6 +55,12 @@ MP3 audio stream, MP3 format and matching embedded source ID. This also verifies
 Only observed stages are persisted; no percentage or ETA is fabricated. Postprocessing means the
 returned artifact is undergoing final validation, not a guessed FFmpeg completion percentage.
 
+Publication and recovery compare device/inode values from bigint filesystem stats and bind them
+directly to SQLite INTEGER receipts. File identity never passes through a JavaScript Number; the
+accepted range is nonnegative signed 64-bit, matching SQLite. Intent reads omit unused identity
+columns, ownership queries compare them inside SQLite, and backup validation reads only these
+columns as canonical decimal text. Existing schema v32 and smaller receipts remain unchanged.
+
 All child processes use the Step 02 no-shell process-group runner. Abort/timeout/output overflow
 terminate the owned group before rejection. Worker logger events contain fixed stages/failure codes
 and optional validated opaque UUIDs; raw metadata, URL, paths, argv, stderr and thrown error messages

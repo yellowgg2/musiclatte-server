@@ -42,6 +42,50 @@ export function activeImport(job: ImportJob) {
     )
   );
 }
+
+/** Keep failed-source history durable while showing only its newest actual attempt by default. */
+export function compactImportJobs(
+  jobs: ImportJob[],
+  originalJobId: string | null = null,
+): ImportJob[] {
+  const key = (job: ImportJob, sourceId: string) => JSON.stringify([job.libraryId, sourceId]);
+  const groupedSources = new Set(
+    jobs.flatMap((job) =>
+      job.items
+        .filter(
+          (item) =>
+            item.stage === 'failed' ||
+            (item.stage === 'duplicate' && item.duplicate?.kind === 'item'),
+        )
+        .map((item) => key(job, item.sourceId)),
+    ),
+  );
+  const latest = new Map<string, { jobId: string; itemId: string; requestDuplicate: boolean }>();
+  const ordered = [...jobs].sort((a, b) => b.createdAt - a.createdAt);
+  for (const job of ordered) {
+    for (const item of job.items) {
+      const source = key(job, item.sourceId);
+      const requestDuplicate = item.stage === 'duplicate' && item.duplicate?.kind === 'item';
+      const selected = latest.get(source);
+      if (
+        groupedSources.has(source) &&
+        (!selected || (selected.requestDuplicate && !requestDuplicate))
+      ) {
+        latest.set(source, { jobId: job.id, itemId: item.id, requestDuplicate });
+      }
+    }
+  }
+  return ordered.flatMap((job) => {
+    const items = job.items.filter(
+      (item) =>
+        job.id === originalJobId ||
+        !groupedSources.has(key(job, item.sourceId)) ||
+        (latest.get(key(job, item.sourceId))?.jobId === job.id &&
+          latest.get(key(job, item.sourceId))?.itemId === item.id),
+    );
+    return items.length ? [{ ...job, items }] : [];
+  });
+}
 /** Owns only this route/account lifetime; stale reads cannot overwrite mutation results. */
 export function createImportStore(
   client: ReturnType<typeof createImportClient>,

@@ -4,7 +4,7 @@ import { Action } from '../../design/components/Action';
 import { StatusSurface } from '../../design/components/StatusSurface';
 import { messages, type Locale } from '../../i18n';
 import { createImportClient } from '../../imports/client';
-import { activeImport, createImportStore } from '../../imports/state';
+import { activeImport, compactImportJobs, createImportStore } from '../../imports/state';
 import { parseImportInput } from '../../imports/input';
 import styles from './Import.module.css';
 import fieldStyles from '../../design/components/TextField.module.css';
@@ -38,11 +38,13 @@ function ImportJobItem({
   locale,
   store,
   disabled,
+  onOriginal,
 }: {
   job: ImportJob;
   locale: Locale;
   store: Store;
   disabled: boolean;
+  onOriginal: (id: string) => void;
 }) {
   const copy = messages[locale];
   const [confirm, setConfirm] = useState(false);
@@ -138,7 +140,10 @@ function ImportJobItem({
         {job.retryOfJobId && (
           <a
             href={`#import-${job.retryOfJobId}`}
-            onClick={() => document.getElementById(`import-${job.retryOfJobId}`)?.focus()}
+            onClick={(event) => {
+              event.preventDefault();
+              onOriginal(job.retryOfJobId!);
+            }}
           >
             {copy['imports.original']}
           </a>
@@ -180,6 +185,7 @@ export function ImportPage({
   const [input, setInput] = useState('');
   const [library, setLibrary] = useState('');
   const [invalid, setInvalid] = useState(false);
+  const [originalJobId, setOriginalJobId] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const seen = useRef(0);
   useEffect(() => {
@@ -193,15 +199,35 @@ export function ImportPage({
   useEffect(() => {
     if (state.revision === seen.current) return;
     seen.current = state.revision;
+    setOriginalJobId(null);
     if (state.resultKind === 'create') setInput('');
-    document.getElementById(`import-${state.resultId}`)?.focus();
-  }, [state.revision, state.resultId, state.resultKind]);
+    const presented = compactImportJobs(state.jobs);
+    const result = state.jobs.find((job) => job.id === state.resultId);
+    const target =
+      presented.find((job) => job.id === state.resultId) ??
+      presented.find(
+        (job) =>
+          job.libraryId === result?.libraryId &&
+          job.items.some((item) =>
+            result?.items.some((submitted) => submitted.sourceId === item.sourceId),
+          ),
+      );
+    if (target) document.getElementById(`import-${target.id}`)?.focus();
+  }, [state.revision, state.resultId, state.resultKind, state.jobs]);
+  useEffect(() => {
+    if (originalJobId) document.getElementById(`import-${originalJobId}`)?.focus();
+  }, [originalJobId]);
   const selected = state.libraries.some((l) => l.id === library)
     ? library
     : (state.libraries[0]?.id ?? '');
   const locked = state.busy || state.pending !== null;
-  const active = state.jobs.filter(activeImport);
-  const history = state.jobs.filter((job) => !activeImport(job));
+  const visibleJobs = compactImportJobs(state.jobs, originalJobId);
+  const active = visibleJobs.filter(activeImport);
+  const history = visibleJobs.filter((job) => !activeImport(job));
+  function showOriginal(id: string) {
+    setOriginalJobId(id);
+    if (originalJobId === id) document.getElementById(`import-${id}`)?.focus();
+  }
   function submit() {
     let urls: string[];
     try {
@@ -350,11 +376,25 @@ export function ImportPage({
         {[
           ...(active.length ? [<h2 key="active-heading">{copy['imports.active']}</h2>] : []),
           ...active.map((job) => (
-            <ImportJobItem key={job.id} job={job} locale={locale} store={store} disabled={locked} />
+            <ImportJobItem
+              key={job.id}
+              job={job}
+              locale={locale}
+              store={store}
+              disabled={locked}
+              onOriginal={showOriginal}
+            />
           )),
           ...(history.length ? [<h2 key="history-heading">{copy['imports.history']}</h2>] : []),
           ...history.map((job) => (
-            <ImportJobItem key={job.id} job={job} locale={locale} store={store} disabled={locked} />
+            <ImportJobItem
+              key={job.id}
+              job={job}
+              locale={locale}
+              store={store}
+              disabled={locked}
+              onOriginal={showOriginal}
+            />
           )),
         ]}
       </div>

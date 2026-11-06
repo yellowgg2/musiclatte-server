@@ -165,7 +165,16 @@ function decodeEvent(row: Record<string, unknown> | undefined) {
 
 /** Validate every import item and event in a backup snapshot. */
 export function validateImportStorage(database: DatabaseSync): void {
-  for (const row of database.prepare('SELECT * FROM import_publish_intents').iterate()) {
+  for (const row of database
+    .prepare(
+      'SELECT relative_file_key,staging_key,event_id,media_link_id,intended_at,completed_at,CAST(pending_device AS TEXT) AS pending_device,CAST(pending_inode AS TEXT) AS pending_inode FROM import_publish_intents',
+    )
+    .iterate()) {
+    const identityPart = (value: unknown) =>
+      value === null ||
+      (typeof value === 'string' &&
+        /^(0|[1-9][0-9]{0,18})$/.test(value) &&
+        BigInt(value) <= 9223372036854775807n);
     if (
       !text(row.relative_file_key) ||
       !text(row.staging_key) ||
@@ -173,8 +182,8 @@ export function validateImportStorage(database: DatabaseSync): void {
       !text(row.media_link_id) ||
       !time(row.intended_at) ||
       !nullableTime(row.completed_at) ||
-      !nullableTime(row.pending_device) ||
-      !nullableTime(row.pending_inode) ||
+      !identityPart(row.pending_device) ||
+      !identityPart(row.pending_inode) ||
       (row.pending_device === null) !== (row.pending_inode === null)
     )
       throw new Error('Storage unavailable');

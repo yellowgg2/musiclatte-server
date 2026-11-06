@@ -94,27 +94,27 @@ export function createDownloader(options: {
   const validateFile = async (root: string, key: string, sourceId: string, signal: AbortSignal) => {
     const path = resolveFileKey(root, key);
     if (!key.endsWith('.mp3')) throw new Error('invalid_media');
-    const before = lstatSync(path);
+    const before = lstatSync(path, { bigint: true });
     const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
-      const stat = await file.stat();
+      const stat = await file.stat({ bigint: true });
       if (
         !stat.isFile() ||
-        stat.size === 0 ||
-        stat.nlink !== 1 ||
+        stat.size === 0n ||
+        stat.nlink !== 1n ||
         before.ino !== stat.ino ||
         before.dev !== stat.dev
       )
         throw new Error('invalid_media');
       const audio = await inspectAudio(file, signal);
-      const after = await file.stat();
-      const visible = lstatSync(resolveFileKey(root, key));
+      const after = await file.stat({ bigint: true });
+      const visible = lstatSync(resolveFileKey(root, key), { bigint: true });
       if (
         !audio.valid ||
         audio.sourceId !== sourceId ||
         stat.size !== after.size ||
-        stat.mtimeMs !== after.mtimeMs ||
-        stat.ctimeMs !== after.ctimeMs ||
+        stat.mtimeNs !== after.mtimeNs ||
+        stat.ctimeNs !== after.ctimeNs ||
         visible.ino !== stat.ino ||
         visible.dev !== stat.dev
       )

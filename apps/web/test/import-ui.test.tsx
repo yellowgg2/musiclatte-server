@@ -52,6 +52,7 @@ function createTestContext() {
     libraries: [{ id: 'music' }],
     failWrite: false,
     failRead: false,
+    duplicateCreate: false,
     pending: null as ReturnType<typeof deferred<Response>> | null,
   };
   const fetcher: typeof fetch = async (input, init) => {
@@ -119,15 +120,20 @@ function createTestContext() {
           job: state.jobs.find((j) => url.pathname.endsWith(j.id)),
         });
       }
+      const parent = state.jobs.find((entry) => url.pathname.endsWith(`/${entry.id}/retries`));
       const created: ImportJob = url.pathname.endsWith('/retries')
         ? {
-            ...job,
+            ...parent!,
             id: 'child-job',
             status: 'queued',
-            retryOfJobId: job.id,
-            items: [{ ...job.items[1]!, stage: 'queued' as const, failureCode: undefined }].map(
-              ({ failureCode: _removed, ...item }) => item,
-            ),
+            retryOfJobId: parent!.id,
+            items: parent!.items
+              .filter((item) => body.itemIds.includes(item.id))
+              .map(({ failureCode: _removed, ...item }) => ({
+                ...item,
+                id: `child-${item.id}`,
+                stage: 'queued' as const,
+              })),
           }
         : {
             ...job,
@@ -135,6 +141,17 @@ function createTestContext() {
             status: 'queued',
             items: [{ id: 'new-item', sourceId: 'abcdefghijk', stage: 'queued' }],
           };
+      if (state.duplicateCreate && !url.pathname.endsWith('/retries')) {
+        created.status = 'completed';
+        created.items = [
+          {
+            id: 'new-duplicate',
+            sourceId: 'abcdefghijk',
+            stage: 'duplicate',
+            duplicate: { kind: 'item', id: 'active-item' },
+          },
+        ];
+      }
       state.jobs = [created, ...state.jobs];
       return Response.json({ schemaVersion: 1, job: created }, { status: 202 });
     }
@@ -161,6 +178,117 @@ afterEach(() => {
 });
 
 describe('imports route and durable job UI', () => {
+  it('focuses the retained attempt when a submitted duplicate result has no separate card', async () => {
+    const context = createTestContext();
+    context.state.duplicateCreate = true;
+    context.state.jobs = [
+      {
+        ...job,
+        id: 'active',
+        createdAt: 20,
+        status: 'running',
+        items: [
+          {
+            id: 'active-item',
+            sourceId: 'abcdefghijk',
+            title: 'Current attempt',
+            stage: 'downloading',
+          },
+        ],
+      },
+      {
+        ...job,
+        id: 'old-failure',
+        createdAt: 10,
+        status: 'failed',
+        items: [
+          {
+            id: 'old-item',
+            sourceId: 'abcdefghijk',
+            title: 'Old failure',
+            stage: 'failed',
+            failureCode: 'publish_failed',
+          },
+        ],
+      },
+    ];
+    const c = makeSUT(context);
+    const heading = await screen.findByRole('heading', { name: 'Current attempt', level: 3 });
+    const field = screen.getByRole('textbox', { name: 'YouTube links' });
+    await c.user.type(field, 'https://youtu.be/abcdefghijk');
+    await c.user.click(screen.getByRole('button', { name: 'Import links' }));
+    await waitFor(() => expect((field as HTMLTextAreaElement).value).toBe(''));
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(document.activeElement).toBe(heading);
+  });
+
+  it('shows one current card for repeated failures while preserving other songs and original navigation', async () => {
+    const context = createTestContext();
+    const failed = (id: string, title: string) => ({
+      id,
+      sourceId: 'abcdefghijk',
+      title,
+      stage: 'failed' as const,
+      failureCode: 'publish_failed' as const,
+    });
+    context.state.jobs = [
+      {
+        ...job,
+        id: 'latest',
+        createdAt: 30,
+        status: 'failed',
+        retryOfJobId: 'original',
+        items: [failed('latest-item', 'Latest failure')],
+      },
+      {
+        ...job,
+        id: 'duplicate',
+        createdAt: 40,
+        status: 'completed',
+        items: [
+          {
+            id: 'duplicate-item',
+            sourceId: 'abcdefghijk',
+            title: 'Duplicate request',
+            stage: 'duplicate',
+            duplicate: { kind: 'item', id: 'latest-item' },
+          },
+        ],
+      },
+      {
+        ...job,
+        id: 'original',
+        createdAt: 20,
+        status: 'failed',
+        items: [failed('original-item', 'Earlier failure')],
+      },
+      {
+        ...job,
+        id: 'mixed',
+        createdAt: 10,
+        items: [
+          failed('mixed-failed', 'Oldest failure'),
+          { ...job.items[0]!, sourceId: '98765432109', title: 'Preserved success' },
+        ],
+      },
+    ];
+    const c = makeSUT(context);
+    await screen.findByRole('heading', { name: 'Latest failure', level: 3 });
+    expect(screen.queryByText('Earlier failure')).toBeNull();
+    expect(screen.queryByText('Oldest failure')).toBeNull();
+    expect(screen.queryByText('Duplicate request')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Preserved success', level: 3 })).toBeTruthy();
+    expect(screen.getAllByRole('article')).toHaveLength(2);
+    await c.user.click(screen.getByRole('link', { name: 'View original import' }));
+    const original = await screen.findByRole('heading', { name: 'Earlier failure', level: 3 });
+    expect(document.activeElement).toBe(original);
+    await c.user.click(screen.getByRole('button', { name: 'Retry Latest failure' }));
+    await screen.findByText('Queued');
+    expect(screen.queryByText('Earlier failure')).toBeNull();
+    expect(screen.getAllByRole('heading', { name: 'Latest failure', level: 3 })).toHaveLength(1);
+    expect(screen.getAllByRole('article')).toHaveLength(2);
+  });
+
   it('should distinguish a duplicate request from an already imported file', async () => {
     const context = createTestContext();
     context.state.jobs = [

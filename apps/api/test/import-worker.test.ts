@@ -47,6 +47,7 @@ describe('durable worker prerequisites', () => {
 });
 
 import { createWorkerRunner, type WorkerOptions } from '../src/imports/worker-runner.js';
+import { createWorkerLedger } from '../src/imports/worker-state.js';
 import { mkdirSync, realpathSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createImportProcessFixture } from '../../../tests/support/import-process-fixture.js';
@@ -97,6 +98,55 @@ async function workerSUT(mode = 'ok', checkpoint?: (stage: string) => void) {
     events: () => c.db.connection.prepare('SELECT * FROM download_events').all(),
   };
 }
+
+it('preserves exact large inode receipts through reopen and backup without matching adjacent files', async () => {
+  const c = await makeSUT();
+  const ledger = createWorkerLedger(c.db, () => 1000, 'large-inode-worker', 10_000);
+  const claim = ledger.claim()!;
+  ledger.advance(claim.item.id, 'downloading', {
+    title: 'Synthetic song',
+    channel: 'Synthetic channel',
+    channelId: 'synthetic-channel',
+  });
+  ledger.advance(claim.item.id, 'postprocessing');
+  const intent = ledger.newIntent(
+    'imports/Synthetic [abcdefghijk].mp3',
+    'attempt/audio.mp3',
+    false,
+  );
+  ledger.saveIntent(claim.item.id, intent);
+  const identity = { dev: 42n, ino: 11258999164501919n };
+  expect(() => ledger.recordIdentity(claim.item.id, identity)).not.toThrow();
+  expect(ledger.intent(claim.item.id)).toEqual(intent);
+  expect(ledger.ownsPublishedFile(claim.item.id, identity)).toBe(true);
+  expect(ledger.ownsPublishedFile(claim.item.id, { ...identity, ino: identity.ino - 1n })).toBe(
+    false,
+  );
+  expect(() => ledger.recordIdentity(claim.item.id, { dev: -1n, ino: identity.ino })).toThrow(
+    'worker_storage_invalid',
+  );
+  const reopened = createWorkerLedger(c.open(), () => 1000, 'reader', 10_000);
+  expect(reopened.intent(claim.item.id)).toEqual(intent);
+  expect(reopened.ownsPublishedFile(claim.item.id, identity)).toBe(true);
+  const snapshot = join(c.root, 'large-inode-snapshot');
+  const restored = join(c.root, 'large-inode-restored');
+  await c.createBackup(c.db, c.keyPath, snapshot);
+  await c.restoreBackup(snapshot, restored);
+  const restoredDb = c.open(restored);
+  expect(
+    restoredDb.connection
+      .prepare(
+        'SELECT CAST(pending_inode AS TEXT) AS inode FROM import_publish_intents WHERE item_id=?',
+      )
+      .get(claim.item.id)?.inode,
+  ).toBe('11258999164501919');
+  expect(
+    createWorkerLedger(restoredDb, () => 1000, 'restored', 10_000).ownsPublishedFile(
+      claim.item.id,
+      identity,
+    ),
+  ).toBe(true);
+});
 
 describe('durable download worker', () => {
   /** Publication produces one file/event and a pending link; replay does not acquire an engine again. */

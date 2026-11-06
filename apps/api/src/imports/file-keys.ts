@@ -167,20 +167,20 @@ export interface PublishOptions {
   beforeCommit?: () => void;
   /** UUID from the durable publish intent; permits cleanup of only this attempt's pending name. */
   pendingToken?: string;
-  commitIdentity?: (identity: { dev: number; ino: number }) => void;
+  commitIdentity?: (identity: { dev: bigint; ino: bigint }) => void;
   checkpoint?: (stage: 'pending_synced' | 'linked' | 'directory_synced') => void;
   /** Worker-owned audio/source verifier; receives an opened regular file, never untrusted stdout paths. */
   inspectAudio: (file: FileHandle) => Promise<{ valid: boolean; sourceId: string }>;
 }
 async function verifiedFile(root: string, key: string): Promise<FileHandle> {
   const path = resolveFileKey(root, key);
-  const before = lstatSync(path);
+  const before = lstatSync(path, { bigint: true });
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
-    const opened = await file.stat();
+    const opened = await file.stat({ bigint: true });
     if (
       !opened.isFile() ||
-      opened.nlink !== 1 ||
+      opened.nlink !== 1n ||
       opened.dev !== before.dev ||
       opened.ino !== before.ino ||
       resolveFileKey(root, key) !== path
@@ -196,15 +196,15 @@ async function isDuplicate(options: PublishOptions): Promise<'duplicate_candidat
   let file: FileHandle | undefined;
   try {
     file = await verifiedFile(options.musicRoot, options.fileKey);
-    const before = await file.stat();
+    const before = await file.stat({ bigint: true });
     const result = await options.inspectAudio(file);
-    const after = await file.stat();
-    const current = lstatSync(resolveFileKey(options.musicRoot, options.fileKey));
+    const after = await file.stat({ bigint: true });
+    const current = lstatSync(resolveFileKey(options.musicRoot, options.fileKey), { bigint: true });
     if (
       !result.valid ||
       result.sourceId !== options.videoId ||
       before.size !== after.size ||
-      before.mtimeMs !== after.mtimeMs ||
+      before.mtimeNs !== after.mtimeNs ||
       current.ino !== after.ino ||
       current.dev !== after.dev
     )
@@ -240,27 +240,27 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
       parent,
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
     );
-    const parentStat = fstatSync(directoryFd);
+    const parentStat = fstatSync(directoryFd, { bigint: true });
     const recheck = () => {
       if (
         canonicalRoot(options.musicRoot) !== musicRoot ||
         directory(musicRoot, dirname(options.fileKey), false) !== parent
       )
         fail();
-      const now = lstatSync(parent);
+      const now = lstatSync(parent, { bigint: true });
       if (now.ino !== parentStat.ino || now.dev !== parentStat.dev) fail();
     };
     if (options.pendingToken !== undefined) {
       if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(options.pendingToken)) fail();
       const ownedPath = join(parent, `.import-${options.pendingToken}.pending`);
-      const owned = lstatSync(ownedPath, { throwIfNoEntry: false });
+      const owned = lstatSync(ownedPath, { throwIfNoEntry: false, bigint: true });
       if (owned) {
-        const final = lstatSync(target, { throwIfNoEntry: false });
+        const final = lstatSync(target, { throwIfNoEntry: false, bigint: true });
         if (
           !owned.isFile() ||
           owned.isSymbolicLink() ||
-          (owned.nlink !== 1 &&
-            !(owned.nlink === 2 && final?.ino === owned.ino && final.dev === owned.dev))
+          (owned.nlink !== 1n &&
+            !(owned.nlink === 2n && final?.ino === owned.ino && final.dev === owned.dev))
         )
           fail('file_conflict');
         recheck();
@@ -272,10 +272,16 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
     if (!options.replaceExisting && lstatSync(target, { throwIfNoEntry: false }))
       return await isDuplicate(options);
     source = await verifiedFile(stagingRoot, options.stagedFileKey);
-    const before = await source.stat();
+    const before = await source.stat({ bigint: true });
     const media = await options.inspectAudio(source);
-    if (!media.valid || media.sourceId !== options.videoId || before.size === 0)
+    if (
+      !media.valid ||
+      media.sourceId !== options.videoId ||
+      before.size === 0n ||
+      before.size > BigInt(Number.MAX_SAFE_INTEGER)
+    )
       fail('invalid_media');
+    const sourceSize = Number(before.size);
     recheck();
     pendingPath = join(parent, `.import-${options.pendingToken ?? randomUUID()}.pending`);
     pending = await open(
@@ -286,11 +292,11 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
     recheck();
     const buffer = Buffer.alloc(64 * 1024);
     let position = 0;
-    while (position < before.size) {
+    while (position < sourceSize) {
       const { bytesRead } = await source.read(
         buffer,
         0,
-        Math.min(buffer.length, before.size - position),
+        Math.min(buffer.length, sourceSize - position),
         position,
       );
       if (!bytesRead) fail('invalid_media');
@@ -307,24 +313,24 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
       }
       position += bytesRead;
     }
-    const after = await source.stat();
+    const after = await source.stat({ bigint: true });
     if (
       before.size !== after.size ||
-      before.mtimeMs !== after.mtimeMs ||
-      before.ctimeMs !== after.ctimeMs
+      before.mtimeNs !== after.mtimeNs ||
+      before.ctimeNs !== after.ctimeNs
     )
       fail('invalid_media');
     await pending.sync();
     options.checkpoint?.('pending_synced');
-    const pendingStat = await pending.stat();
+    const pendingStat = await pending.stat({ bigint: true });
     recheck();
-    const visible = lstatSync(pendingPath);
+    const visible = lstatSync(pendingPath, { bigint: true });
     if (
       !visible.isFile() ||
       visible.isSymbolicLink() ||
       visible.ino !== pendingStat.ino ||
       visible.dev !== pendingStat.dev ||
-      visible.nlink !== 1
+      visible.nlink !== 1n
     )
       fail();
     try {
@@ -362,10 +368,11 @@ async function publish(options: PublishOptions): Promise<'published' | 'duplicat
     if (pendingPath && pending) {
       // Clean only the inode we created, with its original parent still in place.
       try {
-        const owned = await pending.stat();
-        const stat = lstatSync(pendingPath, { throwIfNoEntry: false });
-        const parent = lstatSync(dirname(pendingPath));
-        const ownedParent = directoryFd === undefined ? undefined : fstatSync(directoryFd);
+        const owned = await pending.stat({ bigint: true });
+        const stat = lstatSync(pendingPath, { throwIfNoEntry: false, bigint: true });
+        const parent = lstatSync(dirname(pendingPath), { bigint: true });
+        const ownedParent =
+          directoryFd === undefined ? undefined : fstatSync(directoryFd, { bigint: true });
         if (
           stat &&
           stat.isFile() &&

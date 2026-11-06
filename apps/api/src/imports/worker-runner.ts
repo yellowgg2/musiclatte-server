@@ -319,6 +319,7 @@ export function createWorkerRunner(options: WorkerOptions) {
         ledger.assertOwned(item.id);
         const existingTarget = lstatSync(resolveFileKey(options.musicRoot, finalIntent.fileKey), {
           throwIfNoEntry: false,
+          bigint: true,
         });
         const recovered =
           job.accountDirectory !== undefined &&
@@ -394,7 +395,9 @@ export function createWorkerRunner(options: WorkerOptions) {
         checkpoint('published');
         ledger.assertOwned(item.id);
         // New durable intent + verified exact file on recovery is the same publication receipt.
-        const identity = lstatSync(resolveFileKey(options.musicRoot, finalIntent.fileKey));
+        const identity = lstatSync(resolveFileKey(options.musicRoot, finalIntent.fileKey), {
+          bigint: true,
+        });
         const duplicate =
           finalIntent.disposition === 'duplicate' ||
           (result === 'duplicate_candidate' && !ledger.ownsPublishedFile(item.id, identity));

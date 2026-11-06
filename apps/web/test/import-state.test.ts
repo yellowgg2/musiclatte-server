@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ImportJob } from '@musiclatte/contracts';
 import { createImportClient } from '../src/imports/client';
-import { createImportStore } from '../src/imports/state';
+import { compactImportJobs, createImportStore } from '../src/imports/state';
 import { parseImportInput } from '../src/imports/input';
 import { parseYouTubeSource } from '../../api/src/imports/source-url';
 const job: ImportJob = {
@@ -15,6 +15,52 @@ const job: ImportJob = {
   items: [{ id: 'item', sourceId: 'abcdefghijk', stage: 'registering' }],
 };
 const stores: ReturnType<typeof createImportStore>[] = [];
+it('shows one duplicate card when its original attempt is outside the loaded page', () => {
+  const jobs: ImportJob[] = [3, 2, 1].map((value) => ({
+    ...job,
+    id: `duplicate-${value}`,
+    createdAt: value,
+    status: 'completed',
+    items: [
+      {
+        id: `duplicate-item-${value}`,
+        sourceId: 'abcdefghijk',
+        stage: 'duplicate',
+        duplicate: { kind: 'item', id: 'off-page-original' },
+      },
+    ],
+  }));
+  expect(compactImportJobs(jobs).map((entry) => entry.id)).toEqual(['duplicate-3']);
+});
+it('keeps libraries separate and replaces an old failure with its newer success without changing stored history', () => {
+  const original: ImportJob = {
+    ...job,
+    id: 'old',
+    createdAt: 10,
+    status: 'failed',
+    items: [
+      { id: 'old-item', sourceId: 'abcdefghijk', stage: 'failed', failureCode: 'publish_failed' },
+    ],
+  };
+  const ready: ImportJob = {
+    ...job,
+    id: 'new',
+    createdAt: 20,
+    status: 'completed',
+    items: [{ id: 'new-item', sourceId: 'abcdefghijk', stage: 'ready', mediaLinkId: 'media' }],
+  };
+  const other: ImportJob = {
+    ...original,
+    id: 'other-library',
+    libraryId: 'archive',
+    createdAt: 5,
+    items: [{ ...original.items[0]!, id: 'other-item' }],
+  };
+  const jobs = [original, ready, other];
+  const stored = structuredClone(jobs);
+  expect(compactImportJobs(jobs).map((entry) => entry.id)).toEqual(['new', 'other-library']);
+  expect(jobs).toEqual(stored);
+});
 function makeSUT() {
   let jobs = [structuredClone(job)];
   let error = false;
