@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { createImportClient } from '../../web/src/imports/client.js';
+import { createWorkerLedger } from '../src/imports/worker-state.js';
 import {
   browserHeaders,
   cookieOf,
@@ -133,6 +134,71 @@ describe('imports API', () => {
     expect((await c.create(1, { urls: ['https://youtu.be/s3_uirvnSdI'] })).json()).toEqual(
       result.json(),
     );
+  });
+
+  it('should show observed titles on existing duplicate requests after their original resolves', async () => {
+    const c = await makeSUT();
+    await c.create(1);
+    const duplicate = (await c.create(2)).json().job;
+    expect(duplicate.items[0].title).toBeUndefined();
+    const ledger = createWorkerLedger(c.storage.db, () => 1000, 'title-worker', 10_000);
+    const original = ledger.claim()!;
+    ledger.advance(original.item.id, 'downloading', {
+      title: 'Known song title',
+      channel: 'Known channel',
+      channelId: 'known-channel',
+    });
+    const detail = await c.app.inject({
+      url: `/api/v1/imports/${duplicate.id}`,
+      headers: c.headers,
+    });
+    expect(detail.json().job.items[0]).toMatchObject({
+      stage: 'duplicate',
+      title: 'Known song title',
+      channel: 'Known channel',
+    });
+    const list = await c.app.inject({ url: '/api/v1/imports', headers: c.headers });
+    expect(
+      list.json().jobs.find((entry: { id: string }) => entry.id === duplicate.id).items[0],
+    ).toMatchObject({ title: 'Known song title', channel: 'Known channel' });
+    c.storage.db.connection
+      .prepare('UPDATE import_jobs SET identity_key=? WHERE id=?')
+      .run('f'.repeat(64), original.job.id);
+    const foreignOriginal = await c.app.inject({
+      url: `/api/v1/imports/${duplicate.id}`,
+      headers: c.headers,
+    });
+    expect(foreignOriginal.json().job.items[0]).not.toHaveProperty('title');
+    expect(foreignOriginal.json().job.items[0]).not.toHaveProperty('channel');
+  });
+
+  it('should queue additional imports while downloading and keep one active worker', async () => {
+    const c = await makeSUT();
+    await c.create(1);
+    const ledger = createWorkerLedger(c.storage.db, () => 1000, 'queue-worker', 10_000);
+    const claim = ledger.claim()!;
+    ledger.advance(claim.item.id, 'downloading', {
+      title: 'Downloading song',
+      channel: 'Fixture channel',
+      channelId: 'fixture-channel',
+    });
+    ledger.heartbeat(claim.item.id);
+    const additions = await Promise.all([
+      c.create(2, { urls: ['https://youtu.be/12345678901'] }),
+      c.create(3, { urls: ['https://youtu.be/98765432109'] }),
+      c.create(4),
+    ]);
+    expect(additions.map((response) => response.statusCode)).toEqual([202, 202, 202]);
+    expect(additions.map((response) => response.json().job.items[0].stage)).toEqual([
+      'queued',
+      'queued',
+      'duplicate',
+    ]);
+    expect(ledger.imports.getJob(claim.job.id)?.items[0]?.stage).toBe('downloading');
+    expect(createWorkerLedger(c.storage.db, () => 1000, 'other-worker', 10_000).claim()).toBeNull();
+    ledger.finish(claim.item.id, false, 'download_failed');
+    expect(ledger.claim()?.item.stage).toBe('resolving');
+    expect(c.storage.db.connection.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   });
 
   /** Every input surface rejects forged body/query and browser mutation proofs. */

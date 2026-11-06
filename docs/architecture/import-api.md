@@ -79,6 +79,11 @@ metadata is omitted; observed title/channel may appear later. Raw URLs, credenti
 absolute/relative file paths, lease owners and operation/identity fingerprints are absent. Unknown
 stored failure text maps to the fixed `download_failed` code.
 
+Duplicate requests inherit title/channel observations from their original item when it belongs to
+the same account and library and has the same source ID. This is resolved on reads, so existing
+duplicates gain titles even when the original resolves later. It does not fetch YouTube metadata or
+change either item's stored observations or terminal status.
+
 `createConfiguredApp` passes validated import policy, the management database and a clock into
 AuthOptions. Capability reads persisted worker/engine state only:
 

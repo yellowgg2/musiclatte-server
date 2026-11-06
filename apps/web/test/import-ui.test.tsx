@@ -161,6 +161,80 @@ afterEach(() => {
 });
 
 describe('imports route and durable job UI', () => {
+  it('should distinguish a duplicate request from an already imported file', async () => {
+    const context = createTestContext();
+    context.state.jobs = [
+      {
+        ...job,
+        status: 'completed',
+        items: [
+          {
+            id: 'duplicate',
+            sourceId: 'abcdefghijk',
+            title: 'Known song',
+            stage: 'duplicate',
+            duplicate: { kind: 'item', id: 'original-item' },
+          },
+        ],
+      },
+    ];
+    makeSUT(context);
+    await screen.findByText('Known song');
+    expect(screen.getByText('Already requested')).toBeTruthy();
+    expect(screen.queryByText('Already imported')).toBeNull();
+  });
+
+  it('should keep the form available for another import while a song downloads', async () => {
+    const context = createTestContext();
+    context.state.jobs = [
+      {
+        ...job,
+        status: 'running',
+        items: [
+          {
+            id: 'downloading',
+            sourceId: '98765432109',
+            title: 'Downloading song',
+            stage: 'downloading',
+          },
+        ],
+      },
+    ];
+    const c = makeSUT(context);
+    const field = await screen.findByRole('textbox', { name: 'YouTube links' });
+    await c.user.type(field, 'https://youtu.be/abcdefghijk');
+    await c.user.click(screen.getByRole('button', { name: 'Import links' }));
+    await screen.findByText('Queued');
+    expect(screen.getByText('Downloading song')).toBeTruthy();
+    expect(screen.getByText('Downloading')).toBeTruthy();
+    expect((field as HTMLTextAreaElement).disabled).toBe(false);
+    expect((field as HTMLTextAreaElement).value).toBe('');
+    expect(c.calls.filter((call) => call.method === 'POST')).toHaveLength(1);
+  });
+
+  it('should lead each compact import row with the song title and preserve recovery actions', async () => {
+    const context = createTestContext();
+    context.state.jobs = [
+      { ...structuredClone(job), retryOfJobId: 'older-job' },
+      {
+        ...structuredClone(job),
+        id: 'older-job',
+        status: 'completed',
+        items: [{ ...job.items[0]!, id: 'older-item', title: 'Earlier song' }],
+      },
+    ];
+    makeSUT(context);
+    await screen.findByText('Saved song');
+    const title = screen.getByRole('heading', { level: 3, name: 'Saved song' });
+    const article = title.closest('article')!;
+    expect(within(article).getByRole('heading', { level: 3, name: 'Failed song' })).toBeTruthy();
+    expect(within(article).queryByText('Some items failed')).toBeNull();
+    expect(within(article).queryByRole('heading', { name: /^Import ·/ })).toBeNull();
+    expect(within(article).getByRole('button', { name: 'Retry Failed song' })).toBeTruthy();
+    expect(within(article).getByRole('link', { name: 'View original import' })).toBeTruthy();
+    expect(within(article).getByText('Download failed. You can retry this item.')).toBeTruthy();
+  });
+
   /** A supported consumer opens the primary route with an accessible multiline field. */
   it('should expose the enabled route and validate input without putting URLs in history', async () => {
     const c = makeSUT();

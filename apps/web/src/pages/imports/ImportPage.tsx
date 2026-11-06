@@ -25,7 +25,11 @@ function ObservedStage({ item, locale }: { item: ImportItem; locale: Locale }) {
   return (
     <div className={styles.stage} data-stage={item.stage}>
       <span aria-hidden="true">{icon}</span>
-      <span>{copy[`imports.stage.${item.stage}`]}</span>
+      <span>
+        {item.stage === 'duplicate' && item.duplicate?.kind === 'item'
+          ? copy['imports.duplicateRequest']
+          : copy[`imports.stage.${item.stage}`]}
+      </span>
     </div>
   );
 }
@@ -55,39 +59,6 @@ function ImportJobItem({
   }
   return (
     <article ref={article} className={styles.job} aria-labelledby={`import-${job.id}`}>
-      <header className={styles.jobHeader}>
-        <div>
-          <h3 id={`import-${job.id}`} tabIndex={-1}>
-            {copy['imports.job']} ·{' '}
-            {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
-              job.createdAt,
-            )}
-          </h3>
-          <p className={styles.secondary}>{copy[`imports.job.${job.status}`]}</p>
-        </div>
-        {['queued', 'running'].includes(job.status) &&
-          job.cancelRequestedAt === null &&
-          !confirm && (
-            <Action
-              data-cancel-import
-              variant="quiet"
-              disabled={disabled}
-              onClick={() => setConfirm(true)}
-            >
-              {copy['imports.cancel']}
-            </Action>
-          )}
-      </header>
-      {job.retryOfJobId && (
-        <p>
-          <a
-            href={`#import-${job.retryOfJobId}`}
-            onClick={() => document.getElementById(`import-${job.retryOfJobId}`)?.focus()}
-          >
-            {copy['imports.original']}
-          </a>
-        </p>
-      )}
       {job.cancelRequestedAt !== null && job.status !== 'cancelled' && (
         <p className={styles.notice}>{copy['imports.cancelling']}</p>
       )}
@@ -120,12 +91,20 @@ function ImportJobItem({
         </div>
       )}
       <ul className={styles.items}>
-        {job.items.map((item) => (
+        {job.items.map((item, index) => (
           <li key={item.id}>
             <div className={styles.itemCopy}>
-              <p className={styles.itemTitle}>{item.title ?? item.sourceId}</p>
-              {item.channel && <p className={styles.secondary}>{item.channel}</p>}
-              <ObservedStage item={item} locale={locale} />
+              <h3
+                className={styles.itemTitle}
+                id={index === 0 ? `import-${job.id}` : undefined}
+                tabIndex={index === 0 ? -1 : undefined}
+              >
+                {item.title ?? item.sourceId}
+              </h3>
+              <div className={styles.itemMeta}>
+                {item.channel && <span className={styles.secondary}>{item.channel}</span>}
+                <ObservedStage item={item} locale={locale} />
+              </div>
               {item.stage === 'registering' && (
                 <p className={styles.secondary}>{copy['imports.registeringHelp']}</p>
               )}
@@ -135,6 +114,7 @@ function ImportJobItem({
             </div>
             {item.stage === 'failed' && (
               <Action
+                className={styles.itemAction}
                 variant="secondary"
                 disabled={disabled}
                 onClick={() => void store.retry(job.id, item.id)}
@@ -149,6 +129,33 @@ function ImportJobItem({
           </li>
         ))}
       </ul>
+      <footer className={styles.jobMeta}>
+        <time dateTime={new Date(job.createdAt).toISOString()}>
+          {new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'short' }).format(
+            job.createdAt,
+          )}
+        </time>
+        {job.retryOfJobId && (
+          <a
+            href={`#import-${job.retryOfJobId}`}
+            onClick={() => document.getElementById(`import-${job.retryOfJobId}`)?.focus()}
+          >
+            {copy['imports.original']}
+          </a>
+        )}
+        {['queued', 'running'].includes(job.status) &&
+          job.cancelRequestedAt === null &&
+          !confirm && (
+            <Action
+              data-cancel-import
+              variant="quiet"
+              disabled={disabled}
+              onClick={() => setConfirm(true)}
+            >
+              {copy['imports.cancel']}
+            </Action>
+          )}
+      </footer>
     </article>
   );
 }

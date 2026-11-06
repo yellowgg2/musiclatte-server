@@ -247,10 +247,6 @@ export function createImportRepository(options: {
   const readJob = (id: string): ImportJob | null => {
     const row = db.prepare('SELECT * FROM import_jobs WHERE id=?').get(id);
     if (!row) return null;
-    const items = db
-      .prepare('SELECT * FROM import_items WHERE job_id=? ORDER BY item_order')
-      .all(id)
-      .map(decodeItem);
     if (
       !text(row.id) ||
       typeof row.identity_key !== 'string' ||
@@ -265,6 +261,20 @@ export function createImportRepository(options: {
       !nullableTime(row.cancel_requested_at)
     )
       throw new Error('Storage unavailable');
+    const items = db
+      .prepare(
+        `SELECT i.*,
+          COALESCE(i.observed_title, CASE WHEN original_job.id IS NOT NULL THEN original.observed_title END) AS observed_title,
+          COALESCE(i.observed_channel, CASE WHEN original_job.id IS NOT NULL THEN original.observed_channel END) AS observed_channel,
+          COALESCE(i.observed_channel_id, CASE WHEN original_job.id IS NOT NULL THEN original.observed_channel_id END) AS observed_channel_id
+        FROM import_items i
+        LEFT JOIN import_items original ON original.id=i.duplicate_of_item_id AND original.source_id=i.source_id
+        LEFT JOIN import_jobs original_job ON original_job.id=original.job_id
+          AND original_job.identity_key=? AND original_job.library_id=?
+        WHERE i.job_id=? ORDER BY i.item_order`,
+      )
+      .all(row.identity_key, row.library_id, id)
+      .map(decodeItem);
     return {
       ...(row.account_directory === null
         ? {}
